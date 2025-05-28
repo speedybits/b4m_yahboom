@@ -80,3 +80,6 @@ CMakeLists.txt.user
 # Ignore generated docs
 */docs/html
 */docs/latex
+
+# Ignore specific packages with their own git repositories
+robot_localization/

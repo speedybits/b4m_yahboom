@@ -28,7 +28,8 @@ setup(
         'stop_car= yahboomcar_nav.stop_car:main',
         'stop_robot1_car= yahboomcar_nav.stop_robot1_car:main',
         'stop_robot2_car= yahboomcar_nav.stop_robot2_car:main',
-        'app_send_goal= yahboomcar_nav.app_send_goal:main'
+        'app_send_goal= yahboomcar_nav.app_send_goal:main',
+        'waypoint_navigation= yahboomcar_nav.waypoint_navigation:main'
         ],
     },
 )
