@@ -1,0 +1,6 @@
+ros2 launch rosbridge_server rosbridge_websocket_launch.xml
+ros2 run laserscan_to_point_pulisher laserscan_to_point_pulisher
+ros2 launch yahboom_app_save_map yahboom_app_save_map.launch.py
+ros2 launch robot_pose_publisher_ros2 robot_pose_publisher_launch.py 
+
+ros2 launch usb_cam demo_launch.py

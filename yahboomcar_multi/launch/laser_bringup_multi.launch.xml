@@ -1,0 +1,9 @@
+<launch>
+	<arg name="robot_name" default="robot1"/>
+	<include file="$(find-pkg-share yahboomcar_multi)/launch/lidar_multi.launch.xml">
+		<arg name="robot_name" value="$(var robot_name)"/>
+	</include>
+	<include file="$(find-pkg-share yahboomcar_multi)/launch/yahboomcar_bringup_multi.launch.xml">
+		<arg name="robot_name" value="$(var robot_name)"/>
+	</include>
+</launch>

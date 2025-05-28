@@ -1,0 +1,19 @@
+<launch>
+	<arg name="robot_name" default="robot1"/>
+	<group>
+		<push-ros-namespace namespace="$(var robot_name)"/>
+		<!--driver_node-->
+		<node name="MS200" pkg="oradar_lidar" exec="oradar_scan" output="screen">
+            <param name="frame_id" value="$(var robot_name)/laser"/>
+            <param name="port_name" value="/dev/ttyACM0"/>
+            <param name="baudrate" value="230400"/>
+            <param name="angle_min" value="0.0"/>
+            <param name="angle_max" value="0.0"/>
+            <param name="range_min" value="0.10"/>
+            <param name="range_max" value="20.0"/>
+            <param name="clockwise" value="False"/>
+            <param name="motor_speed" value="10"/>
+            <param name="scan_topic" value="scan"/>
+        </node>
+	</group>
+</launch>

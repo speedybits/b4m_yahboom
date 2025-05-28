@@ -1,0 +1,82 @@
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Python byte code
+*.pyc
+__pycache__/
+
+# ROS build directories
+build/
+devel/
+install/
+log/
+
+# Colcon build directories
+build/
+install/
+log/
+
+# Eclipse project files
+.cproject
+.project
+.pydevproject
+.settings/
+
+# QtCreator project files
+CMakeLists.txt.user
+*.creator
+*.creator.user
+*.files
+*.includes
+*.config
+
+# Visual Studio Code
+.vscode/
+
+# Temporary files
+*~
+*.swp
+*.swo
+
+# Backup files
+*.bak
+*.backup
+
+# ROS bag files
+*.bag
+*.bag.active
+
+# Generated message and service files
+**/msg/_*.py
+**/srv/_*.py
+
+# Ignore generated docs
+*/docs/html
+*/docs/latex

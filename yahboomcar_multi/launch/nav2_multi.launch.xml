@@ -1,0 +1,11 @@
+<launch>
+	<arg name="robot_name" default="robot1"/>
+	<group>
+		<push-ros-namespace namespace="$(var robot_name)"/>
+			<include file="$(find-pkg-share nav2_bringup)/launch/bringup_launch.py">
+				<arg name="map" value="/root/yahboomcar_ws/src/yahboomcar_multi/maps/yahboom_map.yaml"/>
+				<arg name="params_file" value="$(find-pkg-share yahboomcar_multi)/param/dwb_nav_params.yaml"/>
+				<!--remap from="map" to="/map"/-->
+			</include>
+	</group>
+</launch>

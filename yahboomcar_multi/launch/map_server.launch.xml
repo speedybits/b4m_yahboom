@@ -1,0 +1,19 @@
+<launch>
+	<arg name="robot_name" default="robot1"/>
+	<node name="load_map" pkg="nav2_map_server" exec="map_server" output="screen">
+				<param name="yaml_filename" value="/root/yahboomcar_ws/src/yahboomcar_multi/maps/yahboom_map.yaml"/>
+				<remap from="/tf_static" to="tf_static"/>
+				<remap from="/tf" to="tf"/>
+				<param name="use_sim_time" value="false"/>
+				<!--param name="frame_id" value="map"/-->
+				<!--remap from="map" to="/map"/-->
+	</node>
+	
+	<node name="lifecycle_map_node" pkg="nav2_lifecycle_manager" exec="lifecycle_manager" output="screen">
+				<param name="autostart" value="true"/>
+				<param name="use_sim_time" value="false"/>
+				<param name="node_names" value="[load_map]"/>
+	</node>
+	
+	
+</launch>
