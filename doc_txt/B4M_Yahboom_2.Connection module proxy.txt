@@ -1,0 +1,86 @@
+﻿Connection module proxy  
+1、Enable proxy  
+If using a factory produced virtual machine system, you can input it at the terminal：
+
+sh ~/start_Camera_computer.sh
+
+ 
+
+If using a third-party virtual machine system, you need to first install the Docker development 
+environment and open the terminal input：
+
+docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host 
+
+microros/micro-ros-agent:humble udp4 --port 9999 -v4
+
+ 
+
+2、Connection proxy  
+After all the previous tutorials have been configured and confirmed to be correct,
+
+Turn on the power switch of the car and automatically connect to the proxy. The connection is 
+successful as shown in the following figure
+
+Attention: If the connection is not successful, please check and confirm whether the ROS wifi 
+image transmission module can be connected to the local area network normally, and whether 
+the proxy IP address corresponds.
+
+ 
+
+
+
+3、Test ROS nodes  
+Open the ROS2 terminal environment and enter the following command to view the 
+/espRos/Esp32Node node name
+
+ros2 node list
+
+If the/espRos/Esp32Node node cannot be searched, please check and confirm that the ROS 
+DOMAIN ID of the. bashrc file on the virtual machine/computer must be 20. The ROS DOMAIN ID 
+of the micro car must also be 20, otherwise the car cannot perform AI visual gameplay.
+
+ 
+
+4、Viewing camera images  
+1. Open the terminal of the factory's virtual machine system and input
+
+ros2 run yahboom_esp32_camera sub_img
+
+2. If the camera is facing downwards and not in the middle, open a new terminal and enter
+
+(This step requires the virtual machine to connect to the agent of the car,How to connect can 
+
+
+
+be found in the Quick Start Chapter)
+
+ros2 run yahboom_esp32_mediapipe control_servo
+
+Wait for the camera to move in the middle, press "Ctrl+C" to terminate the program。
+
+If the camera rudder maneuvers and does not return to the center, it is necessary to 
+reinstall the camera while ensuring continuous power supply.
+
+
+3. If the camera is inverted, open a new terminal input
+
+python3 ~/SET_Camera.py 
+
+
+
+Then enter the IP address to connect to the ROS wifi image transmission module, which can be 
+viewed at the terminal that connects to the ROS wifi image transmission module proxy
+
+
+Enter the IP address at the terminal based on the detected IP address, and then press enter
+
+
+
+
+The image has been restored
+
+
+If it is a third-party system, you need to port it yourself according to the feature package of 
+yahboomcar_ws.
+
+ 

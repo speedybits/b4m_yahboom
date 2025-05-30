@@ -1,0 +1,20 @@
+﻿Enter the robot's docker container  
+Note: The virtual machine needs to be in the same LAN as the car, and the ROS_DOMAIN_ID needs to 
+be consistent. You can check [Must read before use] to set the IP and ROS_DOMAIN_ID on the board.
+
+Taking the supporting virtual machine as an example, enter the following command to enter the 
+docker container:
+
+sudo docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host 
+
+microros/micro-ros-agent:humble udp4 --port 8888 -v4
+
+After starting the container, the agent will be turned on, turn on the car switch, and wait for the car to 
+connect to the agent. The connection is successful, as shown in the figure below.
+
+
+
+After waiting for the car to connect, a node named /YB_Car_Node will be started. In the terminal of the 
+supporting virtual machine, enter the following command to query:
+
+ros2 node list

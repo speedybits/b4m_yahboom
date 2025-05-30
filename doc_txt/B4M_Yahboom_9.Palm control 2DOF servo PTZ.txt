@@ -1,0 +1,97 @@
+﻿Palm control 2DOF servo PTZ  
+Note: The VM and ROS-wifi image transfer module must be consistent with the microROS control 
+board ROS_DOMAIN_ID and set the value to 20. You can check [MicroROS control board 
+Parameter configuration] to set the microROS control board ROS_DOMAIN_ID. Check the tutorial 
+Connecting to MicroROS Agents to see if the ids are the same.
+
+1、synopsis  
+MediaPipe is an open source and data stream processing machine learning application 
+development framework developed by Google. It is a graph-based data processing pipeline for 
+building data sources that use many forms, such as video, audio, sensor data, and any time series 
+data. MediaPipe is cross-platform and can run on embedded platforms (Raspberry PI, etc.), 
+mobile devices (iOS and Android), workstations and servers, and supports GPU acceleration on 
+mobile. MediaPipe provides cross-platform, customizable ML solutions for live and streaming 
+media.
+
+2、Program specification  
+After the program starts, after the camera captures the image, the two-dimensional head of the 
+car will follow the movement of the palm in the picture. The moving speed of the palm movement 
+here should not be too fast, otherwise the image processing can not keep up, which will cause a 
+lag.
+
+2.1、Program code reference path  
+
+/home/yahboom/yahboomcar_ws/src/yahboom_esp32ai_car/yahboom_esp32ai_car/control_
+
+shape.py
+
+3、Program initiation  
+3.1、Start command  
+Terminal input,
+
+ros2 run yahboom_esp32ai_car control_shape 
+
+If the Angle of the camera is not at this Angle, please press CTRL+C to end the program and 
+run again, this is because the network delay causes the Angle of sending the steering gear 
+to lose packets
+
+
+If the camera picture image appears upside down, you need to see 3. Camera picture 
+correction (must see) document itself correction, the experiment is no longer described.
+
+After the function is turned on, the two-dimensional head of the car will follow the palm 
+movement.
+
+
+
+4、Code parsing  
+4.1、control_shape.py  
+
+/home/yahboom/yahboomcar_ws/src/yahboom_esp32ai_car/yahboom_esp32ai_car/control_
+
+shape.py
+
+Code parsing
+
+1）、Import important library files
+
+from media_library import *
+
+2）、Check the hand, get finger information
+
+frame, lmList, bbox = self.hand_detector.findHands(frame)
+
+angle = self.hand_detector.ThumbTOforefinger(lmList)
+
+3）、Calculate the Angle of each steering gear
+
+
+
+point_x = lmList[9][1]
+
+point_y = lmList[9][2]
+
+if point_y >= 200: self.y -= 1
+
+elif point_y <= 100: self.y += 1
+
+if point_x >= 420: self.x -= 1
+
+elif point_x <= 300: self.x += 1
+
+if self.x <= -45: self.x = -45
+
+elif self.x >= 45: self.x=45
+
+if self.y <= -90: self.y = -90
+
+elif self.y >=40: self.y = 40
+
+It can be seen that indexX and indexY are the coordinates of the center point of the picture 
+frame, and the Angle of rotation of the steering gear should be calculated through judgment. 
+The parameters of each Angle calculation method are calibrated according to the actual 
+rotation Angle and the visual range of the camera.
+
+4.2、Flow chart  
+
+ 

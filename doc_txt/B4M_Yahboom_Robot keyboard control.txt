@@ -1,0 +1,79 @@
+﻿Robot keyboard control  
+Note: The virtual machine needs to be in the same LAN as the car, and the ROS_DOMAIN_ID needs to 
+be consistent. You can check [Read me] to set the IP and ROS_DOMAIN_ID on the board.
+
+1. Program function description  
+After the program is started, the car movement can be controlled through the keyboard.
+
+2. Start and connect to the agent  
+Taking the supporting virtual machine as an example, enter the following command to start the agent:
+
+sudo docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host 
+
+microros/micro-ros-agent:humble udp4 --port 8090 -v4
+
+Then, turn on the car switch and wait for the car to connect to the agent. The connection is successful, 
+as shown in the figure below.
+
+
+
+3、Start the keyboard control program  
+Enter the following command in the terminal to start the keyboard control program.
+
+ros2 run yahboomcar_ctrl yahboom_keyboard
+
+Keyboard key descriptions are as follows
+
+Directional control.
+
+【i】or【I】 【linear，0】 【u】or【U】 【linear，angular】
+
+【,】 【-linear，0】 【o】or【U】 【linear，-angular】
+
+
+
+【i】or【I】 【linear，0】 【u】or【U】 【linear，angular】
+
+【j】or【J】 【0，angular】 【m】or【M】 【-linear，-angular】
+
+【l】or【L】 【0，-angular】 【.】 【-linear，angular】
+
+ 
+
+According to the control table description, you can go forward by pressing the [i] key. Press [,] to go 
+back，Press [l] to rotate to the right, press [j] to rotate to the left, and so on.
+
+speed control table
+
+speed keyboard
+speed change speed change
+
+change keys
+
+Linear speed and angular speed Linear speed and angular speed
+【q】 【z】
+
+increased by 10% are reduced by 10%
+
+Only line speed increases by Only line speed is reduced by
+【w】 【x】
+
+10% 10%
+
+Only the angular velocity is Only the angular velocity is
+【e】 【c】
+
+increases by 10% reduced by 10%
+
+Linear speed X-axis/Y-axis
+【t】 【s】 Stop keyboard control
+
+direction switching
+
+ 
+
+Note: Since the car has a four-wheel drive structure with ordinary tires and cannot move sideways, 
+the [t] button has no meaning. Before each use of keyboard control, you need to click on the terminal 
+that starts the program, otherwise the key event cannot be detected.
+
+ 

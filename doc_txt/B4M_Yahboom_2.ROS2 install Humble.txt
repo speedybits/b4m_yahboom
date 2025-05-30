@@ -1,0 +1,103 @@
+﻿2.ROS2 install Humble  
+ 
+
+1. Set the language environment  
+Please first check whether the local language environment supports UTF-8 encoding. You can call the 
+following command to check and set UTF-8 encoding.
+
+locale  # Check for support of UTF-8
+
+sudo apt update && sudo apt install locales
+
+sudo locale-gen en_US en_US.UTF-8
+
+sudo update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
+
+export LANG=en_US.UTF-8
+
+locale  # Verify that the settings are successful
+
+Note: The locale can be different, but must support UTF-8 encoding
+
+ 
+
+2. Set software source  
+Start the Ubuntu universe repository
+
+sudo apt install software-properties-common
+
+sudo add-apt-repository universe
+
+Add the ROS 2 apt repository to the system and authorize our GPG key with apt
+
+sudo apt update && sudo apt install curl -y
+
+sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o 
+
+/usr/share/keyrings/ros-archive-keyring.gpg
+
+Add repository to sources list
+
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-
+
+archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo 
+
+$UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
+
+ 
+
+3. Install Humble  
+First update the apt repository cache:
+
+sudo apt update
+
+
+
+Then upgrade the installed software (ROS2 packages are built on Ubuntu systems which are 
+frequently updated, please make sure your system is up to date before installing new packages):
+
+sudo apt upgrade
+
+Install the desktop version of ROS2 (recommended), including: ROS, RViz, examples and tutorials. The 
+installation command is as follows:
+
+sudo apt install ros-humble-desktop python3-argcomplete
+
+Install colcon build tools
+
+sudo apt install python3-colcon-common-extensions
+
+ 
+
+4. Configure environment  
+Under the terminal, when executing the ROS2 program, you need to call the following command to 
+configure the environment:
+
+source /opt/ros/humble/setup.bash
+
+Every time you open a new terminal, you must execute the above command, or you can also execute 
+the following command to write the configuration environment instructions into the "~/.bashrc" file. 
+Then every time you start a new terminal, you do not need to manually configure the environment.
+
+echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
+
+So far, ROS2 has been installed and configured.
+
+ 
+
+5. About uninstallation  
+After ROS2 is installed, if you want to uninstall ROS2, you can execute the following command:
+
+sudo apt remove ~nros-humble-* && sudo apt autoremove
+
+You can also delete the corresponding repository of ROS2:
+
+sudo rm /etc/apt/sources.list.d/ros2.list
+
+sudo apt update
+
+sudo apt autoremove
+
+# Consider upgrading for packages previously shadowed.
+
+sudo apt upgrade

@@ -1,0 +1,100 @@
+﻿3. Introduction to lidar  
+As a low-cost measurement single-line high-precision lidar sensor, the MS200 radar adopts the TOF 
+measurement method. The small size of the MS200 radar allows it to be built into the robot body, 
+optimizing the space usage of the robot content. Although small in size, it integrates a variety of long-
+distance measurement optimization algorithms, with a 90% reflectivity ranging range of up to 12.0m. 
+At the same time, its power system uses a custom-optimized brushless DC motor with a service life of 
+more than 10,000 hours.
+
+Specifications are as follows:
+
+parameter numerical value explanation
+
+Measuring
+0.03m-12.0m Under the condition of 90% reflectivity
+
+range
+
+Typical values: ≤4mm（0.2m- Under the condition of 90% reflectivity, the
+measurement
+
+2.0m）、≤15mm（2.0m- radar collected data statistical results 100
+accuracy
+
+12.0m） times.
+
+Scan angle 360° -
+
+Frequency 4500 points/second -
+
+spinning speed 10Hz -
+
+Angular
+0.8°@10Hz -
+
+resolution
+
+Laser emission Based on the bottom surface of the radar
+0.5°-2°
+
+pitch angle base frame
+
+Laser zero
+emission 0±2° -
+
+azimuth angle
+
+Operating
+DC 5.0±0.5V -
+
+Voltage
+
+Operating
+-10℃~50℃ Typical value 25℃
+
+temperature
+
+Working
+typical：260mA -
+
+current
+
+Starting
+less than 500mA -
+
+current
+
+Product Size 37.7×37.5×33.0 Length × Width × Height (Unit: mm)
+
+net weight About 40g -
+
+
+
+parameter numerical value explanation
+
+Serial port
+230400 -
+
+baud rate
+
+Interface definition:
+
+Pin Signal Attributes describe
+
+1 Tx Serial data sending Tx（Send locally，0V~3.3V）
+
+2 Rx Serial port data reception Rx（Local reception，0V~3.3V）
+
+3 GND Input power negative pole GND（0V）
+
+4 VCC Input power positive pole DC 5V（4.5V~5.5V）
+
+Serial port configuration parameters:
+
+baud rate data bits Stop bit Check Digit flow control
+
+230400 8 1 None None
+
+ 
+
+ 

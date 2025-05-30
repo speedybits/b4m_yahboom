@@ -1,0 +1,124 @@
+﻿Robot information release  
+Note: The virtual machine needs to be in the same LAN as the car, and the ROS_DOMAIN_ID needs to 
+be consistent. You can check [Must read before use] to set the IP and ROS_DOMAIN_ID on the board.
+
+1. Program function description  
+After the car is connected to the agent, it will publish sensor data such as radar and imu. You can run 
+commands in the supporting virtual machine/Raspberry Pi 5 to query this information. You can also 
+publish control data of sensors such as speed and buzzer.
+
+2. Query car information  
+2.1. Start and connect to the agent  
+Taking the supporting virtual machine as an example, enter the following command to start the agent:
+
+sudo docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host 
+
+microros/micro-ros-agent:humble udp4 --port 8090 -v4
+
+Then, turn on the car switch and wait for the car to connect to the agent. The connection is successful, 
+as shown in the figure below.
+
+
+
+2.2. Query the car node information  
+
+Enter the following command in the terminal to query the node,
+
+ros2 node list
+
+Then enter the following command to query which topics the node has published/subscribed to,
+
+ros2 node info /YB_Car_Node
+
+It can be seen that the topics subscribed to include:
+
+/beep：Buzzer control
+
+
+
+/cmd_vel：Car speed control
+
+/servo_s1：s1 servo gimbal control
+
+/servo_s2：s2 servo gimbal control
+
+Posted topics include:
+
+/imu：imu module data
+
+/odom：Odometer module data
+
+/scan：Radar module data
+
+We can also query the topic command and enter it in the terminal,
+
+ros2 topic list
+
+2.3. Query topic data  
+
+Query radar data,
+
+ros2 topic echo /scan
+
+
+
+Query imu data,
+
+ros2 topic echo /imu
+
+
+
+Query odom data,
+
+ros2 topic echo /odom_raw
+
+3. Publish car control information  
+
+
+
+3.1. Control the buzzer  
+
+First, query the relevant information about the following buzzer topics, enter it in the terminal,
+
+ros2 topic info /beep
+
+Learn that the data type is std_msgs/msg/UInt16. Then enter the following command to turn on the 
+buzzer and enter in the terminal,
+
+ros2 topic pub /beep std_msgs/msg/UInt16 "data: 1"
+
+Enter the following command to turn off the buzzer, terminal input,
+
+ros2 topic pub /beep std_msgs/msg/UInt16 "data: 0"
+
+3.2. Release speed control information  
+
+We assume that the released car moves at a linear speed of 0.5 and an angular speed of 0.2, and the 
+terminal input is,
+
+ros2 topic pub /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.5, y: 0.0, z: 0.0}, 
+
+angular: {x: 0.0, y: 0.0, z: 0.2}}"
+
+
+
+If parking, enter
+
+ros2 topic pub /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.0, y: 0.0, z: 0.0}, 
+
+angular: {x: 0.0, y: 0.0, z: 0.0}}"
+
+3.3. Control the gimbal servo  
+
+What needs to be noted here is that the range of s1 servo is [-90,90], and the range of s2 servo is 
+[-90,20]. If the value exceeds the range, the servo will not rotate.
+
+We assume that the s1 servo is controlled to rotate 30 degrees, and the terminal input is,
+
+ros2 topic pub /servo_s1 std_msgs/msg/Int32 "data: 30"
+
+In the same way, if the s2 servo is controlled to rotate -30 degrees, the terminal input will be
+
+ros2 topic pub /servo_s2 std_msgs/msg/Int32 "data: -30"
+
+ 

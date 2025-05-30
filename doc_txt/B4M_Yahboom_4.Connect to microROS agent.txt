@@ -1,0 +1,38 @@
+﻿Connect to microROS agent  
+1. Start the agent  
+If you are using the factory virtual machine system, you can enter in the terminal:
+
+sh ~/start_agent_computer.sh
+
+ 
+
+If you use a third-party virtual machine system, you need to install the docker development 
+environment first, open a terminal and enter:
+
+docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host 
+
+microros/micro-ros-agent:humble udp4 --port 8090 -v4
+
+ 
+
+2. Connection agent  
+Turn on the power switch of the car and automatically connect to the agent. The connection is 
+successful as shown in the figure below.
+
+Note: If the connection is not successful, please check and confirm the configuration parameters of 
+the robot, whether it can connect to the LAN normally, and whether the proxy IP address and port 
+number correspond.
+
+ 
+
+
+
+3. Test ROS nodes  
+Open the ROS2 terminal environment and enter the following command to view the /YB_Car_Node 
+node name
+
+ros2 node list
+
+If the /YB_Car_Node node cannot be searched, please check and confirm that the ROS DOMAIN ID of 
+the .bashrc file on the virtual machine/computer is consistent with the one configured on the 
+microROS control board before the node information can be searched.

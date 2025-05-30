@@ -1,0 +1,104 @@
+﻿Write firmware  
+Write firmware
+
+1. Install CP2102 serial port driver
+2. Download the Flash tool
+3. Configure the burning tool 
+4. Start writing firmware
+5. Flashing completed
+6. Check the factory firmware
+
+Note: The microROS control board has been burned with factory firmware before leaving 
+the factory. If you have not burned other firmware before, you do not need to burn the 
+factory firmware again. 
+
+The factory firmware of the microROS control board only provides bin files for burning, and 
+does not provide program source code. 
+
+ 
+
+1. Install CP2102 serial port driver  
+If the Windows system has already installed the CP2102 serial port driver, you can skip this step.
+
+The path of the CP2102 serial port driver file is in [Hardware related information] -> [CP2102 serial 
+port chip] -> [CP2102-Windows driver file.zip] in the supporting information.
+
+After decompression, you will get the [CP2102-Windows-driver] folder. Select x64 and x86 
+according to the system version. Here we take 64-bit Win10 as an example. Double-click to open 
+the [CP210xVCPInstaller_x64.exe] file and click Next to start the installation.
+
+ 
+
+After the driver installation is completed, the prompt status is [Ready for use], click Finish.
+
+
+
+Use a Type-C cable to connect the type-c serial port of the expansion board to the USB port of the 
+computer
+
+Open the [Device Manager] of the Windows system and see the CP210x device in [Port], which 
+means the driver installation is successful.
+
+
+
+ 
+
+2. Download the Flash tool  
+Download URL:
+
+https://www.espressif.com.cn/zh-hans/support/download/other-tools
+
+ 
+
+Unzip to get flash_download_tool, double-click to open it.
+
+As shown in the figure below, select the serial port to burn ESP32-S3. Click OK to open the burning 
+tool.
+
+
+
+ 
+
+3. Configure the burning tool  
+In 'SPIDownload', select the firmware microROS_Robot_Vx.x.x.bin to be burned to ESP32S3, where 
+Vx.x.x is the firmware version number, enter 0x0 for the firmware address, check DoNotChgBin, 
+and then select the connected COM port. Keep other configurations as default.
+
+Firmware name Firmware address Remark
+
+microROS_Robot_Vx.x.x.bin 0x0 Factory firmware bin file
+
+ 
+
+4. Start writing firmware  
+Click the Start button and the tool will automatically start burning firmware.
+
+
+
+Note: If the firmware burning does not start automatically, please press and hold the boot0 key 
+first, then press the reset button, release the boot0 key, and enter the burning mode manually.
+
+ 
+
+5. Flashing completed  
+After the download is completed, a blue FINISH logo will appear. At this time, power off and 
+restart the microcontroller or press the reset button to start the program.
+
+ 
+
+6. Check the factory firmware  
+The storage path of the serial port assistant software is [Hardware related information]->[CP2102 
+serial port chip]->[UartAssist.exe] in the supporting information.
+
+Open the serial port assistant, as shown in the figure below, select the serial port of the microROS 
+control board, the baud rate is 115200, 8-bit data, 1-bit stop, no parity, and no flow control.
+
+Press the reset button on the microROS control board, find the hello Yahboom prompt in the 
+printed debugging information, and check the firmware version number in the line below. If the 
+information is correct, it means the factory firmware has been burned successfully.
+
+
+
+ 
+
+ 

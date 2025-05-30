@@ -1,0 +1,108 @@
+﻿ROS Robot APP navigation  
+1、Program function specification  
+The car connects to the agent, runs the program, and the phone connects to the car through a 
+network. Open the [ROS Robot] app downloaded on the mobile phone, enter the IP address of 
+the car, select ROS2, and click Connect to connect the car. Select [Navigation], click [Set 
+initialization point] on the App interface to set the start pose of the car, click [Set navigation point] 
+on the App interface to set the target point of the car, and then the car will plan a path to move to 
+this point.
+
+2、Start and connect to the agent  
+Using the matching VM as an example, run the following command to start the agent，
+
+#Car agency
+
+sudo docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --
+
+net=host microros/micro-ros-agent:humble udp4 --port 8090 -v4
+
+#Camera agent（Start the agent and then turn on the car switch）
+docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host 
+
+microros/micro-ros-agent:humble udp4 --port 9999 -v4
+
+Then, open the car switch and wait for the car to connect to the agent. The connection is 
+successful as shown in the figure below.
+
+
+
+3、Initiating program  
+First start the car to process the underlying data program, terminal input，
+
+ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py
+
+Start APP navigation command, terminal input，
+
+ros2 launch yahboomcar_nav navigation_dwb_app_launch.xml 
+
+maps:=/home/yahboom/yahboomcar_ws/src/yahboomcar_nav/maps/testaa.yaml
+
+Load map parameters：
+maps:=/home/yahboom/yahboomcar_ws/src/yahboomcar_nav/maps/testaa.yaml（Replaceable 
+target map）
+
+Start the camera display command, terminal input，
+
+
+
+# Make the camera steering level
+
+ros2 run yahboom_esp32_mediapipe control_servo
+
+# Start ESP32 camera
+
+ros2 run yahboom_esp32_camera sub_img
+
+The mobile APP shows the following picture. Enter the IP address of the car, 【zh】 indicates 
+Chinese, 【en】 indicates English; Select ROS2 and Video Tpoic: 
+/usb_cam/image_raw/compressed, then click Connect.
+
+After the connection is successful, the following information is displayed，
+
+Select the navigation interface as shown in the following figure，
+
+
+
+Then, combined with the actual pose of the car, click [Set initialization point] to give the car an 
+initial target point, and the area scanned by the radar roughly coincides with the actual obstacle, 
+indicating that the pose is accurate. As shown in the following picture，
+
+Then, click [Set navigation point], give the car a destination, the car will plan a path and move to 
+the destination according to the path。
+
+4、Code parsing  
+This section describes the launch file for APP navigation，
+
+navigation_dwb_app_launch.xml
+
+<launch>
+
+    <include file="$(find-pkg-share 
+
+rosbridge_server)/launch/rosbridge_websocket_launch.xml"/>
+
+    <node name="laserscan_to_point_publisher" pkg="laserscan_to_point_publisher" 
+
+exec="laserscan_to_point_publisher"/>
+
+    <include file="$(find-pkg-share 
+
+yahboomcar_nav)/launch/navigation_dwb_launch.py"/>
+
+    <include file="$(find-pkg-share 
+
+robot_pose_publisher_ros2)/launch/robot_pose_publisher_launch.py"/>
+
+</launch>
+
+The following launch files and Node nodes are run：
+
+
+
+rosbridge_websocket_launch.xml：Start the nodes related to rosbridge service and connect 
+to ROS through the network
+laserscan_to_point_publisher：Publish the radar point cloud conversion to the APP for 
+visualization
+navigation_dwb_launch.py：Navigation program
+robot_pose_publisher_launch.py：Car position and posture release program, car position 
+and posture visualization in the APP

@@ -1,0 +1,14 @@
+﻿20.Back up system image  
+1. Preparation
+
+1. TF card
+
+2. Card reader
+
+2. Backup (restore) system image on Windows
+
+If you do not have a Linux operating system, you can also back up under Windows, but the size of the 
+backed up file is actually the size of the SD card.
+
+First create a new blank file with the .img suffix, then select read directly to back up the system, and 
+then reinstall to restore it.

@@ -1,0 +1,86 @@
+﻿The configuration of ROS WiFi camera  
+module in the car
+The configuration of ROS WiFi camera module in the car
+
+1. matters needing attention（Must see）
+2. View the firmware version of the microROS board
+3.CH340 serial port configuration ROS WiFi camera module
+
+1. matters needing attention（Must see）  
+notice:
+
+1. If the micro car is burning firmware of version V2.1.0 or above, you can directly refer to the 
+0 and Quick Start Tutorial (mandatory), and configure the wifi and ROS agent to be 
+connected，The ROS WiFi camera module will also obtain the information to be 
+connected based on the relevant py files。
+
+2. The default mode for WiFi cameras is STA+AP mode at the factory. If the mode is not 
+specially designed, it generally does not need to be set
+
+If the mode of the wifi camera has been changed, it needs to be changed to STA+AP mode 
+or STA mode.How to change?Tutorial on Serial Port Configuration WiFi Instructions  
+
+3. This tutorial is aimed at configuring wifi cameras or firmware that is not V2.1.0
+
+2. View the firmware version of the microROS board  
+1. Connect a TYPE-C cable to the microROS board, open the serial port assistant, set the baud 
+
+rate to 115200, and press the car reset button to see the firmware version of the microROS 
+car.
+
+
+
+
+3.CH340 serial port configuration ROS WiFi camera  
+module
+CH340 serial port configuration ROS WiFi camera module ROS2 proxy and wifi information
+
+1. Disassemble the upper board of the car and connect the CH340 module, as shown in the 
+following figure
+
+
+
+
+2. Then connect the CH340 module to the computer and open the serial port assistant，
+settingBaud rate:115200、No parity check, no hardware flow control, 1-bit stop bit
+
+3. Configure WiFi mode to STA+AP mode，As shown in the following figure，It can also be 
+configured to STA mode，For specific parameter instructions, please refer to the tutorial on 
+
+
+
+Serial Port Configuration WiFi Instructions
+
+
+4. Send the WiFi name and password to connect to
+
+Note: The WiFi name and password here are searchable WiFi for 2.4GHz channels and 
+cannot be fictional.
+
+And the wifi connection of the microROS car should also be the same as that of the 
+ROS WiFi camera module
+
+
+5. ROS2 proxy for sending connections
+
+
+
+To send the ROS2 proxy connection, it is necessary to find the IP address of the Linux system 
+that connects to the ROS WiFi camera module (it must be connected to the same local area 
+network as the ROS WiFi camera module and the car)
+For example, the IP address of a Linux system is 192.168.2.121
+
+
+So the serial port configuration needs to be sent in this way
+
+
+Note: When the IP address of the Linux system changes, it needs to be reconfigured from 
+step 5
+
+6. Install the wires of the configured ROS WiFi camera module back onto the car and install the 
+upper cover.
+
+
+
+
+ 

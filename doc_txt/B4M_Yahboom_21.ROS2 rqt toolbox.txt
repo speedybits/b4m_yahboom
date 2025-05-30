@@ -1,0 +1,50 @@
+﻿21.ROS2 rqt toolbox  
+ 
+
+1. Introduction to Rqt  
+Rqt is another modular visualization tool provided by ROS. As Rqt is named, like Rviz, it is also 
+developed based on the QT visualization tool.Before use, we need to install it through such a 
+command, and then we can start it through the rqt command.
+
+ 
+
+2. Installation  
+Generally, as long as the desktop version is installed, the rqt toolbox will be installed by 
+default;
+
+If you need to install it, you can install it as follows
+
+sudo apt install ros-foxy-rqt*
+
+ 
+
+3. Start up  
+Commonly used rqt  startup commands are:
+
+Method 1: rqt
+Method 2: ros2 run rqt_gui rqt_gui
+
+4. Plug-in usage  
+After starting rqt, you can add the required plugins through plugins:
+
+
+
+Plugins include plug-ins related to topics, services, actions, parameters, logs, etc. We can select 
+them as needed to facilitate ROS2 program debugging. Usage examples are as follows.
+
+ 
+
+4.1.Topic plug-in  
+Add the topic plug-in and send speed commands to control the movement of the turtle.
+
+ 
+
+4.2. Service plug-in  
+Add the service plug-in and send a request to generate a turtle at the specified location.
+
+
+
+ 
+
+4.3. Parameter plug-in  
+Dynamically modify the background color of the turtle form through parameter plug-ins.

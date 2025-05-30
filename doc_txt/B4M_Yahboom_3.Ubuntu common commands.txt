@@ -1,0 +1,264 @@
+﻿3.Ubuntu common commands  
+3.1、Add  
+New create file
+
+touch test.txt
+
+New create folder
+
+mkdir test # Create a file
+
+mkdir -p test/src # Create the test folder and create the src folder in the test 
+
+folder
+
+Copy
+
+sudo cp test.txt test_copy.txt # Copy a file
+
+3.2、Delete  
+
+-i To execute interactively
+
+-f Forced deletion, ignoring non-existent files without prompting
+
+-r Recursively delete the contents of a directory
+
+sudo rm test.txt    # Delete files | empty folders
+
+sudo rm -r test     # Delete folders and their contents
+
+3.3、Modify  
+move、re-name
+
+sudo mv test test_new          # Change the test folder to test_new
+
+sudo mv test.txt test_new.txt  # Modify the test.txt file to test_new.txt
+
+chmod changes file permissions
+
+Permission settings
+
+Symbol Meaning
+
++ Add permissions
+
+- Revoke permission
+
+= Set permissions
+
+rwx
+
+
+
+Letter
+Meaning
+
+permissions
+
+read means read permission. For a directory, if there is no r permission, it
+r
+
+means that the contents of this directory cannot be viewed through ls.
+
+write means write permission. For a directory, if there is no w permission, it
+w
+
+means that new files cannot be created in the directory.
+
+execute means executable permission. For a directory, if there is no x
+x
+
+permission, it means that the directory cannot be entered through cd.
+
+sudo chmod +rwx test.txt  
+
+Add a shortcut to all permissions
+
+sudo chmod 777 test.txt  
+
+Set root password
+
+sudo passwd root
+
+Set user password
+
+sudo passwd user name
+
+3.4、View  
+View system version
+
+lsb_release -a    # Release version number
+
+uname -a          # Kernel version and system bit number
+
+cat /proc/version # Kernel version and gcc version
+
+View hardware information
+
+curl cip.cc or ifconfig         # View IP address
+
+cat /proc/cpuinfo or lscpu      # cpu information
+
+sudo dmidecode -t memory        # Memory information
+
+df -h                           # View the space status of all mounted file 
+
+systems
+
+which python3                   # View command location
+
+v4l2-ctl --list-formats-ext     # View camera device parameters
+
+nproc       # Check the number of cores
+
+View file information
+
+
+
+la        # Display all subdirectories and files in the specified directory, 
+
+including hidden files
+
+ll        # Display detailed information of files in list format
+
+ls -h     # Used to display the file size in a user-friendly way
+
+cat test.txt      # View file content
+
+tree              # View the file directory (needs to install tree)
+
+tree installation command
+
+sudo apt install tree
+
+Find files
+
+find ./ -name test.sh   # Find all files or directories named test.sh in the 
+
+current directory
+
+find ./ -name '*.sh'    # Find all files or directories with the suffix .sh in 
+
+the current directory
+
+find ./ -name "[A-Z]*"  # Search for all files or directories starting with an 
+
+uppercase letter in the current directory
+
+3.5、Other  
+tar command
+
+tar usage format: tar [parameter] package file name file
+
+-c   # Generate archive files and create packaging files
+
+-v   # List the detailed process of archive unarchiving and display the progress
+
+-f   # Specify the name of the archive file. The f must be followed by a .tar 
+
+file, so the option must be placed last.
+
+-t   # List files contained in the archive
+
+-x   # Unpack archive file
+
+Pack
+
+tar -cvf xxx.tar *                # All files in current directory
+
+tar -cvf xxx.tar *.txt            # Files ending with .txt
+
+tar -cvf xxx.tar my-file my-dir   # Pack the specified directory or file
+
+Unpack
+
+tar -xvf xxx.tar             # Unpack to current directory
+
+tar -xvf xxx.tar -C my-dir   # Unpack to the specified directory (you need to 
+
+create the my-dir directory first)
+
+zip、unzip command
+
+Compressed file: zip [-r] target file (no extension) source file
+
+zip bak *       # All files in the current directory, you can also specify files
+
+zip -r bak *    # All files & directories in the current directory recursively
+
+
+
+Unzip the file: unzip -d directory file after decompression compressed file
+
+unzip -d ./target_dir bak.zip  # Unzip to the specified directory
+
+unzip bak.zip                  # Unzip to current directory
+
+ln command
+
+Soft link: Soft link does not occupy disk space. If the source file is deleted, the soft link will become 
+invalid. Commonly used, you can create files or folders
+
+ln -s Source file   Link file
+
+Hard links: Hard links can only link ordinary files, not directories. Even if the source file is deleted, 
+the linked file still exists
+
+ln Source file   Link file
+
+scp remote copy
+
+scp jetson@192.168.16.66:/home/jetson/xxx.tar.gz /home/yahboom/ # Copy files 
+
+from remote to local
+
+scp /home/yahboom/xxx.png jetson@192.168.16.66:/home/jetson/    # Copy files 
+
+from local to remote
+
+scp -r jetson@192.168.16.66:/home/jetson/test /home/yahboom/    # Copy directory 
+
+from remote to local -r
+
+scp -r /home/yahboom/test jetson@192.168.16.66:/home/jetson/    # Copy directory 
+
+from local to remote -r
+
+wget file download
+
+Search for an image address on Baidu as an example.
+
+wget 
+
+"https://www.yahboom.com/Public/ueditor/php/upload/image/20210104/16097637065267
+
+02.png"                 
+
+wget -O yahboom.jpg 
+
+"https://www.yahboom.com/Public/ueditor/php/upload/image/20210104/16097637065267
+
+02.png"  
+
+Other
+
+nautilus .              # Open the current file
+
+cd ~                    # Switch to the current user’s home directory 
+
+(/home/user directory)
+
+cd .                    # Switch to the current directory
+
+cd -                    # can enter the directory where you were last time
+
+cd /                    # Switch to the system root directory /
+
+pwd                     # Display the current path
+
+echo "HelloWorld"       # Output HelloWorld information to the console
+
+which                   # View command location
+
+ 

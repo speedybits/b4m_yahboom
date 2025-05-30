@@ -1,0 +1,204 @@
+﻿Multi-machine keyboard control  
+Note: The virtual machine needs to be in the same LAN as the car, and the ROS_DOMAIN_ID needs to 
+be consistent. You can check [Must read before use] to set the IP and ROS_DOMAIN_ID on the 
+board.
+
+1、Program function description  
+After the program is started, the two cars can be controlled to move synchronously through the 
+keyboard.
+
+2、Multi-machine function basic settings  
+Taking two cars as an example, it is recommended to use two computers with matching virtual 
+machines, change the config_robot.py files, and set robot.set_ros_namespace() to robot1 and robot2 
+respectively.  And the ROS_DOMAIN_ID of the two cars and the ROS_DOMAIN_ID of the virtual 
+machine need to be set to the same.  Then open the terminal in the /home/yahboom directory and 
+enter sudo python3 config_robot.py  to run this program (you need to change it back and re-run 
+this program to run other programs except multi-car).
+
+3、Start and connect to the agent  
+Taking the supporting virtual machine as an example, under the two virtual machines, enter the 
+following commands to start the agents of the respective cars:
+
+sudo docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host 
+
+microros/micro-ros-agent:humble udp4 --port 8090 -v4
+
+
+
+Then, turn on the switches of the two cars and wait for the two cars to connect to their respective 
+agents. The connection is successful and the terminal display is as shown in the figure below.
+
+Check the currently started node, choose one of the two virtual machines, open the terminal and 
+enter,
+
+ros2 node list
+
+
+
+As shown in the picture above, the nodes of both cars have been started. To query the current topic 
+information, enter the following command in the terminal。
+
+ros2 topic list
+
+4、Start the keyboard control program  
+Among the two virtual machines, select any one, open the terminal and enter the following command 
+in the terminal.
+
+ros2 run yahboomcar_multi multi_keyboard_ctrl
+
+
+
+Keyboard key descriptions are as follows
+
+direction control table
+
+【i】or 【I】 【linear，0】 【u】or 【U】 【linear，angular】
+
+【，】 【-linear，0】 【o】or 【O】 【linear，-angular】
+
+【j】or【J】 【0，angular】 【m】or 【M】 【-linear，-angular】
+
+【l】or【L】 【0，-angular】 【.】 【-linear，angular】
+
+ 
+
+That is, press the [i] key on the keyboard to move forward, press [,] to move backward, press [l] to 
+rotate to the right, press [j] to rotate to the left, and so on.
+
+speed control table：
+
+keyboard keyboard
+speed change speed change
+
+keys keys
+
+Linear speed and angular
+Linear speed and angular speed
+
+【q】 【z】 speed are both reduced by
+are both increased by 10%
+
+10%
+
+【w】 Line speed increased by 10% 【x】 Line speed reduced by 10%
+
+Angular speed reduced by
+【e】 Angular speed increased by 10% 【c】
+
+10%
+
+Linear speed X-axis/Y-axis
+【t】 【s】 Stop keyboard control
+
+direction switching
+
+
+
+ 
+
+Note: Since the car has a four-wheel drive structure with ordinary tires and cannot move sideways, 
+the [t] button has no meaning. Before each use of keyboard control, you need to click on the terminal 
+that starts the program, otherwise the key event cannot be detected.
+
+5、Code analysis  
+Source code reference path (taking the supporting virtual machine as an example)：
+
+/home/yahboom/yahboomcar_ws/src/yahboomcar_multi/yahboomcar_multi
+
+multi_yahboom_keyboard.py
+
+#Create two velocity publishers
+
+self.pub_robot1 = self.create_publisher(Twist,'/robot1/cmd_vel',1000)
+
+self.pub_robot2 = self.create_publisher(Twist,'/robot2/cmd_vel',1000)
+
+#Get key event
+
+def getKey(self):
+
+    tty.setraw(sys.stdin.fileno())
+
+    rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
+
+    if rlist: key = sys.stdin.read(1)
+
+else: key = ''
+
+termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.settings)
+
+return key
+
+#Analyze key events
+
+while (1):
+
+    key = yahboom_keyboard.getKey()
+
+    if key=="t" or key == "T": xspeed_switch = not xspeed_switch
+
+    elif key == "s" or key == "S":
+
+    print ("stop keyboard control: {}".format(not stop))
+
+    stop = not stop
+
+    if key in moveBindings.keys():
+
+        x = moveBindings[key][0]
+
+        th = moveBindings[key][1]
+
+        count = 0   
+
+    elif key in speedBindings.keys():
+
+        speed = speed * speedBindings[key][0]
+
+        turn = turn * speedBindings[key][1]
+
+        count = 0
+
+        if speed > yahboom_keyboard.linenar_speed_limit: 
+
+            speed = yahboom_keyboard.linenar_speed_limit
+
+            print("Linear speed limit reached!")
+
+            if turn > yahboom_keyboard.angular_speed_limit: 
+
+                turn = yahboom_keyboard.angular_speed_limit
+
+                print("Angular speed limit reached!")
+
+                print(yahboom_keyboard.vels(speed, turn))
+
+                if (status == 14): print(msg)
+
+                status = (status + 1) % 15
+
+            elif key == ' ': (x, th) = (0, 0)
+
+        else:
+
+
+
+            count = count + 1
+
+            if count > 4: (x, th) = (0, 0)
+
+            if (key == '\x03'): break
+
+#Publish car speed
+
+yahboom_keyboard.pub_robot1.publish(robot1_twist)
+
+yahboom_keyboard.pub_robot2.publish(robot2_twist)
+
+6、View node communication diagram  
+Select one of the two virtual machines, open the terminal and enter the following command:
+
+ros2 run rqt_graph rqt_graph
+
+If it is not displayed at first, select [Nodes/Topics(all)], and then click the refresh button in the upper 
+left corner.

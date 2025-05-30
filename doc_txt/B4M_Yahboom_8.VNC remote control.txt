@@ -1,0 +1,66 @@
+﻿8.VNC remote control  
+8.VNC remote control
+
+VNC Software download URL：https://www.realvnc.com/en/connect/download/viewer/
+
+Note: You must know the robot's username, password and IP address before logging in 
+remotely. 
+
+For example, in the picture below: IP address [192.168.2.119], user name [jetson], host name 
+[yahboom].
+
+Note: 
+
+Yahboom Raspberry Pi version Muto RS image, username: pi, password: yahboom
+
+Yahboom jetson nano version Muto RS image, username: jetson, password: yahboom
+
+Just follow the login steps as shown in the picture. When using the vnc viewer software for VNC 
+connection, you first need to query the IP address. You can query the IP address through the 
+built-in OLED screen or by connecting the monitor to open a terminal and enter the ifconfig 
+command. What I found here is [192.168.2.119]. Enter the IP address. Then click [Enter] on the 
+keyboard.
+
+Enter the corresponding VNC user password [yahboom], select Remember Password, and click 
+[OK] to enter the VNC interface. 
+
+
+
+There is no need to enter the password again when the IP remains unchanged next time.
+
+Adjust resolution
+
+Jetson nano
+
+Use the command line to adjust according to needs. It is only effective during this startup. Open 
+the terminal and enter the following command.
+
+xrandr --fb 1920x1080
+
+Raspberry Pi
+
+Modify the [config.txt] file and it will be permanently effective. 
+
+Open the terminal and enter the following command.
+
+sudo vim /boot/firmware/config.txt
+
+For example, add following content at the bottom (set the resolution to 1920x1080)
+
+hdmi_force_hotplug=1
+
+config_hdmi_boost=4
+
+hdmi_group=2
+
+hdmi_mode=82
+
+hdmi_drive=2
+
+hdmi_ignore_edid=0xa5000080
+
+disable_overscan=1 
+
+ 
+
+ 

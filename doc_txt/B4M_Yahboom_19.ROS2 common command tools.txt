@@ -1,0 +1,161 @@
+﻿19.ROS2 common command tools  
+ 
+
+1. Package management tool ros2 pkg  
+1.1.ros2 pkg create  
+Function: Create a function package. When creating, you need to specify the package name, 
+compilation method, dependencies, etc.
+
+Command format: ros2 pkg create --build-type ament_python pkg_name rclpy std_msgs 
+sensor_msgs
+
+ros2 pkg create: Instructions for creating packages
+
+  --build-type: If the newly created function package uses C++ or C, then write ament_cmake here. 
+If it uses Python, write ament_python.
+
+pkg_name: the name of the created function package
+
+rclpy std_msgs sensor_msgs: These are some compilation dependencies
+
+1.2.ros2 pkg list  
+Function: View the list of function packages in the system
+
+Command format: ros2 pkg list
+
+
+
+1.3. ros2 pkg executeables  
+Command function: View the list of executable files in the package
+
+Command format: ros2 pkg executables pkg_name
+
+2.Node runs ros2 run  
+Command function: Run function package node program
+
+Command format: ros2 run pkg_name node_name
+
+pkg_name: function package name
+node_name: name of the executable program
+
+3. Node related tools ros2 node  
+3.1.ros2 node list  
+Command function: List all node names in the current domain
+
+Command format: ros2 node list
+
+3.2. ros2 node info  
+Command function: View node details, including subscriptions, published messages, enabled 
+services and actions, etc.
+
+Command format: ros2 node info node_name
+
+node_name：The node name to be viewed
+
+
+
+4. Topic-related tools ros2 topic  
+4.1.ros2 topic list  
+Command function: List all topics in the current domain
+
+Command format: ros2 topic list
+
+4.2. ros2 topic info  
+Command function: Display topic message type, number of subscribers/publishers
+
+Command format: ros2 topic info topic_name
+
+topic_name：The name of the topic to be queried
+
+4.3. ros2 topic type  
+Command function: View the message type of the topic
+
+Command format: ros2 topic type topic_name
+
+topic_name：Need to query the name of the topic type
+
+
+
+4.4.ros2 topic hz  
+Command function: Display the average publishing frequency of the topic
+
+Command format: ros2 topic hz topic_name
+
+topic_name：Need to query the name of topic frequency
+
+4.5. ros2 topic echo  
+Command function: print topic messages in the terminal, similar to a subscriber
+
+Command format: ros2 topic echo topic_name
+
+topic_name：The name of the topic where the message needs to be printed
+
+4.5. ros2 topic pub  
+Command function: Publish specified topic messages in the terminal
+
+Command format:ros2 topic pub topic_name message_type message_content
+
+topic_name: the name of the topic where topic messages need to be published
+message_type: the data type of the topic
+message_content: message content
+
+The default is to publish at a frequency of 1Hz. The following parameters can be set,
+
+Parameter -1 is published only once, ros2 topic pub -1 topic_name message_type 
+message_content
+
+
+
+Parameter -t count loop publishing count times ends, ros2 topic pub -t count topic_name 
+message_type message_content
+Parameter -r count is published cyclically at a frequency of count Hz, ros2 topic pub -r count 
+topic_name message_type message_content
+
+ros2 topic pub turtle1/cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.5, y: 0.0, 
+
+z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.2}}"
+
+What needs to be noted here is that there is a space after the colon.
+
+ 
+
+5. Interface related tools ros2 interface  
+5.1. ros2 interface list  
+Command function: List all interfaces of the current system, including topics, services, and 
+actions.
+
+Command format: ros2 interface list
+
+5.2. ros2 interface show  
+Command function: display the details of the specified interface
+
+Command format: ros2 interface show interface_name
+
+interface_name：the name of the interface content that needs to be displayed
+
+
+
+6. Service related tools ros2 service  
+6.1. ros2 service list  
+Command function: List all services in the current domain
+
+Command format：ros2 interface show interface_name
+
+6.2. ros2 service call  
+Command function: Call specified service
+
+Command format: ros2 interface call service_name service_Type arguments
+
+service_name: the service that needs to be called
+service_Type: service data type
+arguments: parameters required to provide the service
+
+For example, calling the spawn turtle service
+
+ros2 service call /spawn turtlesim/srv/Spawn "{x: 2, y: 2, theta: 0.2, name: 
+
+''}"
+
+requester: making request: turtlesim.srv.Spawn_Request(x=2.0, y=2.0, theta=0.2, 
+
+name='turtle2')

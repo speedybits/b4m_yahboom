@@ -1,0 +1,95 @@
+﻿About charging  
+1. It is strictly prohibited to connect equipment that exceeds the product's usage load.
+
+2. It is strictly prohibited to use batteries or chargers not provided by Yabo.
+
+3. When the battery power is low, the buzzer of the expansion board will sound an alarm. At this 
+time, you need to turn off the power and then charge the battery.
+
+4. Please turn off the main power switch on the expansion board when charging the battery. Do not 
+use the battery while charging to prevent the charger or battery from exploding.
+
+5. When charging, the charger indicator light lights up red, indicating that it is charging, and the 
+charger indicator light lights up green, indicating that the battery is fully charged. Someone 
+should supervise the battery when charging, and unplug the charger as soon as possible after 
+charging to avoid battery overcharging.
+
+6. After use, the main power switch should be turned off. When the device is not used for a long 
+time, keep the battery voltage at about 7V. Remove the bottom battery compartment, unplug the 
+battery wiring, take out the lithium battery pack and place it in a battery safe area. Do not 
+contact it with metal objects. Mixed storage, the insulation film wrapped outside cannot be torn 
+off.
+
+7. Keep away from heat, fire, liquids of any kind, and never use in moisture or rain. Humid 
+environments may cause short circuit damage to the product.
+
+8. If the lithium battery pack or battery charger smokes or becomes hot (the outer packaging may 
+crack in serious cases), you should quickly disconnect the power strip or the main switch, then 
+quickly pull out the charger, and take out the battery and place it in an open area.
+
+9. When the lithium battery pack or battery charger catches fire or smokes, please use sand or dry 
+powder fire extinguisher to extinguish the fire, and then evacuate to a safe area quickly.
+
+10. If the lithium battery pack or battery charger is damaged, severely overheated, deformed, 
+discolored, has an odor or has any other abnormality, it must not be used, and please contact 
+Yabo or other agents in a timely manner.
+
+11. Please use it in an environment with a temperature of 0℃ to 35℃. The stability of the lithium 
+battery pack or battery charger may decrease at other temperatures.
+
+12. It is strictly prohibited to intentionally puncture, short-circuit, reverse connect, weld without 
+permission, impact, crush, or throw the battery pack or battery charger.
+
+13. It is prohibited to use the product in an environment with strong static electricity and strong 
+magnetic field, otherwise it may cause damage to the product.
+
+14. It is strictly prohibited to modify or modify the hardware circuit board without permission.
+
+15. Please do not let children use the lithium battery pack or battery charger without adult 
+supervision. When storing the battery, keep it out of reach of children.
+
+ 
+
+Battery parameters  
+Nominal voltage: 7.4V
+
+
+
+Supply voltage: 5.6V~8.4V
+
+Battery capacity: 2000mAh
+
+Battery cells: 18650*2
+
+Rated current: 15A (7.5C)
+
+Maximum discharge current: 20A (10C)
+
+Protection circuit: overcharge protection, over-discharge protection, over-current protection, short-
+circuit protection
+
+Battery weight: about 115g
+
+Battery size: 67*37*22mm
+
+Discharge wire length: 15cm (AWG14)
+
+Charging cable length: 10cm
+
+ 
+
+Robot charging  
+Insert the charger that comes with the product into the power strip, and the charger indicator light 
+will turn green.
+
+Turn off the robot's main power switch. Find the charging interface on the robot expansion board, 
+and insert the charging connector of the charger into the charging interface of the expansion board.
+
+When the charger is charging the robot, the charger indicator light turns red.
+
+
+
+Wait until the battery is fully charged and the indicator light turns bright green. Unplug the charger 
+connector and charger, and place the charger in a safe area.
+
+ 

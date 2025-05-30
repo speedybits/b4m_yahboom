@@ -1,0 +1,32 @@
+﻿17.Connect to WiFi network  
+17.Connect to WiFi network
+
+1. Connect the desktop to WiFi network
+2. Connect to WiFi network via command line
+
+1. Connect the desktop to WiFi network  
+When connecting to a WiFi network, the desktop connection method is preferred, making the 
+operation simpler and more convenient.
+
+Click the WiFi logo in the upper right corner of the desktop, then select the WiFi signal you want to 
+connect to, and then enter the WiFi password to confirm to connect to WiFi.
+
+ 
+
+
+
+2. Connect to WiFi network via command line  
+Enter the following command to scan and list nearby WiFi signals
+
+sudo iwlist scan
+
+sudo nmcli device wifi list
+
+Start connecting to the WiFi signal according to the WiFi name and password you need to connect.
+
+sudo nmcli device wifi connect [WiFi name] password [WiFi password]
+
+Example: If WiFi name is Yahboom1_5G and password is 12345678, please enter the following 
+command:
+
+sudo nmcli device wifi connect Yahboom1_5G password 12345678

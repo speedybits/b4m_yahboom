@@ -1,0 +1,19 @@
+﻿3. Correction of camera image (Optional) 
+If the camera image is upside down. As shown in the figure:
+
+Then you need to set the camera screen. The steps are as follows:
+
+1. First put the SET_Camera.py in the data under the Linux system, anywhere
+2. Then open the terminal in the directory with SET_Camera.py and run the command
+
+python3 SET_Camera.py
+
+3. In the terminal, enter the IP address obtained by starting the proxy terminal (the command 
+to start the proxy, see 2. Connect to the ROS-wifi image transmission module proxy), and 
+press Enter
+
+
+
+4. When Camera is set ok! appears The camera image is reversed
+If Camera is set ok! does not appear for a long time, check whether the IP address you 
+entered is correct.

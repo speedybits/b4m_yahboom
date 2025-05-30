@@ -1,0 +1,163 @@
+﻿QR code motion control  
+Note: The VM and ROS-wifi image transfer module must be consistent with the microROS control 
+board ROS_DOMAIN_ID and set the value to 20. You can check [MicroROS control board 
+Parameter configuration] to set the microROS control board ROS_DOMAIN_ID. Check the tutorial 
+Connecting to MicroROS Agents to see if the ids are the same.
+
+1、Gameplay introduction  
+This course mainly uses the camera of the robot to obtain the picture of the camera, identify the 
+two-dimensional code information, and control the robot movement according to the two-
+dimensional code information.
+
+2、Program code reference path  
+After entering the docker container, the location of the feature source code is located,
+
+/home/yahboom/yahboomcar_ws/src/yahboom_esp32ai_car/yahboom_esp32ai_car/qrTracke
+
+r.py
+
+3、Program initiation  
+3.1、Start command  
+
+After entering the docker container, enter the terminal,
+
+ros2 run yahboom_esp32ai_car qrTracker 
+
+If the Angle of the camera is not at this Angle, please press CTRL+C to end the program and 
+run again, this is because the network delay causes the Angle of sending the steering gear 
+to lose packets
+
+
+If the camera picture image appears upside down, you need to see 3. Camera picture 
+correction (must see) document itself correction, the experiment is no longer described.
+
+The camera screen is displayed successfully
+
+
+
+Turn on the QR code and execute the command. At present, the QR code that can be recognized 
+in the routine is QRCode, and the information is "forward" for forward, "back" for backward, "left" 
+for left translation, "right" for right translation, and "stop" for stop. "turnleft" indicates left 
+rotation, "turnright" indicates right rotation, and "stop" indicates stop.
+
+
+
+Press q to turn off the camera.
+
+4、Core code  
+Import two-dimensional code parsing library pybar
+
+import pyzbar.pyzbar as pyzbar
+
+from PIL import Image
+
+If pybar is not installed, open the terminal and run the following command to install it.
+
+The factory docker has already configured the environment, and this step is suitable for your own 
+development.
+
+pip3 install pyzbar
+
+sudo apt install libzbar-dev
+
+The gray image is analyzed, and the information of two-dimensional code and image position in 
+the image are extracted. If there is no QR code in the image, the message is None.
+
+
+
+def detect_qrcode(image):
+
+    # 转为灰度图像 Convert to grayscale image
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    barcodes = pyzbar.decode(gray)
+
+    for barcode in barcodes:
+
+        # 提取二维码的数据和边界框的位置 The data of the QR code and the position of 
+the bounding box are extracted
+
+        (x, y, w, h) = barcode.rect
+
+        barcodeData = barcode.data.decode("utf-8")
+
+        barcodeType = barcode.type
+
+        # print("[INFO] Found {} barcode: {}".format(barcodeType, barcodeData))
+
+        car_control(barcodeData)
+
+        return barcodeData, (x, y, w, h)
+
+    return None, (0, 0, 0, 0)
+
+Control robot movement according to the string command of info.
+
+def robot_action(self,data):
+
+    if data == "forward":
+
+       self.pub_vel(0.3,0.0,0.0)
+
+    elif data == "back":
+
+       self.pub_vel(-0.3,0.0,0.0)
+
+    elif data == "left":
+
+       self.pub_vel(0.0,0.0,1.0)
+
+    elif data == "right":
+
+       self.pub_vel(0.0,0.0,-1.0)
+
+    elif data == "stop":
+
+       self.pub_vel(0.0,0.0,0.0)
+
+    elif data == "turnright":
+
+       self.pub_vel(0.3,0.0,-0.5)
+
+    elif data == "turnleft":
+
+       self.pub_vel(0.3,0.0,0.5)
+
+    elif data == "stop":
+
+       self.pub_vel(0.0,0.0,0.0)
+
+Image processing program
+
+ret, frame = capture.read()
+
+            action = cv2.waitKey(10) & 0xFF
+
+            payload, (x, y, w, h) = QRdetect.detect_qrcode(frame.copy())
+
+            if payload != None:
+
+                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 225, 255), 2)
+
+                cv2.putText(frame, payload, (x, y - 10), 
+
+cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 225, 255), 2)
+
+                QRdetect.robot_action(payload)
+
+            else:
+
+                QRdetect.pub_vel(0.0,0.0,0.0)
+
+
+
+Appendix (QR code picture):  
+ 
+
+ 
+
+ 
+
+ 
+
+ 

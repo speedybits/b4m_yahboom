@@ -1,0 +1,140 @@
+﻿2.Ubuntu file system  
+2.1 Ubuntu Overview  
+Ubuntu is a Linux operating system mainly based on desktop applications.
+
+2.2 Ubuntu file system  
+Ubuntu has only one root directory [/], and all files are under this directory
+
+├── bin # bin is the abbreviation of Binary. Stores the most commonly used 
+
+executable files (binary) in the system.
+
+├── boot # The Linux kernel and system startup files are stored here, including 
+
+Grub and lilo launcher programs.
+
+├── dev # dev is the abbreviation of Device. This directory stores Linux 
+
+external devices, such as hard disks, partitions, keyboards, mice, USB, etc.
+
+├── etc # This directory is used to store all configuration files and 
+
+subdirectories required for system management, such as passwd, hostname, etc.
+
+├── home # The user's home directory. In Linux, each user has his own directory. 
+
+Generally, the directory name is named after the user's account.
+
+│   └── yahboom      #user
+
+│       ├── Desktop  #Desktop
+
+│       ├── Documents #Documents
+
+│       ├── Downloads #Download
+
+│       ├── Music     #MUSIC
+
+│       ├── Pictures #PICTURES
+
+│       ├── Public   #Share
+
+│       ├── Templates #Templates
+
+│       ├── Videos  #Video
+
+│       ...
+
+│   ... 
+
+├── lost+found   # This directory is usually empty. When the system is shut down 
+
+illegally, some scattered files are stored here.
+
+├── lib          # Stores shared library files, including many library files 
+
+used by programs in /bin and /sbin.
+
+├── media        # The CD-ROM drive and USB device automatically mounted by the 
+
+Ubuntu system store temporarily read files.
+
+├── mnt          # The mount point used as the file system to be mounted.
+
+├── opt          # As a storage directory for optional files and programs, it is 
+
+mainly used by third-party developers to easily install and uninstall their 
+
+software.
+
+├── proc         # This directory is a virtual directory, which is a mapping of 
+
+system memory. All processes marked as files are stored here, and cpuinfo stores 
+
+data on the current working status of the CPU.
+
+├── root         # This directory is the user home directory of the system 
+
+administrator, also known as the super privileged user.
+
+├── sbin         # s means Super User. Here are the system management programs 
+
+used by system administrators, such as system management, directory query and 
+
+other key command files.
+
+├── srv          # Stores service data provided by the system.
+
+├── sys          # System device and file hierarchy, and provide detailed kernel 
+
+data information to user programs.
+
+
+
+├── usr          # Stores files and directories related to system users.
+
+│   ├── bin      # Standard commands for users and administrators
+
+│   ├── games    # Stores the mini games that come with XteamLinux
+
+│   ├── include  # Used to store header files needed to develop and compile 
+
+applications under Linux, c or c++
+
+│   ├── lib      # Connection libraries for applications and packages
+
+│   ├── local    # Application directory installed by the system administrator
+
+│   ├── sbin     # Stores management programs used by the root super user
+
+│   └── src      # Linux open source code
+
+│   └── share    # Store shared data
+
+│   ...
+
+├── var          # Files of variable length, especially logged data such as log 
+
+files and printer files.
+
+│   ├── backups
+
+│   ├── cache    # Application cache directory
+
+│   ├── crash    # System error message
+
+│   ├── log      # log file
+
+│   ├── mail     # e-mail
+
+│   └── tmp      # Temporary file directory
+
+│   ...
+
+├── tmp          # This directory is used to store some temporary files. All 
+
+users have read and write permissions to this directory.
+
+... 
+
+ 

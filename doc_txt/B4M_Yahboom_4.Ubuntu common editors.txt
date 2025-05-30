@@ -1,0 +1,163 @@
+﻿4.Ubuntu common editors  
+4.1Editor  
+4.1.1、vim  
+vim is an upgraded version of vi. The most common difference is that it can display some special 
+information of system files in multiple colors.
+
+Installation command
+
+sudo apt install vim
+
+Three main modes
+
+Command mode (edit mode): Default mode, move cursor, cut/paste text (interface performance: 
+file name is displayed in the lower left corner or is empty)
+
+Insert mode (input mode): Modify text (interface performance: -INSERT– is displayed in the lower 
+left corner) In insert mode, press the ESC key to return to command mode
+
+Last line mode (extended mode): save, exit, etc. (Interface performance: -VISUAL– displayed in the 
+lower left corner) In last line mode, press the ESC key twice in succession to return to last line 
+mode.
+
+Mode switch
+
+Switch command mode to edit mode
+
+i    # Insert mode to enter editing mode
+
+a    #Append mode to enter editing mode
+
+o    # Start editing at the beginning of the next line of the current line
+
+O     # Start editing at the beginning of the line above the current line
+
+Switch command mode to last line mode
+
+:    # Enter colon 【:】
+
+Switch to command mode from last line mode: press 【esc】
+
+Switch from edit mode to command mode: press 【esc】
+
+Esc: exit to current mode
+
+Esc build Esc build: always return to command mode
+
+Last line mode
+
+
+
+w            # save
+
+q            #Exit
+
+q!           # Force exit
+
+x            # Save and exit
+
+set nu       #display line number
+
+set          # nonu hide line number
+
+0,$d         # vim deletes the entire contents of the file:
+
+/string      # Search the string string backward from the cursor; press n to 
+
+locate the next one, and shfit+n to locate the previous one.
+
+g/string      # Retrieve string. Stops the cursor at the beginning of the first 
+
+retrieved string string.
+
+Command mode
+
+yy              # copy
+
+p               # Paste
+
+3yy             # Copy 3 lines
+
+2p              # Paste 2 times
+
+dd              # cut
+
+3dd             # Cut 3 lines
+
+u               # Undo
+
+Ctrl + r        # Undo
+
+dd              # Delete the current line
+
+dG              # Delete the current line to the end of the file
+
+dH              # Delete the current line to the beginning of the file
+
+gg              # Jump to the first line of the current document
+
+G               # Jump to the last line of the current document
+
+^               # Jump to the beginning of the current line
+
+$               # Jump to the end of the current line
+
+h               # Shift one character left
+
+j               # Move down one line
+
+k               # move up one line
+
+l               # Shift one character to the right
+
+PageDown(or Ctrl+F)      # Scroll down one screen
+
+PageUp(or Ctrl+B)        # Scroll up one screen
+
+4.1.2、nano  
+
+nano is a text editor for Unix and Unix-like systems, a copy of Pico.
+
+Install
+
+sudo apt install nano
+
+New/open file
+
+nano path + file name
+
+Eg:nano test_nano.txt
+
+Control commands
+
+
+
+Ctrl+v     # Next page
+
+Ctrl+y     # Previous page
+
+Ctrl+w     # Search for a word or phrase
+
+Ctrl+x     # Close the current text, exit nano, and return to the shell
+
+Ctrl+\     # Search and replace
+
+Ctrl+k     # Cut text lines
+
+Ctrl+u     # Paste lines of text
+
+Ctrl+c     # Display the cursor position in the text
+
+4.1.3、gedit  
+In the editor, we can click the "Open" button to browse the recently opened file list and open the 
+file; click the "Save" button to save the file currently being edited; click the menu bar on the right 
+to perform more operations.
+
+Ctrl + s        save file
+
+Ctrl + Shift + s      Save as
+
+Ctrl + f       Search text content
+
+The gedit editor must be started when the interface can be displayed, and it cannot be started 
+remotely without an interface such as ssh, jupyter, putty, etc.

@@ -1,0 +1,28 @@
+﻿3.Camera picture correction(ReadMe)  
+When installing the ROS wifi image transmission module, it is reversed, with the power supply 
+port facing downwards. At this time, the camera image is inverted. As shown in the figure：
+
+
+This requires setting up the camera screen, and the operation steps are as follows:
+
+1. First, place the SET-Camera.py in the documentation on the Linux system, and it can be 
+found anywhere
+
+2. Then open the terminal in the directory with SET-Camera.py and run the command
+
+python3 SET_Camera.py
+
+3. At the terminal, enter the Docket terminal (command to open Docket, see 2. Connect ROS 
+wifi image transmission module proxy) to obtain the IP address, and press Enter
+
+
+
+
+4. When Camera is set OK The camera's image is reversed
+
+If Camera is set OK does not appear for a long time! Check if the entered IP address is 
+incorrect.
+
+
+
+ 

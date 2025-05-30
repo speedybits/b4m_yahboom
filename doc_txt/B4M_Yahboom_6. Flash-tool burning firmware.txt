@@ -1,0 +1,53 @@
+﻿Flash-tool burning firmware  
+Flash-tool burning firmware
+
+1、Download Flash Tools
+2、Configure the burning tool
+3、Start flashing firmware
+4、Flashing completed
+
+1、Download Flash Tools  
+Download URL：
+
+https://www.espressif.com.cn/zh-hans/support/download/other-tools
+
+Unzip to get flash_download_tool, double-click to open it. Select the serial port to burn ESP32-S3. Click 
+OK to open the burning tool.
+
+2、Configure the burning tool  
+Copy the compiled bin file from the project (take the main project as an example) to the bin folder of 
+the flash-download-tool directory.
+
+bin file path:
+
+build/bootloader/bootloader.bin
+
+build/partition_table/partition-table.bin
+
+build/main.bin
+
+
+
+In ‘SPIDownload’, select the firmware to be burned to ESP32S3. The corresponding relationship 
+between the file and address is as shown in the table below. Then select the connected COM port and 
+keep other configurations as default.
+
+More operating firmware names Firmware address Remark
+
+bootloader.bin 0x0000 boot file
+
+partition-table.bin 0x8000 partition table file
+
+main.bin 0x10000 function file
+
+3、Start flashing firmware  
+Click the Start button and the tool will automatically start burning firmware.
+
+Note: If the firmware burning does not start automatically, please press and hold the boot0 key first, 
+then press the reset button, release the boot0 key, and enter the burning mode manually.
+
+
+
+4、Flashing completed  
+After the download is completed, a blue FINISH logo will appear. At this time, power off and restart 
+the microcontroller or press the reset button to start the program.

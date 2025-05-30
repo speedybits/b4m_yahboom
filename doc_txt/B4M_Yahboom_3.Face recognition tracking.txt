@@ -1,0 +1,120 @@
+﻿Face recognition tracking  
+Note: The VM and ROS-wifi image transfer module must be consistent with the microROS control 
+board ROS_DOMAIN_ID and set the value to 20. You can check [MicroROS control board 
+Parameter configuration] to set the microROS control board ROS_DOMAIN_ID. Check the tutorial 
+Connecting to MicroROS Agents to see if the ids are the same.
+
+1、Program specification  
+After running the program, when the face is displayed in the picture, when there is a box 
+surrounding the face, the PTZ camera will follow the movement of the face and move.
+
+2、Operation procedure  
+Program code reference path：
+
+/home/yahboom/yahboomcar_ws/src/yahboom_esp32ai_car/yahboom_esp32ai_car/face_fll
+
+ow.py
+
+2.1、Start command  
+After entering the docker container, enter the terminal according to the actual vehicle type
+
+ros2 run yahboom_esp32ai_car face_fllow  
+
+
+
+If the Angle of the camera is not at this Angle, please press CTRL+C to end the program and 
+run again, this is because the network delay causes the Angle of sending the steering gear 
+to lose packets
+
+
+** If the camera picture image appears upside down , you need to see 3. Camera picture 
+correction (must see)** document itself correction, the experiment is no longer described.
+
+After the program starts, the following camera screen will appear，
+
+
+
+When the face is recognized, the box is selected, and the two-dimensional head moves with the 
+face, and the terminal prints the moving Angle
+
+
+
+ 
+
+
+
+2.2、Dynamic parameter regulation  
+
+terminal input，
+
+ros2 run rqt_reconfigure rqt_reconfigure
+
+After modifying the parameters, click the blank area of the GUI to write the parameter value. As 
+can be seen from the figure above，
+
+faceTracker The main adjustment PID three parameters to make the head more sensitive
+
+3、Core code  
+3.1、face_fllow .py  
+
+The principle of functional implementation is similar to that of object tracking, which is to 
+calculate the rotation Angle of the steering gear according to the central coordinates of the target, 
+and then release it to the chassis, and part of the code is put under,
+
+ cv.putText(frame, text, (20, 30), cv.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 1)
+
+        face_patterns = 
+
+cv2.CascadeClassifier('/home/yahboom/yahboomcar_ws/src/yahboom_esp32ai_car/yahbo
+
+om_esp32ai_car/haarcascade_frontalface_default.xml')
+
+        faces = face_patterns.detectMultiScale(frame , scaleFactor=1.1, 
+
+minNeighbors=5, minSize=(100, 100))
+
+        if len(faces)>0:
+
+            for (x, y, w, h) in faces:
+
+                m=x
+
+                n=y
+
+                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+            self.execute(m,n)
+
+ [x_Pid, y_Pid] = self.PID_controller.update([point_x - 320, point_y - 240])
+
+        if self.img_flip == True:
+
+            self.PWMServo_X += x_Pid
+
+            self.PWMServo_Y += y_Pid
+
+        else:
+
+            self.PWMServo_X  -= x_Pid
+
+            self.PWMServo_Y  += y_Pid
+
+
+
+        if self.PWMServo_X  >= 40:
+
+            self.PWMServo_X  = 40
+
+        elif self.PWMServo_X  <= -40:
+
+            self.PWMServo_X  = -40
+
+        if self.PWMServo_Y >= 40:
+
+            self.PWMServo_Y = 40
+
+        elif self.PWMServo_Y <= -90:
+
+            self.PWMServo_Y = -90
+
+ 

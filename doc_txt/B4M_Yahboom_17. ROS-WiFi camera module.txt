@@ -1,0 +1,16 @@
+﻿Drive ROS-WiFi camera module  
+Hareware list  
+7.4v lithium battery, MicroROS robot control board, WiFi camera
+
+Steps  
+1. The wiring is as follows:
+
+2.Turn on the expansion board switch, then you can see "Yahboom_ESP32_WIFI" in the computer 
+list, click and connect to the hotspot. (No need password)
+
+
+
+ 
+
+3.After connecting to this WiFi hotspot, we can enter the URL http://192.168.4.1:81/stream in the 
+computer browser to access the camera screen

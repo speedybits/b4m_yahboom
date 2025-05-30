@@ -1,0 +1,36 @@
+﻿ReadMe - learning route  
+The microROS car tutorial is divided into two parts, one half is a practical course and the other half is a 
+theoretical course. We recommend taking practical courses first, letting the car run, and running 
+through all the cases, and then go to the theoretical courses.
+
+1. Practical courses  
+This part of the course includes:
+
+quick start control
+
+Robot control
+
+How to play lidar
+
+Multi-machine function gameplay
+
+Before proceeding with this part of the course, you need to go through all the contents of 
+[Preparation before Development] to run it normally.
+
+2. Theoretical courses  
+This part of the course includes:
+
+Linux operating system
+
+Docker development environment
+
+ROS2 basic course
+
+Construction of microROS control board development environment
+
+microROS control board ESP32 basic routine
+
+microROS control board microros basic routines
+
+This part of the course is a theoretical course and an extended course. You can choose to study 
+according to your needs.

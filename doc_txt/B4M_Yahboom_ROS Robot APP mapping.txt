@@ -1,0 +1,118 @@
+﻿ROS Robot APP mapping  
+Note: The VM must be in the same LAN as the trolley, and the ROS_DOMAIN_ID must be the 
+same. You can set the IP address and ROS_DOMAIN_ID on the board by referring to the Required 
+Read Before Using the VM.
+
+1、Program function specification  
+Connect the car to the agent, run the program, open the [ROS Robot] app downloaded on the 
+mobile phone, enter the IP address of the car, select ROS2, click Connect, and then connect the 
+car. The car can be controlled by sliding the roulette wheel in the interface, and the car can be 
+slowly controlled to complete the area of map construction. At last, click Save map, and the car 
+will save the map currently built.
+
+2、Start and connect to the agent  
+Take the matching VM as an example, enter the following command to start the agent (the agent 
+can be started once without shutting down, do not need to start again).
+
+#Car agency
+
+sudo docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --
+
+net=host microros/micro-ros-agent:humble udp4 --port 8090 -v4
+
+#Camera agent (Start the agent and then turn on the car switch)
+
+docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host 
+
+microros/micro-ros-agent:humble udp4 --port 9999 -v4
+
+Then, open the car switch and wait for the car to connect to the agent. The connection is 
+successful as shown in the figure below，
+
+
+
+3、Initiating program  
+First start the car to process the underlying data program, terminal input，
+
+ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py
+
+Start the APP drawing command, enter the terminal，
+
+# Choose one of the following two drawings
+
+ros2 launch yahboomcar_nav map_gmapping_app_launch.xml
+
+ros2 launch yahboomcar_nav map_cartographer_app_launch.xml
+
+# Make the camera steering level
+
+ros2 run yahboom_esp32_mediapipe control_servo
+
+# Start ESP32 camera
+
+ros2 run yahboom_esp32_camera sub_img
+
+
+
+The mobile APP shows the following picture. Enter the IP address of the car, 【zh】 indicates 
+Chinese, 【en】 indicates English; Select ROS2, Video Tpoic select 
+/usb_cam/image_raw/compressed, and click "Connect".
+
+
+After the connection is successful, the following information is displayed，
+
+By sliding the roulette wheel control car slowly move through the area that needs to be built, then 
+click save map, enter the map name and click submit, you can save the map
+
+ 
+
+Where the map is saved is，
+
+/home/yahboom/yahboomcar_ws/src/yahboomcar_nav/maps
+
+
+
+4、Code parsing  
+This section describes how to start the launch file for creating an APP diagram. The gmapping 
+diagram is used as an example，
+
+map_gmapping_app_launch.xml
+
+<launch>
+
+    <include file="$(find-pkg-share 
+
+rosbridge_server)/launch/rosbridge_websocket_launch.xml"/>
+
+    <node name="laserscan_to_point_publisher" pkg="laserscan_to_point_publisher" 
+
+exec="laserscan_to_point_publisher"/>
+
+    <include file="$(find-pkg-share 
+
+yahboomcar_nav)/launch/map_gmapping_launch.py"/>
+
+    <include file="$(find-pkg-share 
+
+robot_pose_publisher_ros2)/launch/robot_pose_publisher_launch.py"/>
+
+    <include file="$(find-pkg-share 
+
+yahboom_app_save_map)/yahboom_app_save_map.launch.py"/>
+
+</launch>
+
+The following launch files and Node nodes are run：
+
+rosbridge_websocket_launch.xml：Start the nodes related to rosbridge service and connect 
+to ROS through the network
+laserscan_to_point_publisher：Publish the radar point cloud conversion to the APP for 
+visualization
+map_gmapping_launch.py：gmapping Drawing program
+robot_pose_publisher_launch.py：Car position and posture release program, car position 
+and posture visualization in the APP
+yahboom_app_save_map.launch.py：A program for saving maps
+
+
+
+ 

@@ -1,0 +1,123 @@
+﻿24.ROS2 recording and playback tool  
+ 
+
+1. Introduction to recording and playback tools  
+The commonly used recording and playback tool in ROS2 - rosbag2, is used to record topic data. 
+We can use this command to store the topic data as a file. Later, we can directly publish the topic 
+data in the bag file without starting the node.
+
+This tool is very useful when we are making a real robot. For example, we can record a piece of 
+topic data when the robot has problems. After the recording is completed, it can be released 
+multiple times for testing and experimentation.You can also share topic data with others for 
+verification of algorithms, etc.
+
+We try to use the bag tool to record topic data and replay it twice.
+
+ 
+
+2. Usage tutorial  
+2.1. Start the topic node to be recorded  
+Such as the talker in ros2 demo:
+
+ros2 run demo_nodes_py talker
+
+2.2. Record  
+/topic-name  is the topic name
+
+# Record a single topic
+
+ros2 bag record /topic-name
+
+# Record multiple topics
+
+ros2 bag record topic-name1 topic-name2
+
+# Record all topics
+
+ros2 bag record -a
+
+Other options
+
+-o name Customize the name of the output file
+
+ros2 bag record -o file-name topic-name
+
+-s storage format
+
+Currently only supports sqllite3, others also have extensions
+
+
+
+2.3. View the recorded topic information  
+Before we play a video, we can check the relevant information of the video through the file 
+information, such as the time, size, type, and quantity of the topic record.
+
+# Assume that the recorded file is rosbag2_2023_10_31-07_58_23
+
+ros2 bag info rosbag2_2023_10_31-07_58_23
+
+2.4. Play and view  
+2.4.1. Play  
+Then we can replay the data and use the following command to play the data
+
+ros2 bag play rosbag2_2023_10_31-07_58_23
+
+2.4.2. View  
+
+Use the ros2 topic command to view data
+
+ros2 topic echo /chatter
+
+2.4.3. Play options  
+
+1. Play at double speed -r
+
+The -r option can modify the playback rate, such as -r value, such as -r 10, which means playing 
+the topic at 10 times speed.
+
+ros2 bag play rosbag2_2023_10_31-07_58_23 -r 10
+
+2. Loop play -l
+
+This is the single cycle
+
+ros2 bag play rosbag2_2023_10_31-07_58_23 -l
+
+3. Play a single topic
+
+ros2 bag play rosbag2_2023_10_31-07_58_23 --topics /chatter
+
+ 
+
+3. Example  
+3.1. Run talker node  
+
+ros2 run demo_nodes_py talker
+
+
+
+3.2. Recording  
+
+# Record all topics
+
+ros2 bag record -a
+
+How to stop recording? We can directly use the Ctrl+C  command in the terminal to interrupt the 
+recording.
+
+Then you will find multiple folders in the terminal named rosbag2_2023_10_31-08_21_21
+
+Open the folder and you can see the contents
+
+  
+
+This completes the recording.
+
+3.3. Play and view  
+Here we play it in a loop
+
+ros2 bag play rosbag2_2023_10_31-07_58_23 -l  
+
+Open another terminal to view the topic:
+
+ros2 topic echo /chatter

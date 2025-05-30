@@ -1,0 +1,36 @@
+﻿VM keyboard remote control  
+Note: The virtual machine needs to be in the same LAN as the car, and the ROS_DOMAIN_ID needs to 
+be consistent. You can check [Must read before use] to set the IP and ROS_DOMAIN_ID on the board.
+
+Here we take the [PS2-2.4G wireless controller] sold by Yabo Intelligent Technology Co., Ltd. as an 
+example to explain how to quickly start the program and control the car. The code here only applies 
+to the above handles, other handles are not applicable.
+
+1. Start and connect to the agent  
+Taking the supporting virtual machine as an example, enter the following command to start the 
+agent，
+
+sudo docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host 
+
+microros/micro-ros-agent:humble udp4 --port 8090 -v4
+
+Then, turn on the car switch and wait for the car to connect to the agent. The connection is successful, 
+as shown in the figure below.
+
+
+
+Then, connect the controller's receiver to the virtual machine's host and choose to connect to the 
+virtual machine.
+
+2. Start the handle control program  
+Take the supporting virtual machine as an example, enter in the terminal,
+
+ros2 run joy joy_node
+
+ros2 run yahboomcar_ctrl yahboom_joy
+
+After the program starts, observe the handle indicator light. If it stays on, it means the connection is 
+successful. Press [START] and the car's buzzer will sound. Press the R1 button to turn on the handle 
+control. You can use the left joystick to control the car forward and backward; you can use the right 
+joystick left and right to control the car to turn left and right; you can control the linear speed and 
+angular speed of the car by pressing the left and right remote sensors.

@@ -1,0 +1,348 @@
+﻿Gmapping mapping  
+Note: The virtual machine needs to be in the same LAN as the car, and the ROS_DOMAIN_ID needs to 
+be consistent. You can check [Must read before use] to set the IP and ROS_DOMAIN_ID on the board.
+
+1. Introduction to Gmapping  
+gmapping is only applicable to points where the number of two-dimensional laser points in a 
+single frame is less than 1440. If the number of laser points in a single frame is greater than 
+1440, then [[mapping-4] process has died] will occur.
+
+Gmapping is a commonly used open source SLAM algorithm based on the filtered SLAM 
+framework.
+
+Gmapping is based on the RBpf particle filter algorithm, which separates the real-time 
+positioning and mapping processes. Positioning is performed first and then mapping is 
+performed.
+
+Gmapping has made two major improvements on the RBpf algorithm: improved proposal 
+distribution and selective resampling.
+
+Advantages: Gmapping can construct indoor maps in real time. The amount of calculation required to 
+construct small scene maps is small and the accuracy is high.
+
+Disadvantages: As the scene grows, the number of particles required increases because each particle 
+carries a map, so the amount of memory and computation required to build a large map increases. 
+Therefore it is not suitable for building large scene maps. And there is no loop detection, so the map 
+may be misaligned when the loop is closed. Although increasing the number of particles can close the 
+map, it comes at the expense of increased calculations and memory.
+
+ 
+
+
+
+2. Program function description  
+Connect the car to the agent and run the program. The mapping interface will be displayed in rviz. 
+Use the keyboard or handle to control the movement of the car until the map is completed. Then run 
+the save map command to save the map.
+
+3. Start and connect to the agent  
+Taking the supporting virtual machine as an example, enter the following command to start the agent:
+
+sudo docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host 
+
+microros/micro-ros-agent:humble udp4 --port 8090 -v4
+
+Then, turn on the car switch and wait for the car to connect to the agent. The connection is successful, 
+as shown in the figure below.
+
+
+
+4. Start the program  
+First, start the car to process the underlying data program and enter the terminal.
+
+ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py
+
+Then, start rviz, visualize the mapping, and enter in the terminal.
+
+ros2 launch yahboomcar_nav display_launch.py
+
+
+
+The mapping node has not been run yet, so there is no data. Next, run the mapping node and enter in 
+the terminal,
+
+ros2 launch yahboomcar_nav map_gmapping_launch.py
+
+
+
+Then run handle control or keyboard control, choose one of the two, terminal input,
+
+#keyboard
+
+ros2 run yahboomcar_ctrl yahboom_keyboard
+
+#handle
+
+ros2 run yahboomcar_ctrl yahboom_joy
+
+ros2 run joy joy_node
+
+Then control the car and slowly walk through the area that needs to be mapped. After the map is 
+completed, enter the following command to save the map and enter it in the terminal.
+
+ros2 launch yahboomcar_nav save_map_launch.py
+
+
+
+A map named yahboom_map will be saved. This map is saved in.
+
+/home/yahboom/yahboomcar_ws/src/yahboomcar_nav/maps
+
+Two files will be generated, one is yahboom_map.pgm and the other is yahboom_map.yaml. Take a 
+look at the content of yaml.
+
+image: yahboom_map.pgm
+
+mode: trinary
+
+resolution: 0.05
+
+origin: [-10, -10, 0]
+
+negate: 0
+
+occupied_thresh: 0.65
+
+free_thresh: 0.25
+
+image：The picture representing the map, that is, yahboom_map.pgm
+
+mode：This attribute can be one of trinary, scale or raw, depending on the selected mode. 
+trinary mode is the default mode.
+
+resolution：Map resolution, meters/pixel
+
+origin：The 2D pose (x, y, yaw) in the lower left corner of the map, where yaw is rotated 
+counterclockwise (yaw=0 means no rotation). Many parts of the current system ignore the yaw 
+value.
+
+negate：Whether to reverse the meaning of white/black and free/occupied (the interpretation of 
+the threshold is not affected)
+
+occupied_thresh：Pixels with an occupancy probability greater than this threshold will be 
+considered fully occupied.
+
+free_thresh：Pixels with an occupancy probability less than this threshold will be considered 
+completely free.
+
+
+
+5. View the node communication diagram  
+Terminal input,
+
+ros2 run rqt_graph rqt_graph
+
+If it is not displayed at first, select [Nodes/Topics(all)], and then click the refresh button in the upper 
+left corner.
+
+6. View TF tree  
+Terminal input,
+
+ros2 run tf2_tools view_frames
+
+After the operation is completed, two files will be generated in the terminal directory, namely .gv and 
+.pdf files. The pdf file is the TF tree.
+
+
+
+7. Code analysis  
+Here we only describe map_gmapping_launch.py for mapping. The file path is as follows
+
+/home/yahboom/yahboomcar_ws/src/yahboomcar_nav/launch
+
+map_gmapping_launch.py
+
+from launch import LaunchDescription
+
+from launch_ros.actions import Node
+
+import os
+
+from launch.actions import IncludeLaunchDescription
+
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+
+from ament_index_python.packages import get_package_share_directory
+
+def generate_launch_description():
+
+    slam_gmapping_launch = IncludeLaunchDescription(
+
+        PythonLaunchDescriptionSource([os.path.join(
+
+        get_package_share_directory('slam_gmapping'), 'launch'),
+
+         '/slam_gmapping.launch.py'])
+
+    )
+
+    base_link_to_laser_tf_node = Node(
+
+     package='tf2_ros',
+
+     executable='static_transform_publisher',
+
+     name='base_link_to_base_laser',
+
+     arguments=['-0.0046412', '0' , 
+
+'0.094079','0','0','0','base_link','laser_frame']
+
+    )
+
+    
+
+    return LaunchDescription([slam_gmapping_launch,base_link_to_laser_tf_node])
+
+A launch file-slam_gmapping_launch and a node for publishing static transformation-
+base_link_to_laser_tf_node are started here. Take a detailed look at slam_gmapping_launch, the file is 
+as follows
+
+
+
+/home/yahboom/gmapping_ws/src/slam_gmapping/launch
+
+slam_gmapping.launch.py，
+
+from launch import LaunchDescription
+
+from launch.substitutions import EnvironmentVariable
+
+import launch.actions
+
+import launch_ros.actions
+
+import os
+
+from ament_index_python.packages import get_package_share_directory
+
+def generate_launch_description():
+
+    return LaunchDescription([
+
+        launch_ros.actions.Node(
+
+            package='slam_gmapping', 
+
+            executable='slam_gmapping', 
+
+            output='screen', 
+
+            parameters=[os.path.join(get_package_share_directory("slam_gmapping"), 
+
+"params", "slam_gmapping.yaml")]),
+
+    ])
+
+The slam_gmapping node is started here, and the slam_gmapping.yaml parameter file is loaded. The 
+file is located (taking the supporting virtual machine as an example),
+
+/home/yahboom/gmapping_ws/src/slam_gmapping/params
+
+slam_gmapping.yaml
+
+/slam_gmapping:
+
+  ros__parameters:
+
+    angularUpdate: 0.5
+
+    astep: 0.05
+
+    base_frame: base_footprint
+
+    map_frame: map
+
+    odom_frame: odom
+
+    delta: 0.05
+
+    iterations: 5
+
+    kernelSize: 1
+
+    lasamplerange: 0.005
+
+    lasamplestep: 0.005
+
+    linearUpdate: 1.0
+
+    llsamplerange: 0.01
+
+    llsamplestep: 0.01
+
+    lsigma: 0.075
+
+    lskip: 0
+
+    lstep: 0.05
+
+    map_update_interval: 5.0
+
+    maxRange: 6.0
+
+    maxUrange: 4.0
+
+    minimum_score: 0.0
+
+
+
+    occ_thresh: 0.25
+
+    ogain: 3.0
+
+    particles: 30
+
+    qos_overrides:
+
+      /parameter_events:
+
+        publisher:
+
+          depth: 1000
+
+          durability: volatile
+
+          history: keep_all
+
+          reliability: reliable
+
+      /tf:
+
+        publisher:
+
+          depth: 1000
+
+          durability: volatile
+
+          history: keep_last
+
+          reliability: reliable
+
+    resampleThreshold: 0.5
+
+    sigma: 0.05
+
+    srr: 0.1
+
+    srt: 0.2
+
+    str: 0.1
+
+    stt: 0.2
+
+    temporalUpdate: 1.0
+
+    transform_publish_period: 0.05
+
+    use_sim_time: false
+
+    xmax: 10.0
+
+    xmin: -10.0
+
+    ymax: 10.0
+
+    ymin: -10.0
+
+ 

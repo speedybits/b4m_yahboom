@@ -1,0 +1,54 @@
+﻿How to install and use VM  
+1. Install virtual machine software  
+Open the browser, enter the following URL to enter the VMware Player virtual machine software 
+download page, and click Download
+
+https://www.vmware.com/products/workstation-player.html
+
+Double-click to run the VMware virtual machine compressed package file, and then install the virtual 
+machine software according to the prompts.
+
+
+
+
+
+
+
+
+
+ 
+
+ 
+
+Double click to open
+
+
+
+ 
+
+2. Start the virtual machine system  
+Use the virtual machine software to open the virtual machine system file in the information.
+
+
+
+Find the path to the decompressed virtual machine file and select the Ubuntu22.04.vmx file.
+
+Select the virtual machine name and click Play Virtual Machine.
+
+
+
+If this is the first time you open a virtual machine, the following window will appear. Click 'I  Copied It'.
+
+Then wait for the virtual machine to start.
+
+ 
+
+3. View the IP address of the virtual machine  
+Open the system terminal and enter the command to query the IP address. Normally, inet under 
+ens33 is the IP address of the current virtual machine.
+
+ifconfig
+
+
+
+ 

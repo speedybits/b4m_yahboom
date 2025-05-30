@@ -1,0 +1,34 @@
+﻿microROS control board configuration  
+ 
+
+1. The Micro ROS control board has been programmed with factory firmware before leaving the 
+factory. If the firmware of other routines has been burned, please re-burn the factory firmware 
+before supplying power to the board and turning on the power switch.
+
+2. Copy the configuration script (config_robot.py) file included in the product information to the 
+virtual machine/computer.
+
+3. If the virtual machine/computer has an external USB serial port device, please temporarily 
+remove the USB external serial port device from the virtual machine/computer, and then use a 
+type-C data cable to connect the serial port of the virtual machine/computer and the microROS 
+control board. At this time, the system pops up a window, please choose to connect to the virtual 
+machine.
+
+4. Edit the config_robot.py file, drag it to the bottom of the file, update the parameters of the 
+set_wifi_config function according to your own WiFi network name and password, and update 
+the parameters of the set_udp_config function according to the IP address of the virtual 
+machine/computer. The virtual machine/computer version needs to set the robot type. is 
+CAR_TYPE_COMPUTER. Keep other parameters as default or modify them as needed. Save the 
+configuration file.
+
+5. First, briefly press the reset button on the microROS control board. It will be in the configuration 
+state within 5 seconds of booting (the MCU indicator light flashes once every 300 milliseconds). 
+Then run the following command to configure the robot. At this time, check whether the 
+returned data is consistent with your own settings. If it is consistent, the setting is successful.
+
+python3 config_robot.py
+
+
+
+6. Press the reset button of the robot to reload the configuration. At this point, the type-C data 
+cable connecting the robot to the virtual machine/computer can be removed.

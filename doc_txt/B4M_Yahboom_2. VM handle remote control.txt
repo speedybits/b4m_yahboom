@@ -1,0 +1,33 @@
+﻿VM handle remote control  
+Note: The virtual machine needs to be in the same LAN as the car, and the ROS_DOMAIN_ID needs to 
+be consistent. You can check [Must read before use] to set the IP and ROS_DOMAIN_ID on the board.
+
+1. Start and connect to the agent  
+Taking the supporting virtual machine as an example, enter the following command to start the agent:
+
+sudo docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --
+
+net=host microros/micro-ros-agent:humble udp4 --port 8090 -v4
+
+Then, turn on the car switch and wait for the car to connect to the agent. The connection is successful, 
+as shown in the figure below.
+
+
+
+2. Start the keyboard control program  
+Take the supporting virtual machine as an example, enter in the terminal,
+
+ros2 run yahboomcar_ctrl yahboom_keyboard
+
+Then, according to the instructions below, press the corresponding button to control the movement 
+of the car.
+
+【i】：Go forward	 	 	 【,】：move back
+
+【l】：Right rotation	 	 【j】：left rotation
+
+【u】：Turn left	 	  	    【o】：Turn right
+
+【m】：Reverse left	      【.】：Reverse right
+
+ 

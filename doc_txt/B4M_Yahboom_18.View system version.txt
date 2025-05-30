@@ -1,0 +1,38 @@
+﻿18.View system version  
+18.View system version
+
+1. View system version information
+2. jetson nano Check jetpack version
+
+The following content takes the jetson nano system version as an example to display the system 
+version information.
+
+1. View system version information  
+Check system kernel version
+
+uname -rv
+
+View machine hardware platform
+
+uname -m
+
+View all system version information
+
+uname -a
+
+ 
+
+2. jetson nano Check jetpack version  
+Enter the following command in the jetson nano system terminal to check that the system version is 
+R32.7.3
+
+cat /etc/nv_tegra_release
+
+Open the Jetson Linux Archive website in your browser to check the corresponding version.
+
+
+
+https://developer.nvidia.com/embedded/jetson-linux-archive
+
+Find the corresponding version, click to enter the 32.7.3 version information, and you can see that 
+R32.7.3 corresponds to the Jetpack 4.6.3 version.

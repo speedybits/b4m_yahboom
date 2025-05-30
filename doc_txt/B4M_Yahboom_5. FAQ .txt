@@ -1,0 +1,77 @@
+﻿1. Why does the robot need to configure parameters?
+
+Answer: Since each user's WiFi environment and IP address are different, parameters need to be 
+configured according to the actual situation.
+
+2. Regarding the microROS control board car type, what is the difference between the Raspberry Pi 
+version and the virtual machine/computer version?
+
+Answer: The Raspberry Pi version and the virtual machine/computer version use the same factory 
+firmware. The versions are distinguished by configuration parameters. The Raspberry Pi version uses 
+serial port communication, and the virtual machine/computer uses WiFi-UDP communication.
+
+3. What should I do if I cannot read and write the configuration parameters after configuring the 
+Raspberry Pi version?
+
+Answer: Please press the reset button of the robot. It will be in the configuration state within 5 
+seconds after powering on (the MCU indicator light flashes once every 300 milliseconds). At this time, 
+you can run the configuration file to read and write the configuration normally.
+
+4. The microROS control board has two type-C ports. What is the difference?
+
+Answer: The type-C interface marked Serial is mainly used for communication, configuration, 
+firmware burning, etc. The type-C interface marked 5V OUT is used to power the Raspberry Pi 5.
+
+5. Why does the robot buzzer keep beeping?
+
+Answer: When the battery power of the robot is low, it will make a beep beep sound (one beep every 
+100 milliseconds). At this time, the robot cannot be controlled. Please save the code, shut down, and 
+then charge the robot.
+
+6. What does the robot MCU status indicator light mean?
+
+Answer: The baseboard microcontroller boots up and enters the configuration state. After about 5 
+seconds, it automatically enters the connection agent state. After the agent is successfully 
+connected, it starts to initialize ROS related topics. If there is a microROS error, it will automatically 
+end. microROS task, if microROS initialization is completed, it will enter normal state.
+
+LED light indication function LED light phenomenon
+
+configuration status The LED light flashes (once every 300 milliseconds)
+
+connection agent status LED light flashes slowly (once every 1 second)
+
+microROS error LED light flashes quickly (once every 50 milliseconds)
+
+normal status LED light flashes twice (fast flashes 2 times every 3 seconds)
+
+low voltage state LED light flashes quickly (blinks once every 100 milliseconds)
+
+7. How to avoid interference when there are multiple robots in the same LAN?
+
+
+
+Answer: You can avoid interference by setting different ROS_DOMAIN_ID. The setting range of 
+ROS_DOMAIN_ID: 0~101. Please modify the set_ros_domain_id(20) parameter in the config_robot.py 
+file and write the configuration to the microROS control board. Then add a line "export 
+ROS_DOMAIN_ID=20" to the .bashrc file in the virtual machine/computer user directory, save and 
+restart the terminal.？
+
+Answer: Press the reset button again to reconnect to the agent.
+
+9. What should I do if an error appears when opening the microROS agent?
+
+Answer: The microROS agent can only be opened in one terminal. If a terminal has already opened 
+the microROS agent in the background, an error will be reported when opening the agent again. 
+Please press Ctrl+C on the original agent terminal to exit the agent and then run the agent. If the 
+agent is shut down abnormally, causing the docker process to run in the background, please first 
+query the current docker process number, end the current agent docker process, and then run the 
+agent.
+
+docker ps -a | grep microros/micro-ros-agent
+
+docker stop xxxxxxxxxx
+
+docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host 
+
+microros/micro-ros-agent:humble udp4 --port 8090 -v4

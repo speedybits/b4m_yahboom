@@ -1,0 +1,28 @@
+﻿1.Introduction to Linux system  
+Linux is an open source operating system.
+
+Main features of Linux
+
+Free and open source; fully compatible with POSIX 1.0 standard; multi-user, multi-tasking; has a 
+good interface; supports multiple platforms.
+
+Linux major versions
+
+There are currently about 300 Linux distributions, almost all of which can be run as server 
+systems. Linux distributions rarely copy each other. The following are the main popular Linux 
+server distributions:
+
+Red Hat Enterprise Linux (Red Hat Enterprise Linux): This is the first Linux distribution for the 
+commercial market. It is available in server versions and supports numerous processor 
+architectures.
+
+Debian: Debian is extremely stable, which makes it ideal for servers.
+
+CentOS: CentOS is an enterprise Linux distribution built from the ground up using free source 
+code from Red Hat Enterprise Linux. This refactored version completely removes the registered 
+trademark and a very subtle change in the Binary package.
+
+Ubuntu: Ubuntu is a derivative of Debian that focuses on its application in this market and is 
+common on servers, cloud computing, and even some mobile devices running Ubuntu Linux.
+
+ 

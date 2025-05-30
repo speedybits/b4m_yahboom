@@ -1,0 +1,47 @@
+﻿5.Ubuntu software operation commands  
+
+sudo apt-get update                            # Update source
+
+sudo apt-get install package                   # Installation package
+
+sudo apt-get remove package                    # Delete package
+
+sudo apt-cache search package                  # Search for packages
+
+sudo apt-cache show package                    # Get package-related 
+
+information, such as description, size, version, etc.
+
+sudo apt-get install package --reinstall       # Reinstall package
+
+sudo apt-get -f install                        # Repair installation
+
+sudo apt-get remove package --purge            # Delete packages, including 
+
+configuration files, etc.
+
+sudo apt-get build-dep package                 # Install relevant compilation 
+
+environment
+
+sudo apt-get upgrade                           # Update installed packages
+
+sudo apt-get dist-upgrade                      # Upgrading the system
+
+sudo apt-cache depends package                 # Understand which packages 
+
+depend on using this package
+
+sudo apt-cache rdepends package                # Check which packages this 
+
+package depends on
+
+sudo apt-get source package                    # Download the source code of the 
+
+package
+
+sudo apt-get clean && sudo apt-get autoclean   # Clean up useless packages
+
+sudo apt-get check                             # Check for broken dependencies
+
+ 

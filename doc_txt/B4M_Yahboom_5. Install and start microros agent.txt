@@ -1,0 +1,232 @@
+﻿Install and start microros agent  
+Install and start microros agent
+
+1、1. Docker starts the microros agent
+Docker starts WIFI proxy
+Docker starts serial port agent
+Agent startup failure
+
+2、Source code to start microros agent
+Install tinyxml2 dependencies
+Install python3-rosdep tool
+Compile micro_ros_setup environment
+Compile micro_ros_agent environment
+Source code to start microros agent
+
+ROS2 source code starts WIFI agent
+ROS2 source code starts serial port agent
+
+Note: Docker startup mode and source code startup mode can be installed on the same system at the 
+same time, but only one of the startup modes can be selected at startup. Under normal 
+circumstances, it is simple and convenient to use the docker startup method. It is recommended to 
+use the Docker startup method.
+
+1、1. Docker starts the microros agent  
+This time, the microros agent is started through docker, so the system docker needs to be set up first. 
+The relevant docker environment has been set up in the factory system and can be run directly.
+
+Docker starts WIFI proxy  
+
+docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host 
+
+microros/micro-ros-agent:humble udp4 --port 8090 -v4
+
+Among them, --port 8090 is the network port number, and -v4 is the LOG printing level. The higher the 
+value, the more printing will be done. Modifications can be made according to actual conditions.
+
+If you need to end the proxy, press Ctrl+C in the terminal to exit the proxy.
+
+Note that you cannot close the terminal directly, otherwise docker will continue to run in the 
+background.
+
+If the microcontroller starts the reconnection agent multiple times, causing ROS2 to search for 
+multiple identical nodes, it does not actually affect the use. Press Ctrl+C to end the agent, then reset 
+the microcontroller and reconnect to the agent.
+
+
+
+ 
+
+Docker starts serial port agent  
+
+docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host 
+
+microros/micro-ros-agent:humble serial --dev /dev/ttyUSB0 -b 921600 -v4
+
+Among them, --dev /dev/ttyUSB0 is the serial port device number, and -b 921600 is the baud rate. 
+Modifications can be made according to actual conditions.
+
+If you need to end the proxy, press Ctrl+C in the terminal to exit the proxy.
+
+Note that you cannot close the terminal directly, otherwise docker will continue to run in the 
+background.
+
+If the microcontroller starts the reconnection agent multiple times, causing ROS2 to search for 
+multiple identical nodes, it does not actually affect the use. Press Ctrl+C to end the agent, then reset 
+the microcontroller and reconnect to the agent.
+
+ 
+
+Agent startup failure  
+
+The microROS agent can only be opened in one terminal. If a terminal has already opened the 
+microROS agent in the background, an error will be reported when opening the agent again. Please 
+press Ctrl+C on the original agent terminal to exit the agent and then run the agent.
+
+If the agent fails to be started the next time because the terminal is closed directly, you can restart the 
+virtual machine/computer or manually end docker to solve the problem.
+
+How to manually end docker:
+
+Please first query the current docker process number and end the current agent docker process.
+
+docker ps -a | grep microros/micro-ros-agent
+
+docker stop xxxxxxxxxx
+
+docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host 
+
+microros/micro-ros-agent:humble udp4 --port 8090 -v4
+
+
+
+ 
+
+2、Source code to start microros agent  
+Install tinyxml2 dependencies  
+Enter the following command in the terminal to install tinyxml2
+
+cd ~/
+
+git clone https://github.com/leethomason/tinyxml2.git
+
+cd tinyxml2
+
+mkdir build
+
+cd build
+
+sudo cmake ..
+
+sudo make
+
+sudo make install
+
+ 
+
+Install python3-rosdep tool  
+Enter the following command in the terminal to install the rosdep tool. You can skip it if you have 
+already installed it.
+
+sudo apt install python3-rosdep
+
+ 
+
+Compile micro_ros_setup environment  
+Activate the ROS2 environment variable. Here we take the humble version as an example. If it is 
+already activated, you can skip the activation step.
+
+source /opt/ros/humble/setup.bash
+
+Create and enter the workspace uros_ws in the user directory
+
+
+
+mkdir ~/uros_ws && cd ~/uros_ws
+
+mkdir src
+
+Download the micro_ros_setup file to the src folder
+
+git clone -b $ROS_DISTRO https://github.com/micro-ROS/micro_ros_setup.git 
+
+src/micro_ros_setup
+
+Initialize rosdep
+
+sudo rosdep init
+
+If there is a network problem, please add the -E parameter
+
+sudo -E rosdep init
+
+If errors are reported in the above steps and rosdep still cannot be initialized, you can create a new 
+20-default.list file in the /etc/ros/rosdep/sources.list.d/ directory, add the following content, and then 
+proceed to the next step.
+
+# os-specific listings first
+
+yaml https://raw.githubusercontent.com/ros/rosdistro/master/rosdep/osx-homebrew.yaml 
+
+osx
+
+# generic
+
+yaml https://raw.githubusercontent.com/ros/rosdistro/master/rosdep/base.yaml
+
+yaml https://raw.githubusercontent.com/ros/rosdistro/master/rosdep/python.yaml
+
+yaml https://raw.githubusercontent.com/ros/rosdistro/master/rosdep/ruby.yaml
+
+gbpdistro 
+
+https://raw.githubusercontent.com/ros/rosdistro/master/releases/fuerte.yaml fuerte
+
+# newer distributions (Groovy, Hydro, ...) must not be listed anymore, they are 
+
+being fetched from the rosdistro index.yaml instead
+
+Update rosdep and install related driver packages
+
+rosdep update && rosdep install --from-paths src --ignore-src -y
+
+
+
+Compile workspace
+
+colcon build
+
+Activate micro_ros_setup environment
+
+source install/local_setup.bash
+
+ 
+
+Compile micro_ros_agent environment  
+
+ros2 run micro_ros_setup create_agent_ws.sh
+
+ros2 run micro_ros_setup build_agent.sh
+
+If an error occurs when compiling build_agent.sh, please compile again.
+
+ 
+
+
+
+Source code to start microros agent  
+Activate micro_ros_agent agent environment
+
+source ~/uros_ws/install/local_setup.sh
+
+ 
+
+ROS2 source code starts WIFI agent  
+
+ros2 run micro_ros_agent micro_ros_agent udp4 --port 8090 -v4
+
+Among them, --port 8090 is the network port number, and -v4 is the LOG printing level. The higher the 
+value, the more printing will be done. Modifications can be made according to actual conditions.
+
+If you need to end the proxy, press Ctrl+C in the terminal to exit the proxy.
+
+ 
+
+ROS2 source code starts serial port agent  
+
+ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyUSB0 -b 921600 -v4
+
+Among them, --dev /dev/ttyUSB0 is the serial port device number, and -b 921600 is the baud rate. 
+Modifications can be made according to actual conditions.
+
+If you need to end the proxy, press Ctrl+C in the terminal to exit the proxy.
