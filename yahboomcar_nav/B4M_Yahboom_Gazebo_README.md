@@ -25,43 +25,85 @@ This package provides a multi-waypoint navigation system for the Yahboom robot i
 
 ## Installation
 
-The code is already integrated into the yahboomcar_nav package. To build it:
-
-```bash
-cd ~/yahboomcar_ws
-colcon build --packages-select yahboomcar_nav
-source install/setup.bash
-```
+The code is already integrated into the yahboomcar_nav package in the `/home/yahboom/b4m_yahboom` directory. No additional building is required.
 
 ## Usage
 
-### 1. Start the Gazebo Simulation with Navigation
+The Gazebo simulation follows the same sequence as the real robot setup, but adapted for simulation. Based on our testing, the most reliable approach is to run each component manually in separate terminal windows.
 
-Launch the Gazebo simulation with the Yahboom robot and Navigation2:
+### Manual Step-by-Step Instructions
+
+Follow these steps in order, opening a new terminal window for each step:
+
+#### 1. Start Gazebo (equivalent to starting Micro-ROS agent for the real robot)
 
 ```bash
-ros2 launch yahboomcar_nav gazebo_waypoint_navigation_launch.py
+cd /home/yahboom/b4m_yahboom
+source /opt/ros/humble/setup.bash
+gazebo --verbose -s libgazebo_ros_init.so -s libgazebo_ros_factory.so
 ```
 
-This single command will:
-- Start the Gazebo simulation server
-- Spawn the Yahboom robot model in Gazebo
-- Launch the Navigation2 stack with the map
-- Start the waypoint navigation node
+#### 2. Spawn the robot in Gazebo (part of the car's underlying data processing)
 
-### 2. Set Initial Pose
+```bash
+cd /home/yahboom/b4m_yahboom
+source /opt/ros/humble/setup.bash
+ros2 run gazebo_ros spawn_entity.py -entity yahboomcar -file /home/yahboom/b4m_yahboom/yahboomcar_description/urdf/yahboomcar_robot2.urdf -x 0 -y 0 -z 0
+```
 
-In the RViz interface that appears, use the **2D Pose Estimate** tool to set the initial pose of the robot.
+#### 3. Start RViz for visualization
 
-### 3. Using Keyboard Commands
+```bash
+cd /home/yahboom/b4m_yahboom
+source /opt/ros/humble/setup.bash
+ros2 launch yahboomcar_nav/launch/display_launch.py
+```
 
-The system provides the following keyboard commands:
+#### 4. Launch Nav2 with AMCL
+
+```bash
+cd /home/yahboom/b4m_yahboom
+source /opt/ros/humble/setup.bash
+ros2 launch nav2_bringup bringup_launch.py map:=/home/yahboom/b4m_yahboom/yahboomcar_nav/maps/yahboom_map.yaml use_sim_time:=true
+```
+
+#### 5. Set the initial pose in RViz
+
+In the RViz interface, use the **2D Pose Estimate** tool to set the initial pose of the robot.
+
+**This is a critical step for AMCL to start publishing the map->base_link transform.**
+
+Without setting the initial pose:
+- The lidar data will not be visible in RViz
+- Navigation will not work properly
+- RViz will show a global status error
+
+#### 6. Launch waypoint navigation
+
+```bash
+cd /home/yahboom/b4m_yahboom
+source /opt/ros/humble/setup.bash
+ros2 launch yahboomcar_nav/launch/waypoint_navigation_launch.py
+```
+
+### Using Keyboard Commands
+
+Once the waypoint navigation system is running, you can use the following keyboard commands in the waypoint navigation terminal:
 
 - `s` - Save current position as a waypoint (you'll be prompted for a name)
 - `l` - List all saved waypoints
 - `g` - Go to a waypoint (you'll select from the list)
 - `c` - Cancel current navigation
 - `q` - Quit the program
+
+### Alternative: Using Scripts
+
+We've also created scripts to automate these steps, but they may not work in all environments:
+
+- `run_gazebo_nav.sh` - Launches Gazebo, spawns the robot, and starts RViz
+- `run_waypoint_nav_terminal.sh` - Launches the waypoint navigation system
+
+However, the manual step-by-step approach described above is the most reliable.
 
 ## How It Works
 
