@@ -1,4 +1,4 @@
-﻿Multi-vehicle Navigation2 navigation  
+Multi-vehicle Navigation2 navigation  
 Note: The virtual machine needs to be in the same LAN as the car, and the ROS_DOMAIN_ID needs to 
 be consistent. You can check [Must read before use] to set the IP and ROS_DOMAIN_ID on the board. 
 in addition. The two cars also need to set up additional command spaces. For the setting method, 
@@ -209,7 +209,7 @@ pose..." appears.
 
 
 
-Source code path location：/home/yahboom/yahboomcar_ws/src/yahboomcar_multi/launch
+Source code path location：/home/yahboom/b4m_yahboom/yahboomcar_multi/
 
 robot1_amcl_launch.py
 
