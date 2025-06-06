@@ -1,0 +1,87 @@
+﻿Must read before use  
+After getting the car, you need to set the IP and ROS_DOMAIN_ID. The former is to connect to the 
+agent, and the latter is to interact with the virtual machine. Distributed multi-machine communication
+
+1、Set up the board to connect to wifi  
+Modify the config_robot.py code in the /home/yahboom directory and find the following parts,
+
+robot.set_wifi_config("ssid123", "passwd123")
+
+Change ssid123 to your own WiFi name, and change passws123 to the password corresponding to 
+your own WiFi. Save and exit after modification.
+
+2、Set IP  
+Taking the virtual machine provided by yahboom as an example, query the current IP of the virtual 
+machine and enter in the terminal
+
+ifconfig
+
+As can be seen from the picture, the query here shows that my IP is 192.168.2.133. This is the IP when 
+we start the agent, so we need to set the board to this. IP can connect to the proxy
+
+Use a USB to Type-C cable to connect the board and the virtual machine, and make sure the virtual 
+machine is connected to the board.
+
+
+
+Then modify the test_microros.py code in the /home/yahboom directory and find the following parts,
+
+robot.set_udp_config([192, 168, 2, 133], 8090)
+
+Change [192, 168, 2, 133] here to the ip you queried
+
+Assume that robot.set_ros_domain_id(20) is set to 20, then modify the config_robot.py file as follows,
+
+robot.set_ros_domain_id(20)
+
+Change the 20 inside to a custom number, which cannot exceed 100.
+
+After the modification is completed, save and exit, and run it in the terminal.
+
+cd ~
+
+sudo python3 config_robot.py
+
+If the following screen appears, it means the modification is successful. The content in the picture 
+shall be subject to the actual modification. Then you need to restart the board to take effect.
+
+2、Virtual machine settings ROS_DOMAIN_ID  
+Then you also need to set the same ROS_DOMAIN_ID in the ~/.bashrc file of the virtual machine to 
+achieve distributed multi-machine communication between the board and the virtual machine.
+
+Modify the ~/.bashrc file of the virtual machine and enter it in the terminal.
+
+sudo gedit .bashrc
+
+
+
+Find ROS_DOMAIN_ID and set it to be consistent with robot.set_ros_domain_id(20) set in 1,
+
+Assume that the setting is 20, fill in 20 here, then save and exit, reopen the terminal, the terminal will 
+display the set ROS_DOMAIN_ID value,
+
+3. Test whether the modification is completed  
+Enter the following command in the virtual machine terminal to enable the agent:
+
+sudo docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host 
+
+microros/micro-ros-agent:humble udp4 --port 8090 -v4
+
+
+
+Then, turn on the car switch and wait for the car to connect to the agent. The connection is successful, 
+as shown in the figure below.
+
+Then reopen a terminal and enter the following command to query the currently running node:
+
+ros2 node list
+
+
+
+When the car is connected to the agent, a node program will be run. If the node can be queried on the 
+virtual machine, it means that the two have achieved distributed multi-machine communication.
+
+Note: When running any routine, the agent only needs to be started normally once. Repeatedly 
+starting the agent will cause the agent to report an error. If you need to restart the agent
+
+The manager needs to ensure that the last agent used is shut down before starting again.
