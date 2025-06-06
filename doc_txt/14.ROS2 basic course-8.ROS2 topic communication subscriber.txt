@@ -19,7 +19,7 @@ nodes.
 
 This case is located in the factory docker container. The source code location is:
 
-/root/yahboomcar_ros2_ws/yahboomcar_ws/src/pkg_topic
+/home/yahboom/b4m_yahboom/src/pkg_topic
 
  
 
@@ -85,7 +85,7 @@ it
  
 
 4. Compile workspace  
-cd ~/yahboomcar_ros2_ws/yahboomcar_ws
+cd ~/b4m_yahboom
 
 colcon build --packages-select pkg_topic
 

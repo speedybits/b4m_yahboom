@@ -21,7 +21,7 @@ lag.
 
 2.1、Program code reference path  
 
-/home/yahboom/yahboomcar_ws/src/yahboom_esp32ai_car/yahboom_esp32ai_car/control_
+/home/yahboom/b4m_yahboom/src/yahboom_esp32ai_car/yahboom_esp32ai_car/control_
 
 shape.py
 
@@ -47,7 +47,7 @@ movement.
 4、Code parsing  
 4.1、control_shape.py  
 
-/home/yahboom/yahboomcar_ws/src/yahboom_esp32ai_car/yahboom_esp32ai_car/control_
+/home/yahboom/b4m_yahboom/src/yahboom_esp32ai_car/yahboom_esp32ai_car/control_
 
 shape.py
 

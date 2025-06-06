@@ -82,7 +82,7 @@ ros2 launch yahboomcar_nav save_map_launch.py
 
 A map named yahboom_map will be saved. This map is saved in,
 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_nav/maps
+/home/yahboom/b4m_yahboom/src/yahboomcar_nav/maps
 
 
 
@@ -138,7 +138,7 @@ and .pdf files. The pdf file is the TF tree.
 7. Code analysis  
 Here we only describe map_cartographer_launch.py for mapping. The file path is as follows
 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_nav/launch
+/home/yahboom/b4m_yahboom/src/yahboomcar_nav/launch
 
 map_cartographer_launch.py
 
@@ -189,7 +189,7 @@ IncludeLaunchDescription(PythonLaunchDescriptionSource(
 A launch file-cartographer_launch and a node that publishes static transformation-
 base_link_to_laser_tf_node are run here. Mainly look at cartographer_launch, which is located at,
 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_nav/launch
+/home/yahboom/b4m_yahboom/src/yahboomcar_nav/launch
 
 cartographer_launch.py，
 
@@ -318,7 +318,7 @@ resolution,
 Here we mainly run cartographer_node mapping node and occupation_grid_launch.py, and also 
 load the parameter configuration file, which is located at,
 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_nav/params
+/home/yahboom/b4m_yahboom/src/yahboomcar_nav/params
 
 lds_2d.lua，
 

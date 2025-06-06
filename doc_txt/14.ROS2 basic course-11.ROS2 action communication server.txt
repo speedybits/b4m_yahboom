@@ -19,9 +19,9 @@ action client.
 
 This case is located in the factory docker container. The source code location is:
 
-/root/yahboomcar_ros2_ws/yahboomcar_ws/src/pkg_interfaces
+/home/yahboom/b4m_yahboom/src/pkg_interfaces
 
-/root/yahboomcar_ros2_ws/yahboomcar_ws/src/pkg_action
+/home/yahboom/b4m_yahboom/src/pkg_action
 
  
 
@@ -35,7 +35,7 @@ package
 1. Action communication requires creating an action communication interface first, and then 
 creating an action communication interface.
 
-cd ~/yahboomcar_ros2_ws/yahboomcar_ws/src
+cd ~/b4m_yahboom/src
 
 ros2 pkg create --build-type ament_cmake pkg_interfaces
 
@@ -75,7 +75,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 
 5. Compile function package:
 
-cd ~/yahboomcar_ros2_ws/yahboomcar_ws/src
+cd ~/b4m_yahboom/src
 
 colcon build --packages-select pkg_interfaces
 
@@ -95,7 +95,7 @@ Progress.action  file
 
 3.2. Create action communication function package  
 
-cd ~/yahboomcar_ros2_ws/yahboomcar_ws/src
+cd ~/b4m_yahboom/src
 
 ros2 pkg create pkg_action --build-type ament_python --dependencies rclpy 
 
@@ -206,7 +206,7 @@ def main(args=None):
 
 
 
-cd ~/yahboomcar_ros2_ws/yahboomcar_ws
+cd ~/b4m_yahboom
 
 colcon build --packages-select pkg_action
 

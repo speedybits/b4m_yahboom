@@ -92,7 +92,7 @@ namespace="turtlesim2">
 
 1.3. Compile workspace  
 
-cd ~/yahboomcar_ros2_ws/yahboomcar_ws
+cd ~/b4m_yahboom
 
 colcon build --packages-select pkg_topic
 
@@ -246,7 +246,7 @@ parameters
 
 2.3. Compile workspace  
 
-cd ~/yahboomcar_ros2_ws/yahboomcar_ws
+cd ~/b4m_yahboom
 
 colcon build --packages-select pkg_topic
 

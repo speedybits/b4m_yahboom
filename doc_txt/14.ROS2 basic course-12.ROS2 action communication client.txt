@@ -19,9 +19,9 @@ action client.
 
 This case is located in the factory docker container. The source code location is:
 
-/root/yahboomcar_ros2_ws/yahboomcar_ws/src/pkg_interfaces
+/home/yahboom/b4m_yahboom/src/pkg_interfaces
 
-/root/yahboomcar_ros2_ws/yahboomcar_ws/src/pkg_action
+/home/yahboom/b4m_yahboom/src/pkg_action
 
  
 
@@ -126,7 +126,7 @@ def main(args=None):
  
 
 5. Compile workspace  
-cd ~/yahboomcar_ros2_ws/yahboomcar_ws
+cd ~/b4m_yahboom
 
 colcon build --packages-select pkg_action
 

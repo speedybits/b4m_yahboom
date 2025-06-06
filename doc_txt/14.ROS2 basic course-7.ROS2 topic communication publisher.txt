@@ -19,12 +19,12 @@ nodes.
 
 This case is located in the factory docker container. The source code location is:
 
-/root/yahboomcar_ros2_ws/yahboomcar_ws/src/pkg_topic
+/home/yahboom/b4m_yahboom/src/pkg_topic
 
  
 
 2. Create a new function package  
-cd ~/yahboomcar_ros2_ws/yahboomcar_ws/src
+cd ~/b4m_yahboom/src
 
 ros2 pkg create pkg_topic --build-type ament_python --dependencies rclpy --node-
 
@@ -117,7 +117,7 @@ parameter. The parameter is the Topic_Pub class object just created.
  
 
 5. Compile workspace  
-cd ~/yahboomcar_ros2_ws/yahboomcar_ws
+cd ~/b4m_yahboom
 
 colcon build --packages-select pkg_topic
 

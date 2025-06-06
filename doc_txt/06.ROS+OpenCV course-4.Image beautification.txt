@@ -31,7 +31,7 @@ better results in our testing, and the speed was slightly higher than INPAINT-TE
 （1）、Firstly, based on the intact image, we will add damage to it, which can be understood as 
 modifying the pixel values of specific parts of it
 
-cd ~/yahboomcar_ws/src/yahboom_esp32ai_car/scripts/opencv/
+cd ~/b4m_yahboom/src/yahboom_esp32ai_car/scripts/opencv/
 
 python3 4_1_1.py
 
@@ -87,7 +87,7 @@ function to fix it
 
 # Running programs
 
-cd ~/yahboomcar_ws/src/yahboom_esp32ai_car/scripts/opencv/
+cd ~/b4m_yahboom/src/yahboom_esp32ai_car/scripts/opencv/
 
 python3 4_1_2.py
 
@@ -158,7 +158,7 @@ or less than, the values are 255 or 0.
 
 2.2、Code and actual effect display  
 
-cd ~/yahboomcar_ws/src/yahboom_esp32ai_car/scripts/opencv/
+cd ~/b4m_yahboom/src/yahboom_esp32ai_car/scripts/opencv/
 
 python3 4_2.py
 
@@ -233,7 +233,7 @@ to make a judgment on the value.
 
 3.2、Code and actual effect display  
 
-cd ~/yahboomcar_ws/src/yahboom_esp32ai_car/scripts/opencv/
+cd ~/b4m_yahboom/src/yahboom_esp32ai_car/scripts/opencv/
 
 python3 4_3.py
 

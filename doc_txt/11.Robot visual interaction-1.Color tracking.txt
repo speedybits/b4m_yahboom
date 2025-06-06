@@ -21,9 +21,9 @@ recognize the colors we need in a complex environment.
 
 2、Program code reference path  
 
-~/yahboomcar_ws/src/yahboom_esp32ai_car/yahboom_esp32ai_car/colorHSV.py
+~/b4m_yahboom/src/yahboom_esp32ai_car/yahboom_esp32ai_car/colorHSV.py
 
-~/yahboomcar_ws/src/yahboom_esp32ai_car/yahboom_esp32ai_car/colorTracker.py
+~/b4m_yahboom/src/yahboom_esp32ai_car/yahboom_esp32ai_car/colorTracker.py
 
 colorHSV.py
 

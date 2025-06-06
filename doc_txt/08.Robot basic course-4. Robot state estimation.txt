@@ -46,7 +46,7 @@ Combined with the node communication diagram above, it can be seen that the node
 4、Parse launch file  
 launch file location (taking the supporting virtual machine as an example):
 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_bringup/launch
+/home/yahboom/b4m_yahboom/src/yahboomcar_bringup/launch
 
 yahboomcar_bringup_launch.py
 

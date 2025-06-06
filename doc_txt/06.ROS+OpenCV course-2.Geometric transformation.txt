@@ -26,7 +26,7 @@ Attention needs to be paid：
 
 1.2、Code and actual effect display  
 
-cd ~/yahboomcar_ws/src/yahboom_esp32ai_car/scripts/opencv
+cd ~/b4m_yahboom/src/yahboom_esp32ai_car/scripts/opencv
 
 python3 2_1.py
 
@@ -73,7 +73,7 @@ area should not exceed this resolution.
 
 Running programs
 
-cd ~/yahboomcar_ws/src/yahboom_esp32ai_car/scripts/opencv
+cd ~/b4m_yahboom/src/yahboom_esp32ai_car/scripts/opencv
 
 python3 2_2.py
 
@@ -171,7 +171,7 @@ Substitute the above values into the transformation matrix M to obtain ：
 
 Running programs
 
-cd ~/yahboomcar_ws/src/yahboom_esp32ai_car/scripts/opencv
+cd ~/b4m_yahboom/src/yahboom_esp32ai_car/scripts/opencv
 
 python3 2_3.py
 
@@ -249,7 +249,7 @@ transformations, which can be transformed in behavioral units.
 4.2、Taking vertical transformation as an example, let's take a look at  
 how Python is written
 
-cd ~/yahboomcar_ws/src/yahboom_esp32ai_car/scripts/opencv
+cd ~/b4m_yahboom/src/yahboom_esp32ai_car/scripts/opencv
 
 python3 2_4.py
 

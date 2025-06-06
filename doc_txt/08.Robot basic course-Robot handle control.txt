@@ -77,7 +77,7 @@ left corner.
 5、Code analysis  
 Source code reference path (already equipped with a virtual machine as an example),
 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_ctrl/yahboomcar_ctrl
+/home/yahboom/b4m_yahboom/src/yahboomcar_ctrl/yahboomcar_ctrl
 
 yahboom_joy.py
 

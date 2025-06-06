@@ -131,7 +131,7 @@ After the operation is completed, two files will be generated in the terminal di
 7. Code analysis  
 Here we only describe the navigation_dwb_launch.py of navigation. The path of this file is,
 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_nav/launch
+/home/yahboom/b4m_yahboom/src/yahboomcar_nav/launch
 
 navigation_dwb_launch.py，
 
@@ -236,11 +236,11 @@ bringup_launch.py：Launch navigation launch file, the file is located at,
 In addition, a navigation parameter configuration file dwb_nav_params.yaml and a map file 
 yahboom_map.yaml are also loaded. The navigation parameter table is located at,
 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_nav/params
+/home/yahboom/b4m_yahboom/src/yahboomcar_nav/params
 
 The map file is as follows
 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_nav/maps
+/home/yahboom/b4m_yahboom/src/yahboomcar_nav/maps
 
 dwb_nav_params.yaml，
 

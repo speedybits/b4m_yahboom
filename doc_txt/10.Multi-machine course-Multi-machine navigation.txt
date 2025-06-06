@@ -68,15 +68,15 @@ ros2 launch yahboomcar_multi map_server_launch.py
 Note: The map may fail to load here. If the map is not loaded, just ctrl c to close and rerun the 
 program. The map loaded here is.
 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_multi/maps/yahboom_map.yaml
+/home/yahboom/b4m_yahboom/src/yahboomcar_multi/maps/yahboom_map.yaml
 
 If you need to modify the default loading of other maps, copy the map's yaml file and pgm file to
 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_multi/maps/  directory, and then modify the 
+/home/yahboom/b4m_yahboom/src/yahboomcar_multi/maps/  directory, and then modify the 
 map_server_launch.py program.If you need to modify the default loading of other maps, copy the 
 map's yaml file and pgm file to
 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_multi/maps/  directory, and then modify the 
+/home/yahboom/b4m_yahboom/src/yahboomcar_multi/maps/  directory, and then modify the 
 map_server_launch.py program
 
 
@@ -84,7 +84,7 @@ map_server_launch.py program
 Replace the area in the red box with the name of your own map, save and exit, and then enter the 
 following instructions to compile,
 
-cd ~/yahboomcar_ws
+cd ~/b4m_yahboom
 
 colcon build
 
@@ -104,7 +104,7 @@ ros2 launch yahboomcar_multi yahboomcar_bringup_multi.launch.xml robot_name:=rob
 The source code path of yahboomcar_bringup_multi.launch.xml (take the supporting virtual machine 
 as an example).
 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_multi/launch/yahboomcar_bringup_multi.lau
+/home/yahboom/b4m_yahboom/src/yahboomcar_multi/launch/yahboomcar_bringup_multi.lau
 
 nch.xml
 
@@ -209,7 +209,7 @@ pose..." appears.
 
 
 
-Source code path location：/home/yahboom/yahboomcar_ws/src/yahboomcar_multi/launch
+Source code path location：/home/yahboom/b4m_yahboom/src/yahboomcar_multi/launch
 
 robot1_amcl_launch.py
 
@@ -354,13 +354,13 @@ following modifications:
 Added car model
 
 You can refer to 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_description/urdf/MicroROS_robot1.urdf, and 
+/home/yahboom/b4m_yahboom/src/yahboomcar_description/urdf/MicroROS_robot1.urdf, and 
 change the name and robot1 that appear in the urdf file to other car names, such as robot3.
 
 Added urdf model loader
 
 You can refer to 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_description/launch/description_multi_robot1
+/home/yahboom/b4m_yahboom/src/yahboomcar_description/launch/description_multi_robot1
 .launch.py to change the name and robot1 that appears in the launch file to other car names. 
 The name needs to be consistent with the new urdf.
 
@@ -368,7 +368,7 @@ The name needs to be consistent with the new urdf.
 
 8.2、Added car ekf parameter table  
 
-You can refer to /home/yahboom/yahboomcar_ws/src/yahboomcar_multi/param/ekf_robot1.yaml 
+You can refer to /home/yahboom/b4m_yahboom/src/yahboomcar_multi/param/ekf_robot1.yaml 
 and change the name and robot1 that appear in the file to other car names. The name needs to be 
 consistent with the new urdf.
 
@@ -377,14 +377,14 @@ consistent with the new urdf.
 Added car amcl parameter table
 
 You can refer to 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_multi/param/robot1_amcl_params.yaml and 
+/home/yahboom/b4m_yahboom/src/yahboomcar_multi/param/robot1_amcl_params.yaml and 
 change the name and robot1 that appears in the file to the name of other cars. The name needs 
 to be consistent with the new urdf.
 
 Add the launch file of amcl that is started
 
 You can refer to 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_multi/launch/robot1_amcl_launch.py, and 
+/home/yahboom/b4m_yahboom/src/yahboomcar_multi/launch/robot1_amcl_launch.py, and 
 change the name and robot1 that appears in the file to the name of other cars. The name needs 
 to be consistent with the new urdf.
 
@@ -393,20 +393,20 @@ to be consistent with the new urdf.
 Added car nav2 parameter table
 
 You can refer to 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_nav/params/robot1_nav_params.yaml and 
+/home/yahboom/b4m_yahboom/src/yahboomcar_nav/params/robot1_nav_params.yaml and 
 change the name and robot1 that appears in the file to the name of other cars. The name needs 
 to be consistent with the new urdf.
 
 Added new launch file of nav2
 
 You can refer to 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_multi/launch/robot1_navigation_dwb_launch.
+/home/yahboom/b4m_yahboom/src/yahboomcar_multi/launch/robot1_navigation_dwb_launch.
 py, and change the name and robot1 that appears in the file to the name of other cars. The 
 name needs to be consistent with the new urdf.
 
 8.5、Added [2D Pose Estimate] and [2D Goal Pose] in the rviz toolbar  
 Modify the multi_nav.rviz file. The directory of the file is 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_nav/rviz .Find the following section
+/home/yahboom/b4m_yahboom/src/yahboomcar_nav/rviz .Find the following section
 
 - Class: rviz_default_plugins/SetInitialPose
 

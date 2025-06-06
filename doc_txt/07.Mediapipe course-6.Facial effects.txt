@@ -71,7 +71,7 @@ tutorial, this tutorial is no longer explained
 
 The location of the function source code is located,
 
-~/yahboomcar_ws/src/yahboom_esp32_mediapipe/yahboom_esp32_mediapipe/06_FaceLandm
+~/b4m_yahboom/src/yahboom_esp32_mediapipe/yahboom_esp32_mediapipe/06_FaceLandm
 
 arks.py 
 
@@ -297,7 +297,7 @@ def main():
 
     dat_file = 
 
-"/home/yahboom/yahboomcar_ws/src/yahboom_esp32_mediapipe/yahboom_esp32_mediapipe
+"/home/yahboom/b4m_yahboom/src/yahboom_esp32_mediapipe/yahboom_esp32_mediapipe
 
 /file/shape_predictor_68_face_landmarks.dat"
 

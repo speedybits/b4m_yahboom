@@ -81,7 +81,7 @@ tutorial, this tutorial is no longer explained
 
 The location of the function source code is located，
 
-~/yahboomcar_ws/src/yahboom_esp32_mediapipe/yahboom_esp32_mediapipe/08_Objectron
+~/b4m_yahboom/src/yahboom_esp32_mediapipe/yahboom_esp32_mediapipe/08_Objectron
 
 .py 
 

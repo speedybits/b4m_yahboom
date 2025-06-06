@@ -69,7 +69,7 @@ tutorial, this tutorial is no longer explained
 
 3.2、Code parsing  
 
-~/yahboomcar_ws/src/yahboom_esp32_mediapipe/yahboom_esp32_mediapipe/10_HandCtrl.
+~/b4m_yahboom/src/yahboom_esp32_mediapipe/yahboom_esp32_mediapipe/10_HandCtrl.
 
 py
 

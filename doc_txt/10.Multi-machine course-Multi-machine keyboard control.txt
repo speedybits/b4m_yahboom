@@ -103,7 +103,7 @@ that starts the program, otherwise the key event cannot be detected.
 5、Code analysis  
 Source code reference path (taking the supporting virtual machine as an example)：
 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_multi/yahboomcar_multi
+/home/yahboom/b4m_yahboom/src/yahboomcar_multi/yahboomcar_multi
 
 multi_yahboom_keyboard.py
 

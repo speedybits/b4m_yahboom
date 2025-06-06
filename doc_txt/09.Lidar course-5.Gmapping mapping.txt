@@ -86,7 +86,7 @@ ros2 launch yahboomcar_nav save_map_launch.py
 
 A map named yahboom_map will be saved. This map is saved in.
 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_nav/maps
+/home/yahboom/b4m_yahboom/src/yahboomcar_nav/maps
 
 Two files will be generated, one is yahboom_map.pgm and the other is yahboom_map.yaml. Take a 
 look at the content of yaml.
@@ -148,7 +148,7 @@ After the operation is completed, two files will be generated in the terminal di
 7. Code analysis  
 Here we only describe map_gmapping_launch.py for mapping. The file path is as follows
 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_nav/launch
+/home/yahboom/b4m_yahboom/src/yahboomcar_nav/launch
 
 map_gmapping_launch.py
 

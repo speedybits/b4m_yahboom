@@ -54,7 +54,7 @@ parameters into the program.
 4. Code analysis  
 Source code reference path (taking the supporting virtual machine as an example):
 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_laser/yahboomcar_laser
+/home/yahboom/b4m_yahboom/src/yahboomcar_laser/yahboomcar_laser
 
 laser_Avoidance, the core code is as follows,
 

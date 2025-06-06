@@ -152,4 +152,4 @@ In the host's vnc, you can see that Rviz is turned on and the robot model is dis
 4.3. Model file analysis  
 For the specific URDF model, please check the urdf file research:
 
-/root/yahboomcar_ros2_ws/yahboomcar_ws/src/yahboomcar_description/urdf/Muto.urdf
+/home/yahboom/b4m_yahboom/src/yahboomcar_description/urdf/Muto.urdf

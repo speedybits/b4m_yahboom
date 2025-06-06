@@ -22,7 +22,7 @@ Here we take the python function package as an example to explain
 
 3.1. Create python function package  
 
-cd ~/yahboomcar_ros2_ws/yahboomcar_ws/src
+cd ~/b4m_yahboom/src
 
 ros2 pkg create pkg_helloworld_py --build-type ament_python --dependencies rclpy 
 
@@ -96,7 +96,7 @@ function package and add the following entry point configuration:
 
 3.3. Compile function package  
 
-cd ~/yahboomcar_ros2_ws/yahboomcar_ws
+cd ~/b4m_yahboom
 
 colcon build --packages-select pkg_helloworld_py
 

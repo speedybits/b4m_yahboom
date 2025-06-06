@@ -65,7 +65,7 @@ The second parameter represents the image to be displayed
 
 Running programs
 
-cd ~/yahboomcar_ws/src/yahboom_esp32ai_car/scripts/opencv/
+cd ~/b4m_yahboom/src/yahboom_esp32ai_car/scripts/opencv/
 
 python3 1_1.py
 
@@ -106,7 +106,7 @@ The second parameter is the saved image
 
 3.2、Code and actual effect display  
 
-cd ~/yahboomcar_ws/src/yahboom_esp32ai_car/scripts/opencv/
+cd ~/b4m_yahboom/src/yahboom_esp32ai_car/scripts/opencv/
 
 python3 1_2.py
 
@@ -151,7 +151,7 @@ Firstly, we need to read the image and then modify the value of bgr by assigning
 
 Running programs
 
-cd ~/yahboomcar_ws/src/yahboom_esp32ai_car/scripts/opencv/
+cd ~/b4m_yahboom/src/yahboom_esp32ai_car/scripts/opencv/
 
 python3 1_4.py
 

@@ -11,7 +11,7 @@ surrounding the face, the PTZ camera will follow the movement of the face and mo
 2、Operation procedure  
 Program code reference path：
 
-/home/yahboom/yahboomcar_ws/src/yahboom_esp32ai_car/yahboom_esp32ai_car/face_fll
+/home/yahboom/b4m_yahboom/src/yahboom_esp32ai_car/yahboom_esp32ai_car/face_fll
 
 ow.py
 
@@ -65,7 +65,7 @@ and then release it to the chassis, and part of the code is put under,
 
         face_patterns = 
 
-cv2.CascadeClassifier('/home/yahboom/yahboomcar_ws/src/yahboom_esp32ai_car/yahbo
+cv2.CascadeClassifier('/home/yahboom/b4m_yahboom/src/yahboom_esp32ai_car/yahbo
 
 om_esp32ai_car/haarcascade_frontalface_default.xml')
 

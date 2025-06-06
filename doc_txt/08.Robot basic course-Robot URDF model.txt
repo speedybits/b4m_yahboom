@@ -42,7 +42,7 @@ Center：All Joints are centered
 3、Code analysis  
 Code location (take virtual machine as an example)
 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_description/launch
+/home/yahboom/b4m_yahboom/src/yahboomcar_description/launch
 
 display_launch.py
 
@@ -127,7 +127,7 @@ LaunchConfiguration('model')]),
     ])
 
 model_arg：Load model parameters. The loaded model is MicroROS.urdf, located at 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_description/urdf
+/home/yahboom/b4m_yahboom/src/yahboomcar_description/urdf
 
 joint_state_publisher_gui_node：Publish sensor_msgs/JointState message
 

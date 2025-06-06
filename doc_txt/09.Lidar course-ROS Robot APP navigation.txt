@@ -35,10 +35,10 @@ Start APP navigation command, terminal input，
 
 ros2 launch yahboomcar_nav navigation_dwb_app_launch.xml 
 
-maps:=/home/yahboom/yahboomcar_ws/src/yahboomcar_nav/maps/testaa.yaml
+maps:=/home/yahboom/b4m_yahboom/src/yahboomcar_nav/maps/testaa.yaml
 
 Load map parameters：
-maps:=/home/yahboom/yahboomcar_ws/src/yahboomcar_nav/maps/testaa.yaml（Replaceable 
+maps:=/home/yahboom/b4m_yahboom/src/yahboomcar_nav/maps/testaa.yaml（Replaceable 
 target map）
 
 Start the camera display command, terminal input，

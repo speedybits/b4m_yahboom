@@ -40,7 +40,7 @@ configuration file will be automatically generated;
 
 For example, create C++ and Python versions of function packages in the terminal:
 
-cd ~/yahboomcar_ros2_ws/yahboomcar_ws/src
+cd ~/b4m_yahboom/src
 
 # Create C++ function package
 
@@ -62,7 +62,7 @@ ros2 pkg create pkg_helloworld_py --build-type ament_python --dependencies rclpy
 In the created function package, we can continue to write the code. Afterwards, we need to 
 compile and configure environment variables to run normally:
 
-cd ~/yahboomcar_ros2_ws/yahboomcar_ws
+cd ~/b4m_yahboom
 
 # Compile all function packages in the workspace
 

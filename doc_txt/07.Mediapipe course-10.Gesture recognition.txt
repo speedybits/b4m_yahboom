@@ -70,7 +70,7 @@ tutorial, this tutorial is no longer explained
 
 2.2、Code parsing  
 
-~/yahboomcar_ws/src/yahboom_esp32_mediapipe/yahboom_esp32_mediapipe/11_GestureRe
+~/b4m_yahboom/src/yahboom_esp32_mediapipe/yahboom_esp32_mediapipe/11_GestureRe
 
 cognition.py
 

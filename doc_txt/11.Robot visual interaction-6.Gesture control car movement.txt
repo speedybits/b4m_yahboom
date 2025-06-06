@@ -23,7 +23,7 @@ frame
 2、Program code reference path  
 After entering the docker container, the location of the feature source code is located,
 
-/home/yahboom/yahboomcar_ws/src/yahboom_esp32ai_car/yahboom_esp32ai_car/HandCtrl
+/home/yahboom/b4m_yahboom/src/yahboom_esp32ai_car/yahboom_esp32ai_car/HandCtrl
 
 .py
 

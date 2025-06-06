@@ -80,7 +80,7 @@ tutorial, this tutorial is no longer explained
 3.2、Code parsing  
 The location of the function source code is located,
 
-~/yahboomcar_ws/src/yahboom_esp32_mediapipe/yahboom_esp32_mediapipe/04_FaceMesh.
+~/b4m_yahboom/src/yahboom_esp32_mediapipe/yahboom_esp32_mediapipe/04_FaceMesh.
 
 py
 

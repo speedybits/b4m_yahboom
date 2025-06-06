@@ -68,7 +68,7 @@ click save map, enter the map name and click submit, you can save the map
 
 Where the map is saved is，
 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_nav/maps
+/home/yahboom/b4m_yahboom/src/yahboomcar_nav/maps
 
 
 

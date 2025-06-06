@@ -13,7 +13,7 @@ the system. In this lesson, we will implement this function ourselves.
 2. Source code path  
 For the complete code, please view the following path in docker:
 
-/root/yahboomcar_ros2_ws/yahboomcar_ws/src/pkg_tf
+/home/yahboom/b4m_yahboom/src/pkg_tf
 
  
 
@@ -49,7 +49,7 @@ period, which requires the use of TF's dynamic broadcast and monitoring.
 
 1. Execute the following command in docker:
 
-cd ~/yahboomcar_ros2_ws/yahboomcar_ws/src
+cd ~/b4m_yahboom/src
 
 ros2 pkg create pkg_tf --build-type ament_python --dependencies rclpy --node-
 
@@ -529,7 +529,7 @@ description='Target frame name.'),
  
 
 6. Compile workspace  
-cd ~/yahboomcar_ros2_ws/yahboomcar_ws
+cd ~/b4m_yahboom
 
 colcon build --packages-select pkg_tf
 

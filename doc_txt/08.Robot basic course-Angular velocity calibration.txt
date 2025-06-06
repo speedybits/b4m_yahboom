@@ -76,7 +76,7 @@ parameters.
 5、Code analysis  
 Source code reference path (taking the supporting virtual machine as an example):
 
-/home/yahboom/yahboomcar_ws/src/yahboomcar_bringup/yahboomcar_bringup
+/home/yahboom/b4m_yahboom/src/yahboomcar_bringup/yahboomcar_bringup
 
 calibrate_angular.py, the core code is as follows,
 

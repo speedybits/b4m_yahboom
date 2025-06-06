@@ -47,7 +47,7 @@ Palm under the picture -> Car move right
 
 2.1、Source path  
 
-/home/yahboom/yahboomcar_ws/src/yahboom_esp32ai_car/yahboom_esp32ai_car/RobotCtr
+/home/yahboom/b4m_yahboom/src/yahboom_esp32ai_car/yahboom_esp32ai_car/RobotCtr
 
 l.py
 
@@ -75,7 +75,7 @@ then control the car movement.
 
 Code reference position
 
-/home/yahboom/yahboomcar_ws/src/yahboom_esp32ai_car/yahboom_esp32ai_car/Robo
+/home/yahboom/b4m_yahboom/src/yahboom_esp32ai_car/yahboom_esp32ai_car/Robo
 
 tCtrl.py
 

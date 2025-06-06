@@ -78,7 +78,7 @@ tutorial, this tutorial is no longer explained
 
 The location of the function source code is located,
 
-~/yahboomcar_ws/src/yahboom_esp32_mediapipe/yahboom_esp32_mediapipe/02_PoseDetec
+~/b4m_yahboom/src/yahboom_esp32_mediapipe/yahboom_esp32_mediapipe/02_PoseDetec
 
 tor.py
 

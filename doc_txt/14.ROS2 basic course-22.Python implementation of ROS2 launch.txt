@@ -84,7 +84,7 @@ the path
 
 2.3. Compile workspace  
 
-cd ~/yahboomcar_ros2_ws/yahboomcar_ws
+cd ~/b4m_yahboom
 
 colcon build --packages-select pkg_helloworld_py
 
@@ -173,7 +173,7 @@ def generate_launch_description():
 
 3.2. Compile workspace  
 
-cd ~/yahboomcar_ros2_ws/yahboomcar_ws
+cd ~/b4m_yahboom
 
 colcon build --packages-select pkg_topic
 
@@ -225,7 +225,7 @@ def generate_launch_description():
 
 4.2. Compile workspace  
 
-cd ~/yahboomcar_ros2_ws/yahboomcar_ws
+cd ~/b4m_yahboom
 
 colcon build --packages-select pkg_topic
 
@@ -300,7 +300,7 @@ def generate_launch_description():
 
 5.2. Compile workspace  
 
-cd ~/yahboomcar_ros2_ws/yahboomcar_ws
+cd ~/b4m_yahboom
 
 colcon build --packages-select pkg_topic
 
@@ -548,7 +548,7 @@ def generate_launch_description():
 
 6.2. Compile workspace  
 
-cd ~/yahboomcar_ros2_ws/yahboomcar_ws
+cd ~/b4m_yahboom
 
 colcon build --packages-select pkg_topic
 

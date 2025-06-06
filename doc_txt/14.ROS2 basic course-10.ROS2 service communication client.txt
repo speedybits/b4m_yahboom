@@ -22,7 +22,7 @@ page data that needs to be displayed.
 
 This case is located in the factory docker container. The source code location is:
 
-/root/yahboomcar_ros2_ws/yahboomcar_ws/src/pkg_service
+/home/yahboom/b4m_yahboom/src/pkg_service
 
  
 
@@ -130,7 +130,7 @@ def main():
  
 
 4. Compile workspace  
-cd ~/yahboomcar_ros2_ws/yahboomcar_ws
+cd ~/b4m_yahboom
 
 colcon build --packages-select pkg_service
 

@@ -31,7 +31,7 @@ MediaPipe Hands The 3D coordinates of 21 hand-valued joints are inferred from a 
 2、Program code reference path  
 After entering the docker container, the location of the functional source code is located in,
 
-/home/yahboom/yahboomcar_ws/src/yahboom_esp32ai_car/yahboom_esp32ai_car/FingerCt
+/home/yahboom/b4m_yahboom/src/yahboom_esp32ai_car/yahboom_esp32ai_car/FingerCt
 
 rl.py
 

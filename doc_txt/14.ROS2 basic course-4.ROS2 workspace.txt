@@ -68,6 +68,6 @@ source install/setup.bash
 
 # Valid on all terminals
 
-echo "source ~/yahboomcar_ros2_ws/yahboomcar_ws/install/setup.bash" >> ~/.bashrc  
+echo "source ~/b4m_yahboom/install/setup.bash" >> ~/.bashrc  
 
 At this point, we have completed the creation, compilation and configuration of the workspace.
