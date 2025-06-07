@@ -11,9 +11,7 @@ obstacle avoidance detection distance can be adjusted through the dynamic parame
 2. Start and connect to the agent  
 Taking the supporting virtual machine as an example, enter the following command to start the agent:
 
-sudo docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host 
-
-microros/micro-ros-agent:humble udp4 --port 8090 -v4
+sudo docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host microros/micro-ros-agent:humble udp4 --port 8090 -v4
 
 Then, turn on the car switch and wait for the car to connect to the agent. The connection is successful, 
 as shown in the figure below.
