@@ -26,8 +26,8 @@ class FaceEyeDetection(Node):
     def __init__(self,name):
         super().__init__(name)
         self.bridge = CvBridge()
-        self.eyeDetect = cv.CascadeClassifier( "/home/yahboom/yahboomcar_ws/src/yahboom_esp32_mediapipe/yahboom_esp32_mediapipe/file/haarcascade_eye.xml")
-        self.faceDetect = cv.CascadeClassifier("/home/yahboom/yahboomcar_ws/src/yahboom_esp32_mediapipe/yahboom_esp32_mediapipe/file/haarcascade_eye.xml")
+        self.eyeDetect = cv.CascadeClassifier( "/home/yahboom/b4m_yahboom/yahboom_esp32_mediapipe/yahboom_esp32_mediapipe/file/haarcascade_eye.xml")
+        self.faceDetect = cv.CascadeClassifier("/home/yahboom/b4m_yahboom/yahboom_esp32_mediapipe/yahboom_esp32_mediapipe/file/haarcascade_eye.xml")
         self.pub_rgb = self.create_publisher(Image,"/FaceEyeDetection/image", 500)
 
     def cancel(self):

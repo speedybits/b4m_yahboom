@@ -23,14 +23,14 @@ class MinimalService(Node):
 
     def add_three_ints_callback(self, request, response):
         map_name = request.mapname
-        map_path = "/home/yahboom/yahboomcar_ws/src/yahboomcar_nav/maps/" + map_name
+        map_path = "/home/yahboom/b4m_yahboom/yahboomcar_nav/maps/" + map_name
         now = datetime.datetime.now()
         str_time = now.strftime("%Y-%m-%d %H:%M:%S.%f")
         map_namestr = str_time + map_name
         map_id = hashlib.md5(map_namestr.encode()).hexdigest()
         response.response = request.mapname
         try:
-            conn = sqlite3.connect("/home/yahboom/yahboomcar_ws/src/yahboom_app_save_map/data/xgo.db")
+            conn = sqlite3.connect("/home/yahboom/b4m_yahboom/yahboom_app_save_map/data/xgo.db")
             c = conn.cursor()
             c.execute("INSERT INTO xgo_map (map_name, map_id, map_path) VALUES (?, ?, ?)",(map_name, map_id, map_path))
             self.run_shellcommand('ros2', 'run', 'nav2_map_server', 'map_saver_cli','-f', map_path, '--ros-args', '-p', 'save_map_timeout:=10000.00')

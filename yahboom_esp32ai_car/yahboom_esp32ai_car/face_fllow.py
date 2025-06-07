@@ -148,7 +148,7 @@ class faceTracker(Node):
         frame = cv2.resize(frame, (640, 480))
 
         action = cv2.waitKey(10) & 0xFF
-        face_patterns = cv2.CascadeClassifier('/home/yahboom/yahboomcar_ws/src/yahboom_esp32ai_car/yahboom_esp32ai_car/haarcascade_frontalface_default.xml')
+        face_patterns = cv2.CascadeClassifier('/home/yahboom/b4m_yahboom/yahboom_esp32ai_car/yahboom_esp32ai_car/haarcascade_frontalface_default.xml')
         faces = face_patterns.detectMultiScale(frame , scaleFactor=1.1, minNeighbors=5, minSize=(100, 100))
         if len(faces)>0:
             for (x, y, w, h) in faces:

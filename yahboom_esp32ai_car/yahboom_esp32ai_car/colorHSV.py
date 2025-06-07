@@ -45,7 +45,7 @@ class Color_Identify(Node):
         self.declare_param()
 
         
-        self.hsv_text = "/home/yahboom/yahboomcar_ws/src/yahboom_esp32ai_car/yahboom_esp32ai_car/colorHSV.text"
+        self.hsv_text = "/home/yahboom/b4m_yahboom/yahboom_esp32ai_car/yahboom_esp32ai_car/colorHSV.text"
         #self.timer = self.create_timer(0.001, self.on_timer)
         
     def declare_param(self):

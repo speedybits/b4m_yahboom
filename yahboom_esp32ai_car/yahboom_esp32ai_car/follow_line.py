@@ -50,7 +50,7 @@ class LineDetect(Node):
         self.windows_name = 'frame'
         self.cols, self.rows = 0, 0
         self.Mouse_XY = (0, 0)
-        self.hsv_text = "/home/yahboom/yahboomcar_ws/src/yahboom_esp32ai_car/yahboom_esp32ai_car/colorHSV.text"
+        self.hsv_text = "/home/yahboom/b4m_yahboom/yahboom_esp32ai_car/yahboom_esp32ai_car/colorHSV.text"
         self.color = color_follow()
         self.scale = 1000
         self.FollowLinePID = (50, 0, 5) #60,0,20

@@ -14,7 +14,7 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
     namespece = LaunchConfiguration('namespece', default='')
     map_yaml_path = LaunchConfiguration(
-        'maps', default=os.path.join('/home/yahboom/yahboomcar_ws/src/yahboomcar_nav', 'maps', 'yahboom_map.yaml')) 
+        'maps', default=os.path.join('/home/yahboom/b4m_yahboom/yahboomcar_nav', 'maps', 'yahboom_map.yaml')) 
     nav2_param_path = LaunchConfiguration('params_file', default=os.path.join(
         package_path, 'params', 'dwb_nav_params.yaml'))
 

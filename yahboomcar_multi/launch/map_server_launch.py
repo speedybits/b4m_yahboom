@@ -11,7 +11,7 @@ def generate_launch_description():
 	#package_path = get_package_share_directory('yahboomcar_multi')
 	#nav2_bringup_dir = get_package_share_directory('nav2_bringup')
 	lifecycle_nodes = ['map_server']
-	map_file = os.path.join('/home/yahboom/yahboomcar_ws/src/yahboomcar_multi','maps','yahboom_map.yaml')
+	map_file = os.path.join('/home/yahboom/b4m_yahboom/yahboomcar_multi','maps','yahboom_map.yaml')
 	map_node = Node(
     	name="map_server_node",
         package='nav2_map_server',

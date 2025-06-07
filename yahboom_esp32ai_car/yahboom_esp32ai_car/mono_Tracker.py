@@ -56,7 +56,7 @@ class mono_Tracker(Node):
         
 
 
-        self.hsv_text ="/home/yahboom/yahboomcar_ws/src/yahboom_esp32ai_car/yahboom_esp32ai_car/colorHSV.text"
+        self.hsv_text ="/home/yahboom/b4m_yahboom/yahboom_esp32ai_car/yahboom_esp32ai_car/colorHSV.text"
         self.mono_PID = (12, 0, 0.9)
         self.scale = 1000
         self.PID_init()

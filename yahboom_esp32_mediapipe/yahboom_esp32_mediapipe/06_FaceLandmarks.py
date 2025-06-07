@@ -131,7 +131,7 @@ landmarks = None
 def main():
     global landmarks
     print("start it")
-    dat_file = "/home/yahboom/yahboomcar_ws/src/yahboom_esp32_mediapipe/yahboom_esp32_mediapipe/file/shape_predictor_68_face_landmarks.dat"
+    dat_file = "/home/yahboom/b4m_yahboom/yahboom_esp32_mediapipe/yahboom_esp32_mediapipe/file/shape_predictor_68_face_landmarks.dat"
     landmarks = FaceLandmarks(dat_file)
 
     rclpy.init()
