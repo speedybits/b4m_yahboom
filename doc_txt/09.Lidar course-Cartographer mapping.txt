@@ -36,9 +36,7 @@ run the save map command to save the map.
 Taking the supporting virtual machine as an example, enter the following command to start the 
 agent:
 
-sudo docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --
-
-net=host microros/micro-ros-agent:humble udp4 --port 8090 -v4
+sudo docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host microros/micro-ros-agent:humble udp4 --port 8090 -v4
 
 
 

@@ -73,6 +73,10 @@ CMakeLists.txt.user
 *.bag
 *.bag.active
 
+# ROS transform frame visualization files
+frames*.gv
+frames*.pdf
+
 # Generated message and service files
 **/msg/_*.py
 **/srv/_*.py
@@ -83,3 +87,20 @@ CMakeLists.txt.user
 
 # Ignore specific packages with their own git repositories
 robot_localization/
+
+# Workspace directories (source code is documented in WORKSPACE_README.md)
+# Only track the structure, not the contents
+gmapping_ws/*
+!gmapping_ws/src/
+gmapping_ws/src/*
+!gmapping_ws/src/.gitkeep
+
+imu_ws/*
+!imu_ws/src/
+imu_ws/src/*
+!imu_ws/src/.gitkeep
+
+uros_ws/*
+!uros_ws/src/
+uros_ws/src/*
+!uros_ws/src/.gitkeep

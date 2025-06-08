@@ -283,7 +283,7 @@ Visualization Manager:
     - Alpha: 1
       Class: rviz_default_plugins/RobotModel
       Collision Enabled: false
-      Description File: /home/yahboom/yahboomcar_ws/src/yahboomcar_description/urdf/micro.urdf
+      Description File: /home/yahboom/b4m_yahboom/yahboomcar_description/urdf/micro.urdf
       Description Source: Topic
       Description Topic:
         Depth: 5
