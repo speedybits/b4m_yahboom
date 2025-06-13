@@ -1,4 +1,4 @@
-﻿VM handle remote control  
+﻿VM keyboard remote control  
 Note: The virtual machine needs to be in the same LAN as the car, and the ROS_DOMAIN_ID needs to 
 be consistent. You can check [Must read before use] to set the IP and ROS_DOMAIN_ID on the board.
 
