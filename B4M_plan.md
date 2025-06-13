@@ -88,10 +88,11 @@ Develop a ROS2 node (`b4m_waypoint_nav.py`) that will:
    ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py
    
    # Terminal 2: Start the waypoint navigation system
-   ros2 launch yahboomcar_nav b4m_waypoint_nav_launch.py
+   ros2 launch b4m_waypoint_nav b4m_waypoint_nav_launch.py
    ```
 
 2. **Control the Robot**
+   - Keyboard control of the robot will be closely based on the @04.VM Remote control course-1. VM keyboard remote control.txt implementation
    - Use the following keys to drive the robot:
      - 'i': Go forward
      - ',': Move back
@@ -101,18 +102,29 @@ Develop a ROS2 node (`b4m_waypoint_nav.py`) that will:
      - 'o': Turn right
      - 'm': Reverse left
      - '.': Reverse right
-   - Press 's' to store a waypoint at the current position
-   - Enter a name for the waypoint when prompted
+     - ' ' (spacebar): Stop the robot
+   - Speed adjustment:
+     - 'q': Increase both linear and angular speed
+     - 'z': Decrease both linear and angular speed
+     - 'w': Increase linear speed only
+     - 'x': Decrease linear speed only
+     - 'e': Increase angular speed only
+     - 'c': Decrease angular speed only
+   - Press 's' to store a waypoint at the current position:
+     - Enter a name for the waypoint when prompted
    - Press 'p' to list all stored waypoints
-   - Press 'g' to navigate to a waypoint
-   - Enter the name of the waypoint to navigate to
-   - Press 'd' to delete a waypoint
-   - Enter the name of the waypoint to delete
+   - Press 'g' to navigate to a waypoint:
+     - Enter the name of the waypoint to navigate to when prompted
+   - Press 'c' to cancel navigation
+   - Press 'd' to delete a waypoint:
+     - Enter the name of the waypoint to delete when prompted
 
 3. **Navigation Process**
    - The robot will plan a path to the selected waypoint
    - Navigation2 will handle obstacle avoidance
    - Upon arrival, the robot will orient itself according to the stored orientation
+   - MQTT messages will be published for navigation events (start, success, failure)
+   - Home Assistant integration for monitoring navigation status
 
 4. **Waypoint Visualization**
    - Waypoints are visualized in RViz as text labels with their names
@@ -126,20 +138,12 @@ Develop a ROS2 node (`b4m_waypoint_nav.py`) that will:
    - Visualize waypoints on a map
    - Allow drag-and-drop waypoint creation and editing
 
-2. **Waypoint Sequences**
-   - Define and execute sequences of waypoints
-   - Create patrol routes or guided tours
-
-3. **Simulation Integration**
+2. **Simulation Integration**
    - Adapt the system to work in Gazebo simulation
    - Share waypoints between physical robot and simulation
    - Use the same waypoint file for both environments
    - Add configuration option to specify different waypoint files if needed
 
-4. **Enhanced Waypoint Features**
-   - Add actions to perform at waypoints (e.g., wait time, sensor readings)
-   - Support different arrival behaviors (e.g., approach direction)
-   - Add waypoint categories or tags for organization
 
 ## Conclusion
 

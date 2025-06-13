@@ -2,7 +2,7 @@
 
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
 from nav2_msgs.action import NavigateToPose
 from rclpy.action import ActionClient
 from visualization_msgs.msg import Marker, MarkerArray
@@ -55,6 +55,19 @@ class B4MWaypointNav(Node):
             String,
             'mqtt_home_assistant/error',
             10)
+            
+        # Velocity publisher for keyboard control
+        self.vel_publisher = self.create_publisher(
+            Twist,
+            'cmd_vel',
+            10)
+        
+        # Movement speed settings
+        self.linear_speed = 0.2  # m/s
+        self.angular_speed = 1.0  # rad/s
+        self.linear_speed_limit = 1.0  # m/s
+        self.angular_speed_limit = 5.0  # rad/s
+        self.speed_increment = 0.1  # Speed adjustment increment
         
         # Timer for publishing waypoint markers
         self.marker_timer = self.create_timer(1.0, self.publish_waypoint_markers)
@@ -190,14 +203,24 @@ class B4MWaypointNav(Node):
         
     def get_result_callback(self, future):
         result = future.result().result
-        status = future.result().status
-        if status == 4:
-            self.get_logger().info('Goal succeeded!')
-            # Send success message to MQTT if needed
-            # self.send_mqtt_message('Navigation completed successfully')
+        if result.result == 1:  # SUCCEEDED
+            self.get_logger().info('Navigation succeeded!')
+            # Publish MQTT message for successful arrival
+            mqtt_msg = String()
+            mqtt_msg.data = f"Navigation to waypoint succeeded at {datetime.now().isoformat()}"
+            self.mqtt_error_publisher.publish(mqtt_msg)
+        elif result.result == 2:  # CANCELED
+            self.get_logger().info('Navigation was canceled')
+            # Publish MQTT message for navigation canceled
+            mqtt_msg = String()
+            mqtt_msg.data = f"Navigation canceled at {datetime.now().isoformat()}"
+            self.mqtt_error_publisher.publish(mqtt_msg)
+        elif result.result == 3:  # FAILED
+            self.get_logger().info('Navigation failed!')
+            self.send_mqtt_error("Navigation failed")
         else:
-            self.get_logger().warn(f'Goal failed with status: {status}')
-            self.send_mqtt_error(f'Navigation failed with status: {status}')
+            self.get_logger().info(f'Navigation returned with unknown result code: {result.result}')
+            self.send_mqtt_error(f"Navigation returned unknown result: {result.result}")
             
     def feedback_callback(self, feedback_msg):
         feedback = feedback_msg.feedback
@@ -365,11 +388,21 @@ class B4MWaypointNav(Node):
         'o': Turn right
         'm': Reverse left
         '.': Reverse right
+        ' ': Stop
+        
+        Speed Controls:
+        'q': Increase both speeds
+        'z': Decrease both speeds
+        'w': Increase linear speed
+        'x': Decrease linear speed
+        'e': Increase angular speed
+        'c': Decrease angular speed
         
         Waypoint Controls:
         's': Store waypoint
         'g': Go to waypoint
         'p': List waypoints
+        'c': Cancel navigation
         'd': Delete waypoint
         'q': Quit
         ---------------------------
@@ -427,32 +460,103 @@ class B4MWaypointNav(Node):
                             self.delete_waypoint(name)
                         # Set terminal back to raw mode
                         tty.setraw(sys.stdin.fileno())
+                        
+                    elif key == 'c':  # Cancel navigation
+                        # Reset terminal for display
+                        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+                        self.get_logger().info('Canceling navigation...')
+                        # Cancel the navigation goal if one is active
+                        if hasattr(self, '_send_goal_future') and self._send_goal_future is not None:
+                            try:
+                                goal_handle = self._send_goal_future.result()
+                                if goal_handle is not None and goal_handle.accepted:
+                                    self.get_logger().info('Canceling goal...')
+                                    goal_handle.cancel_goal_async()
+                                    self.get_logger().info('Goal canceled')
+                            except Exception as e:
+                                self.get_logger().error(f'Error canceling navigation: {str(e)}')
+                        print("Navigation canceled. Press any key to continue...", end='', flush=True)
+                        input()
+                        # Set terminal back to raw mode
+                        tty.setraw(sys.stdin.fileno())
                     
                     # Movement controls based on VM Remote control scheme
                     elif key == 'i':  # Go forward
-                        # Send forward command
-                        pass
+                        twist = Twist()
+                        twist.linear.x = self.linear_speed
+                        twist.angular.z = 0.0
+                        self.vel_publisher.publish(twist)
+                        self.get_logger().info('Moving forward')
                     elif key == ',':  # Move back
-                        # Send backward command
-                        pass
+                        twist = Twist()
+                        twist.linear.x = -self.linear_speed
+                        twist.angular.z = 0.0
+                        self.vel_publisher.publish(twist)
+                        self.get_logger().info('Moving backward')
                     elif key == 'l':  # Right rotation
-                        # Send right rotation command
-                        pass
+                        twist = Twist()
+                        twist.linear.x = 0.0
+                        twist.angular.z = -self.angular_speed
+                        self.vel_publisher.publish(twist)
+                        self.get_logger().info('Rotating right')
                     elif key == 'j':  # Left rotation
-                        # Send left rotation command
-                        pass
+                        twist = Twist()
+                        twist.linear.x = 0.0
+                        twist.angular.z = self.angular_speed
+                        self.vel_publisher.publish(twist)
+                        self.get_logger().info('Rotating left')
                     elif key == 'u':  # Turn left
-                        # Send turn left command
-                        pass
+                        twist = Twist()
+                        twist.linear.x = self.linear_speed
+                        twist.angular.z = self.angular_speed
+                        self.vel_publisher.publish(twist)
+                        self.get_logger().info('Turning left')
                     elif key == 'o':  # Turn right
-                        # Send turn right command
-                        pass
+                        twist = Twist()
+                        twist.linear.x = self.linear_speed
+                        twist.angular.z = -self.angular_speed
+                        self.vel_publisher.publish(twist)
+                        self.get_logger().info('Turning right')
                     elif key == 'm':  # Reverse left
-                        # Send reverse left command
-                        pass
+                        twist = Twist()
+                        twist.linear.x = -self.linear_speed
+                        twist.angular.z = self.angular_speed
+                        self.vel_publisher.publish(twist)
+                        self.get_logger().info('Reverse left')
                     elif key == '.':  # Reverse right
-                        # Send reverse right command
-                        pass
+                        twist = Twist()
+                        twist.linear.x = -self.linear_speed
+                        twist.angular.z = -self.angular_speed
+                        self.vel_publisher.publish(twist)
+                        self.get_logger().info('Reverse right')
+                    elif key == ' ':  # Stop
+                        twist = Twist()
+                        twist.linear.x = 0.0
+                        twist.angular.z = 0.0
+                        self.vel_publisher.publish(twist)
+                        self.get_logger().info('Stopping')
+                        
+                    # Speed adjustment commands
+                    elif key == 'q':  # Increase both speeds
+                        self.linear_speed = min(self.linear_speed + self.speed_increment, self.linear_speed_limit)
+                        self.angular_speed = min(self.angular_speed + self.speed_increment, self.angular_speed_limit)
+                        self.get_logger().info(f'Speed increased to linear: {self.linear_speed:.2f}, angular: {self.angular_speed:.2f}')
+                    elif key == 'z':  # Decrease both speeds
+                        self.linear_speed = max(self.linear_speed - self.speed_increment, 0.1)
+                        self.angular_speed = max(self.angular_speed - self.speed_increment, 0.1)
+                        self.get_logger().info(f'Speed decreased to linear: {self.linear_speed:.2f}, angular: {self.angular_speed:.2f}')
+                    elif key == 'w':  # Increase linear speed
+                        self.linear_speed = min(self.linear_speed + self.speed_increment, self.linear_speed_limit)
+                        self.get_logger().info(f'Linear speed increased to {self.linear_speed:.2f}')
+                    elif key == 'x':  # Decrease linear speed
+                        self.linear_speed = max(self.linear_speed - self.speed_increment, 0.1)
+                        self.get_logger().info(f'Linear speed decreased to {self.linear_speed:.2f}')
+                    elif key == 'e':  # Increase angular speed
+                        self.angular_speed = min(self.angular_speed + self.speed_increment, self.angular_speed_limit)
+                        self.get_logger().info(f'Angular speed increased to {self.angular_speed:.2f}')
+                    elif key == 'c':  # Decrease angular speed
+                        self.angular_speed = max(self.angular_speed - self.speed_increment, 0.1)
+                        self.get_logger().info(f'Angular speed decreased to {self.angular_speed:.2f}')
                     
         finally:
             termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
