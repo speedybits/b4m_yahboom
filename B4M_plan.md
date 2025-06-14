@@ -182,8 +182,15 @@ The implementation will consist of:
 4. **Data Storage**
    - Use the existing JSON waypoint format stored at repository root (`/home/yahboom/b4m_yahboom/waypoints.json`)
    - Current format includes: name, position (x,y), orientation (quaternion x,y,z,w), timestamp, and visualization properties (color, scale)
-   - Potential enhancements: waypoint categories, sequence ordering, navigation parameters
+   - Enhance with map-specific waypoint sets (multi-map support)
    - Maintain backward compatibility with existing waypoint navigation system
+
+5. **User Experience Features**
+   - Enforce unique waypoint names with auto-naming suggestions (e.g., "Waypoint 1", "Waypoint 2")
+   - Map selection dropdown to switch between available maps
+   - Persistent settings between sessions (window size, last used map, UI preferences)
+   - Technical interface designed for ROS2 developers
+   - Disable waypoint editing features when in connected mode (gray out buttons)
 
 ### Primary Operation Mode: Map-Based Waypoint Management
 
@@ -238,6 +245,20 @@ The Waypoint Manager will require the following ROS2 dependencies:
 3. **Additional Python Dependencies**
    - `numpy`: For numerical operations
    - `pillow`: For image processing (map rendering)
+
+### Error Handling
+
+The Waypoint Manager will implement the following error handling approach:
+
+1. **Terminal-Based Error Logging**
+   - All errors will be logged to the Linux terminal for debugging purposes
+   - Use ROS2 logging mechanisms (get_logger().error, get_logger().warn)
+   - No complex error dialogs in the UI to keep the interface clean
+
+2. **Common Error Scenarios**
+   - Missing map files: Display warning in terminal and UI status bar
+   - Corrupted waypoint data: Attempt to load valid entries, log errors for invalid ones
+   - Connection failures: Show disconnected status in UI, continue in standalone mode
 
 ### Launch File
 
