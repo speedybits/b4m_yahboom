@@ -27,6 +27,7 @@ setup(
     entry_points={
         'console_scripts': [
             'b4m_waypoint_nav = b4m_waypoint_nav.b4m_waypoint_nav:main',
+            'waypoint_manager = b4m_waypoint_nav.waypoint_manager:main',
         ],
     },
 )
