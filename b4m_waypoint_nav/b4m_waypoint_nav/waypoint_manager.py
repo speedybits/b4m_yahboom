@@ -243,6 +243,9 @@ class WaypointManagerGUI(QMainWindow):
         waypoints = self.ros_node.waypoints.get(map_name, {})
         for name in sorted(waypoints.keys()):
             self.waypoint_list.addItem(name)
+            
+        # Refresh the map view to show updated waypoints
+        self.map_view.update()
         
     def addWaypoint(self):
         # Add a new waypoint
@@ -300,6 +303,8 @@ class WaypointManagerGUI(QMainWindow):
             if self.ros_node.delete_waypoint(map_name, waypoint_name):
                 self.updateWaypointList()
                 self.statusBar.showMessage(f'Deleted waypoint: {waypoint_name}')
+                # Refresh the map view to reflect the deletion
+                self.map_view.update()
             else:
                 self.statusBar.showMessage(f'Failed to delete waypoint: {waypoint_name}')
     
@@ -427,6 +432,7 @@ class MapView(QWidget):
                                 self.parent.ros_node.add_waypoint(map_name, name, x, y)
                                 self.parent.updateWaypointList()
                                 self.parent.statusBar.showMessage(f'Added waypoint: {name}')
+                                self.update()  # Redraw the map view to show the new waypoint
                     
                     # Exit add waypoint mode
                     self.add_waypoint_mode = False
