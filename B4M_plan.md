@@ -151,36 +151,45 @@ Based on the requirements and existing implementation, the Waypoint Manager will
 
 ### Approach Selection
 
-The **Waypoint Manager** will be implemented as a standalone Python-based GUI application that can operate independently of the robot or simulation for the following reasons:
+The **Waypoint Manager** has been implemented as a standalone Python-based GUI application that operates independently of the robot or simulation for the following reasons:
 
 1. It allows for waypoint management without the overhead of running the full robot system or simulation
 2. Users can plan and organize waypoints at any time, improving workflow efficiency
-3. The application can still integrate with the running robot when needed for live operations
+3. The application integrates with the running robot when needed for live operations
 
-### Implementation Outline
+### Implementation Details
 
-The implementation will consist of:
+The implementation consists of:
 
 1. **Python GUI using PyQt5**
-   - PyQt5 is selected for its performance, comprehensive widget set, and ease of development
-   - No existing GUI framework is currently used in the project that would be better suited
-   - The application will be optimized for responsiveness and intuitive interaction
+   - PyQt5 was selected for its performance, comprehensive widget set, and ease of development
+   - The application is optimized for responsiveness with immediate visual feedback
+   - Robust error handling and debug logging have been added for better maintainability
 
 2. **Map and Waypoint Management**
-   - Load maps from `/home/yahboom/b4m_yahboom/yahboomcar_nav/maps/` directory
-   - Display waypoints with their names, positions, and orientations
-   - Provide intuitive controls for adding, editing, and deleting waypoints
-   - Support waypoint reordering and organization
+   - Loads maps from the `/home/yahboom/b4m_yahboom/install/b4m_waypoint_nav/maps/` directory
+   - Displays waypoints with their names, positions, and orientations using ROS2 visualization markers
+   - Provides intuitive controls for adding, editing, and deleting waypoints with immediate visual updates
+   - Supports interactive map zooming and panning with mouse wheel and drag events
 
 3. **UI Layout**
-   - Left side panel containing waypoint list and control options
-   - Right side showing the map with waypoints visualized
-   - Clean, technical interface without unnecessary clutter
-   - Click-to-place mechanism for adding new waypoints on the map
-   - Click-to-select for existing waypoints with action buttons in the left panel
+   - Left side panel containing waypoint list, map selection dropdown, and control buttons
+   - Right side showing the map with waypoints visualized as colored markers
+   - Clean, technical interface with status bar feedback for user actions
+   - Click-to-place mechanism for adding new waypoints directly on the map
+   - Click-to-select for existing waypoints with edit/delete options in the left panel
 
 4. **Data Storage**
-   - Use the existing JSON waypoint format stored at repository root (`/home/yahboom/b4m_yahboom/waypoints.json`)
+   - Uses JSON waypoint format stored at `/home/yahboom/b4m_yahboom/install/b4m_waypoint_nav/waypoints.json`
+   - Each waypoint stores name, position, orientation, timestamp, and visualization properties
+   - Changes are saved automatically and can be used immediately by the navigation system
+
+5. **Bug Fixes and Improvements**
+   - Fixed "TypeError: unhashable type: set" error in waypoint data handling
+   - Resolved map drawing issues by converting float coordinates to integers
+   - Added immediate map view updates after waypoint add/edit/delete operations
+   - Enhanced error handling in scroll wheel zoom functionality
+   - Implemented proper waypoint selection and highlighting
    - Current format includes: name, position (x,y), orientation (quaternion x,y,z,w), timestamp, and visualization properties (color, scale)
    - Enhance with map-specific waypoint sets (multi-map support)
    - Maintain backward compatibility with existing waypoint navigation system
