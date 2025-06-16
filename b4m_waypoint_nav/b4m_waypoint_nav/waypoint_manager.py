@@ -17,6 +17,10 @@ from geometry_msgs.msg import PoseWithCovarianceStamped, Pose
 # Import visualization messages separately to avoid any import issues
 from visualization_msgs.msg import MarkerArray
 from visualization_msgs.msg import Marker
+from std_msgs.msg import String
+
+# Import MQTT client
+import paho.mqtt.client as mqtt
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QLabel, QPushButton, QListWidget, 
@@ -79,9 +83,13 @@ class WaypointManagerGUI(QMainWindow):
         self.add_waypoint_btn = QPushButton('Add Waypoint')
         self.edit_waypoint_btn = QPushButton('Edit Selected')
         self.delete_waypoint_btn = QPushButton('Delete Selected')
+        self.navigate_waypoint_btn = QPushButton('Go to Selected Waypoint')
+        self.navigate_waypoint_btn.setStyleSheet('background-color: #4CAF50; color: white; font-weight: bold;')
+        self.navigate_waypoint_btn.setEnabled(False)  # Disabled until a waypoint is selected
         actions_layout.addWidget(self.add_waypoint_btn)
         actions_layout.addWidget(self.edit_waypoint_btn)
         actions_layout.addWidget(self.delete_waypoint_btn)
+        actions_layout.addWidget(self.navigate_waypoint_btn)
         left_layout.addWidget(actions_group)
         
         # Create right panel (map view)
@@ -108,6 +116,7 @@ class WaypointManagerGUI(QMainWindow):
         self.add_waypoint_btn.clicked.connect(self.addWaypoint)
         self.edit_waypoint_btn.clicked.connect(self.editWaypoint)
         self.delete_waypoint_btn.clicked.connect(self.deleteWaypoint)
+        self.navigate_waypoint_btn.clicked.connect(self.navigateToWaypoint)
         self.waypoint_list.itemClicked.connect(self.waypointSelected)
         
         # Initial UI setup
@@ -316,9 +325,13 @@ class WaypointManagerGUI(QMainWindow):
         # Update map view to highlight selected waypoint
         self.map_view.selectWaypoint(waypoint_name)
         
-        # Enable edit and delete buttons
+        # Enable edit, delete, and navigate buttons
         self.edit_waypoint_btn.setEnabled(True)
         self.delete_waypoint_btn.setEnabled(True)
+        self.navigate_waypoint_btn.setEnabled(True)
+        
+        # Store the selected waypoint name
+        self.selected_waypoint = waypoint_name
         
         # Show waypoint details in status bar
         map_name = self.map_combo.currentText()
@@ -327,6 +340,34 @@ class WaypointManagerGUI(QMainWindow):
             pos_x = waypoint['position']['x']
             pos_y = waypoint['position']['y']
             self.statusBar.showMessage(f'Selected waypoint: {waypoint_name} at ({pos_x:.2f}, {pos_y:.2f})')
+    
+    def navigateToWaypoint(self):
+        """Send MQTT command to navigate to the selected waypoint"""
+        if hasattr(self, 'selected_waypoint') and self.selected_waypoint:
+            # Show status message
+            self.statusBar.showMessage(f'Navigating to waypoint: {self.selected_waypoint}...')
+            
+            # Send navigation command via MQTT
+            success = self.ros_node.navigate_to_waypoint(self.selected_waypoint)
+            
+            if success:
+                self.statusBar.showMessage(f'Navigation command sent for waypoint: {self.selected_waypoint}')
+            else:
+                self.statusBar.showMessage(f'Failed to send navigation command for waypoint: {self.selected_waypoint}')
+                QMessageBox.warning(self, 'Navigation Error', 
+                                'Failed to send navigation command. Check MQTT connection and robot status.')
+        else:
+            self.statusBar.showMessage('No waypoint selected for navigation')
+    
+    def updateMqttStatus(self, connected):
+        """Update the UI to reflect MQTT connection status"""
+        if connected:
+            self.statusBar.showMessage('MQTT connected', 3000)  # Show for 3 seconds
+            if hasattr(self, 'selected_waypoint') and self.selected_waypoint:
+                self.navigate_waypoint_btn.setEnabled(True)
+        else:
+            self.statusBar.showMessage('MQTT disconnected', 3000)  # Show for 3 seconds
+            self.navigate_waypoint_btn.setEnabled(False)
 
 class MapView(QWidget):
     def __init__(self, parent):
@@ -689,6 +730,17 @@ class WaypointManager(Node):
             self.declare_parameter('connected_mode', False)
             self.connected_mode = self.get_parameter('connected_mode').value
             
+            # MQTT parameters
+            self.declare_parameter('mqtt_broker', 'localhost')
+            self.declare_parameter('mqtt_port', 1883)
+            self.declare_parameter('mqtt_topic_prefix', 'yahboom')
+            
+            self.mqtt_broker = self.get_parameter('mqtt_broker').value
+            self.mqtt_port = self.get_parameter('mqtt_port').value
+            self.mqtt_topic_prefix = self.get_parameter('mqtt_topic_prefix').value
+            self.mqtt_client = None
+            self.mqtt_connected = False
+            
             # Initialize waypoints storage
             self.waypoints = {}
             self.current_map = None
@@ -707,6 +759,9 @@ class WaypointManager(Node):
                 traceback.print_exc()
                 # Reset to empty waypoints
                 self.waypoints = {}
+                
+            # Setup MQTT client
+            self.setup_mqtt_client()
         except Exception as e:
             print(f"Error in WaypointManager.__init__: {e}")
             import traceback
@@ -730,6 +785,13 @@ class WaypointManager(Node):
             self.marker_publisher = self.create_publisher(
                 MarkerArray,
                 '/waypoint_markers',
+                10
+            )
+            
+            # Create publisher for MQTT status messages
+            self.mqtt_status_publisher = self.create_publisher(
+                String,
+                'mqtt_status',
                 10
             )
         else:
@@ -908,6 +970,107 @@ class WaypointManager(Node):
         self.get_logger().info(f'Deleted waypoint {name}')
         return True
     
+    def setup_mqtt_client(self):
+        """Set up MQTT client and connection"""
+        try:
+            # Create MQTT client
+            client_id = f'waypoint_manager_{random.randint(0, 1000)}'  # Random client ID to avoid conflicts
+            self.mqtt_client = mqtt.Client(client_id=client_id, protocol=mqtt.MQTTv5)
+            
+            # Set up callbacks
+            self.mqtt_client.on_connect = self.on_mqtt_connect
+            self.mqtt_client.on_disconnect = self.on_mqtt_disconnect
+            self.mqtt_client.on_publish = self.on_mqtt_publish
+            
+            # Attempt connection
+            try:
+                self.get_logger().info(f'Connecting to MQTT broker at {self.mqtt_broker}:{self.mqtt_port}')
+                self.mqtt_client.connect_async(self.mqtt_broker, self.mqtt_port, 60)
+                self.mqtt_client.loop_start()  # Start the loop in a separate thread
+            except Exception as e:
+                self.get_logger().error(f'Failed to connect to MQTT broker: {e}')
+                self.mqtt_connected = False
+        except Exception as e:
+            self.get_logger().error(f'Error setting up MQTT client: {e}')
+            traceback.print_exc()
+    
+    def on_mqtt_connect(self, client, userdata, flags, rc, properties=None):
+        """Callback when connected to MQTT broker"""
+        if rc == 0:
+            self.get_logger().info('Connected to MQTT broker')
+            self.mqtt_connected = True
+            
+            # Publish a status message
+            if self.connected_mode:
+                status_msg = String()
+                status_msg.data = f'MQTT connected to {self.mqtt_broker}:{self.mqtt_port}'
+                self.mqtt_status_publisher.publish(status_msg)
+                
+            # Update GUI status
+            if hasattr(self, 'gui') and self.gui is not None:
+                self.gui.updateMqttStatus(True)
+        else:
+            self.get_logger().error(f'Failed to connect to MQTT broker with code {rc}')
+            self.mqtt_connected = False
+            
+            # Update GUI status
+            if hasattr(self, 'gui') and self.gui is not None:
+                self.gui.updateMqttStatus(False)
+    
+    def on_mqtt_disconnect(self, client, userdata, rc):
+        """Callback when disconnected from MQTT broker"""
+        self.get_logger().warn(f'Disconnected from MQTT broker with code {rc}')
+        self.mqtt_connected = False
+        
+        # Update GUI status
+        if hasattr(self, 'gui') and self.gui is not None:
+            self.gui.updateMqttStatus(False)
+    
+    def on_mqtt_publish(self, client, userdata, mid):
+        """Callback when a message is published"""
+        self.get_logger().debug(f'Message {mid} published')
+    
+    def publish_mqtt_message(self, topic, message):
+        """Publish a message to an MQTT topic"""
+        if not self.mqtt_connected:
+            self.get_logger().warn('Cannot publish MQTT message: not connected to broker')
+            return False
+        
+        try:
+            # Prepend the topic prefix
+            full_topic = f"{self.mqtt_topic_prefix}/{topic}"
+            
+            # Publish the message
+            result = self.mqtt_client.publish(full_topic, message)
+            if result.rc != mqtt.MQTT_ERR_SUCCESS:
+                self.get_logger().error(f'Failed to publish MQTT message: {mqtt.error_string(result.rc)}')
+                return False
+            
+            self.get_logger().info(f'Published MQTT message to {full_topic}: {message}')
+            return True
+        except Exception as e:
+            self.get_logger().error(f'Error publishing MQTT message: {e}')
+            traceback.print_exc()
+            return False
+            
+    def navigate_to_waypoint(self, waypoint_name):
+        """Send MQTT command to navigate to a waypoint"""
+        if not self.mqtt_connected:
+            self.get_logger().warn('Cannot navigate to waypoint: not connected to MQTT broker')
+            return False
+            
+        if self.current_map is None:
+            self.get_logger().warn('Cannot navigate to waypoint: no map selected')
+            return False
+            
+        # Check if waypoint exists
+        if self.current_map not in self.waypoints or waypoint_name not in self.waypoints[self.current_map]:
+            self.get_logger().warn(f'Cannot navigate to waypoint: {waypoint_name} not found in map {self.current_map}')
+            return False
+            
+        # Publish navigation command
+        return self.publish_mqtt_message('navigation/command', waypoint_name)
+    
     def publish_waypoint_markers(self):
         """Publish waypoint visualization markers"""
         try:
@@ -933,32 +1096,8 @@ class WaypointManager(Node):
             # Get waypoints for current map and ensure it's a dictionary
             map_waypoints = self.waypoints[self.current_map]
             if not isinstance(map_waypoints, dict):
-                self.get_logger().error(f'Waypoints for map {self.current_map} is not a dictionary: {type(map_waypoints)}')
-                if isinstance(map_waypoints, (set, list)):
-                    self.get_logger().info(f'Converting {type(map_waypoints)} to dictionary')
-                    self.waypoints[self.current_map] = {f'Waypoint {i+1}': wp for i, wp in enumerate(map_waypoints)}
-                    map_waypoints = self.waypoints[self.current_map]
-                    self.save_waypoints()
                 else:
-                    self.get_logger().error('Unable to convert waypoints to dictionary')
-                    return
-                    
-            # Process each waypoint
-            for i, (name, waypoint) in enumerate(map_waypoints.items()):
-                try:
-                    # Create marker for waypoint
-                    marker = Marker()
-                    marker.header.frame_id = 'map'
-                    marker.header.stamp = self.get_clock().now().to_msg()
-                    marker.ns = 'waypoints'
-                    marker.id = i
-                    marker.type = Marker.SPHERE
-                    marker.action = Marker.ADD
-                    
-                    # Set position
-                    if 'position' in waypoint and isinstance(waypoint['position'], dict):
-                        marker.pose.position.x = waypoint['position'].get('x', 0.0)
-                        marker.pose.position.y = waypoint['position'].get('y', 0.0)
+                    self.get_logger().warn(f'Invalid position for waypoint {name}')
                         marker.pose.position.z = 0.0
                     else:
                         self.get_logger().warn(f'Invalid position for waypoint {name}')

@@ -4,12 +4,13 @@
 
 This document outlines the plan for implementing a waypoint navigation system with orientation for the Yahboom robot. The system will allow users to:
 
-1. Drive the robot using keyboard controls
-2. Store waypoints with orientation at the robot's current position
+1. Manage waypoints through a dedicated GUI application
+2. Store waypoints with orientation at specific positions on the map
 3. Name and manage stored waypoints
 4. Navigate to stored waypoints by name, with proper orientation upon arrival
+5. Send navigation commands via MQTT for external control
 
-The implementation will build upon the existing Navigation2 framework as described in the Lidar course documentation.
+The implementation will build upon the existing Navigation2 framework as described in the Lidar course documentation and utilize MQTT for communication with external systems.
 
 ## System Architecture
 
@@ -18,28 +19,35 @@ The implementation will build upon the existing Navigation2 framework as describ
 1. **Waypoint Management System**
    - Store waypoints with position (x, y) and orientation (quaternion)
    - Persist waypoints to file for reuse across sessions
-   - Provide interface for adding, listing, and selecting waypoints
+   - Provide GUI interface for adding, listing, and selecting waypoints
+   - Support map-based waypoint placement and management
 
-2. **Keyboard Control Interface**
-   - Drive the robot using keyboard commands based on the VM Remote control scheme:
-     - 'i': Go forward
-     - ',': Move back
-     - 'l': Right rotation
-     - 'j': Left rotation
-     - 'u': Turn left
-     - 'o': Turn right
-     - 'm': Reverse left
-     - '.': Reverse right
-   - Trigger waypoint storage with a specific key ('s')
-   - Select waypoints for navigation via keyboard input ('g')
-   - List available waypoints ('p')
-   - Delete waypoints ('d')
+2. **Waypoint Manager GUI**
+   - Central dashboard for all waypoint operations
+   - Map visualization with waypoint overlay
+   - Add, edit, delete, and rename waypoints
+   - Select and navigate to waypoints with a single click
+   - Send navigation commands via MQTT
 
 3. **Navigation Integration**
    - Leverage Navigation2 for path planning and obstacle avoidance
    - Send goal poses (position + orientation) to the navigation stack
    - Monitor navigation status and provide feedback
    - Visualize waypoints in RViz using marker arrays
+   
+4. **MQTT Communication**
+   - Publish navigation commands to MQTT topics
+   - Subscribe to robot status updates via MQTT
+   - Enable external systems to trigger waypoint navigation
+   - Provide standardized message format for waypoint commands
+   
+   MQTT Topic Structure:
+   - `yahboom/navigation/command`: Topic for sending navigation commands
+   - `yahboom/navigation/status`: Topic for receiving navigation status updates
+   
+   MQTT Message Format:
+   - Navigation Command: `{"command": "goto", "waypoint_id": "waypoint_name"}`
+   - Navigation Status: `{"status": "[in_progress|completed|failed]", "waypoint_id": "waypoint_name", "message": "status message"}`
 
 ### Data Structure
 
@@ -78,7 +86,8 @@ Develop a ROS2 node (`b4m_waypoint_nav.py`) that will:
 - Subscribe to robot pose topics to get current position and orientation
 - Publish goal poses to the Navigation2 stack
 - Implement waypoint management logic
-- Handle keyboard input for robot control and waypoint operations
+- ~~Handle keyboard input for robot control and waypoint operations~~ (Deprecated: Keyboard functionality will be removed as the waypoint manager GUI becomes the central dashboard for waypoint operations)
+- Subscribe to MQTT topics for receiving navigation commands
 
 ## Usage Instructions
 
@@ -87,42 +96,31 @@ Develop a ROS2 node (`b4m_waypoint_nav.py`) that will:
    # Terminal 1: Start the car's base functionality
    ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py
    
-   # Terminal 2: Start the waypoint navigation system
-   ros2 launch b4m_waypoint_nav b4m_waypoint_nav_launch.py
+   # Terminal 2: Start the waypoint navigation system with GUI
+   ros2 launch b4m_waypoint_nav waypoint_manager_launch.py
    ```
 
-2. **Control the Robot**
-   - Keyboard control of the robot will be closely based on the @04.VM Remote control course-1. VM keyboard remote control.txt implementation
-   - Use the following keys to drive the robot:
-     - 'i': Go forward
-     - ',': Move back
-     - 'l': Right rotation
-     - 'j': Left rotation
-     - 'u': Turn left
-     - 'o': Turn right
-     - 'm': Reverse left
-     - '.': Reverse right
-     - ' ' (spacebar): Stop the robot
-   - Speed adjustment:
-     - 'q': Increase both linear and angular speed
-     - 'z': Decrease both linear and angular speed
-     - 'w': Increase linear speed only
-     - 'x': Decrease linear speed only
-     - 'e': Increase angular speed only
-     - 'c': Decrease angular speed only
-   - Press 's' to store a waypoint at the current position:
-     - Enter a name for the waypoint when prompted
-   - Press 'p' to list all stored waypoints
-   - Press 'g' to navigate to a waypoint:
-     - Enter the name of the waypoint to navigate to when prompted
-   - Press 'c' to cancel navigation
-   - Press 'd' to delete a waypoint:
-     - Enter the name of the waypoint to delete when prompted
+2. **Using the Waypoint Manager GUI**
+   - The GUI serves as the central dashboard for all waypoint operations
+   - Map area:
+     - Click on the map to place new waypoints
+     - Click on existing waypoints to select them
+     - Right-click on waypoints for quick actions
+   - Waypoint list panel:
+     - View all waypoints for the current map
+     - Select waypoints from the list to edit properties
+     - Use buttons to add, edit, or delete waypoints
+   - Navigation controls:
+     - 'Go to Selected Waypoint' button sends navigation command via MQTT
+     - Cancel navigation button to stop current navigation
+     - Status indicators show current robot state and navigation progress
 
 3. **Navigation Process**
    - The robot will plan a path to the selected waypoint
    - Navigation2 will handle obstacle avoidance
    - Upon arrival, the robot will orient itself according to the stored orientation
+   - All navigation commands are transmitted via MQTT
+   - External systems can trigger navigation by publishing to the appropriate MQTT topics
    - MQTT messages will be published for navigation events (start, success, failure)
    - Home Assistant integration for monitoring navigation status
 
@@ -133,12 +131,9 @@ Develop a ROS2 node (`b4m_waypoint_nav.py`) that will:
 
 ## Future Enhancements
 
-1. **Waypoint Management UI**
-   - Develop a graphical interface for waypoint management
-   - Visualize waypoints on a map
-   - Allow drag-and-drop waypoint creation and editing
 
-2. **Simulation Integration**
+
+. **Simulation Integration**
    - Adapt the system to work in Gazebo simulation
    - Share waypoints between physical robot and simulation
    - Use the same waypoint file for both environments
@@ -233,7 +228,9 @@ The Waypoint Manager will operate primarily as a standalone application that doe
 6. **Connected Mode (Optional)**
    - When the robot or simulation is running, the UI automatically detects and connects to it
    - Live position updates are shown on the map
-   - Direct waypoint commands can be sent to the robot
+   - Direct waypoint commands can be sent to the robot via MQTT
+   - 'Go to Selected Waypoint' button becomes active when connected to a running robot
+   - MQTT messages use the waypoint ID only, with the robot retrieving full position data from its waypoint storage
    - Real-time feedback during navigation
 
 ### ROS2 Dependencies
@@ -280,8 +277,12 @@ A dedicated launch file will be created for the Waypoint Manager at `b4m_waypoin
 2. **Connected Mode (Optional)**
    - Parameter to enable connection to running robot/simulation
    - Auto-discovery of running ROS2 navigation stack
+   - MQTT broker connection parameters:
+     - `mqtt_broker`: MQTT broker address (default: 'localhost')
+     - `mqtt_port`: MQTT broker port (default: 1883)
+     - `mqtt_topic_prefix`: Prefix for all MQTT topics (default: 'yahboom')
 
-### Repository Structure
+### Repository Structure and Component Interaction
 
 The Waypoint Manager will be implemented within the existing repository structure for several important reasons:
 
@@ -295,9 +296,47 @@ The Waypoint Manager will be implemented within the existing repository structur
 
 5. **Shared resources**: The GUI will use the same configuration files, waypoint storage, and RViz integration as the existing implementation.
 
+#### Key Components and Their Roles
+
+1. **waypoint_manager.py**
+   - Provides the GUI interface for waypoint management
+   - Allows users to create, edit, and delete waypoints visually on a map
+   - Stores waypoints in a shared JSON format
+   - Will be enhanced with a "Go to Selected Waypoint" button
+   - Will publish MQTT messages to trigger navigation
+
+2. **b4m_waypoint_nav.py**
+   - Core navigation node that interfaces with ROS2 Navigation2
+   - Handles the actual robot movement and navigation
+   - Enhanced with MQTT client for bidirectional communication
+   - Subscribes to MQTT navigation commands on `yahboom/navigation/command` topic
+   - Executes the navigation to waypoints when requested via MQTT
+   - Publishes status messages to `mqtt_status` topic
+   - No longer uses keyboard control (deprecated in favor of GUI control)
+
+#### Communication Flow
+
+1. **User Interaction**
+   - User selects a waypoint in the waypoint_manager GUI
+   - User clicks "Go to Selected Waypoint" button
+
+2. **MQTT Communication**
+   - waypoint_manager.py publishes a message to `yahboom/navigation/command` topic
+   - Message contains the waypoint ID to navigate to
+
+3. **Navigation Execution**
+   - b4m_waypoint_nav.py receives the MQTT message
+   - Looks up the waypoint coordinates from its waypoint storage
+   - Sends the navigation goal to the Navigation2 stack
+   - Reports status back via the `yahboom/navigation/status` topic
+
+4. **Status Updates**
+   - Navigation progress and completion status are published back to MQTT
+   - External systems (like Home Assistant) can monitor these status messages
+
 The GUI component will be added as:
-- `b4m_waypoint_nav/b4m_waypoint_nav/waypoint_gui.py` for the GUI implementation
-- `b4m_waypoint_nav/launch/waypoint_gui_launch.py` for launching the GUI
+- `b4m_waypoint_nav/b4m_waypoint_nav/waypoint_manager.py` for the GUI implementation
+- `b4m_waypoint_nav/launch/waypoint_manager_launch.py` for launching the GUI
 
 This structure maintains the organization of the codebase while adding the new functionality in a logical location.
 
@@ -319,13 +358,22 @@ This structure maintains the organization of the codebase while adding the new f
    - Set up communication between GUI and RViz
    - Implement click-to-create waypoint functionality
 
-4. **Testing and Refinement**
+4. **Implement MQTT Integration**
+   - Set up MQTT client in the waypoint manager using paho-mqtt library
+   - Define message formats for waypoint navigation commands
+   - Implement 'Go to Selected Waypoint' functionality
+   - Create subscriber for robot status updates
+   - Handle connection failures gracefully with appropriate user feedback
+   - Support both local testing with Mosquitto broker and integration with Home Assistant
+
+5. **Testing and Refinement**
    - Test with simulated robot in Gazebo
    - Test with physical Yahboom robot
+   - Test MQTT communication with external systems
    - Refine UI based on user feedback
 
 This implementation will provide a user-friendly interface for managing waypoints while leveraging the existing ROS2 infrastructure and visualization capabilities.
 
 ## Conclusion
 
-This plan provides a comprehensive approach to implementing waypoint navigation with orientation for the Yahboom robot. By leveraging the Navigation2 framework and adding custom waypoint management features, we can create a flexible and user-friendly system for robot navigation.
+This plan provides a comprehensive approach to implementing waypoint navigation with orientation for the Yahboom robot. By leveraging the Navigation2 framework, adding a central GUI dashboard for waypoint management, and implementing MQTT communication for external control, we can create a flexible and user-friendly system for robot navigation that can be easily integrated with other systems.

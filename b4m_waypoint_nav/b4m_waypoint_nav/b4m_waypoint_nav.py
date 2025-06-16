@@ -13,10 +13,10 @@ import os
 from datetime import datetime
 import threading
 import sys
-import tty
-import termios
-import select
 import random
+
+# Import MQTT client
+import paho.mqtt.client as mqtt
 
 class B4MWaypointNav(Node):
     def __init__(self):
@@ -50,10 +50,15 @@ class B4MWaypointNav(Node):
             'waypoint_markers',
             10)
             
-        # MQTT error message publisher
+        # MQTT publishers
         self.mqtt_error_publisher = self.create_publisher(
             String,
             'mqtt_home_assistant/error',
+            10)
+            
+        self.mqtt_status_publisher = self.create_publisher(
+            String,
+            'mqtt_status',
             10)
             
         # Velocity publisher for keyboard control
@@ -72,10 +77,19 @@ class B4MWaypointNav(Node):
         # Timer for publishing waypoint markers
         self.marker_timer = self.create_timer(1.0, self.publish_waypoint_markers)
         
-        # Keyboard control thread
-        self.keyboard_thread = threading.Thread(target=self.keyboard_control)
-        self.keyboard_thread.daemon = True
-        self.keyboard_thread.start()
+        # MQTT parameters
+        self.declare_parameter('mqtt_broker', 'localhost')
+        self.declare_parameter('mqtt_port', 1883)
+        self.declare_parameter('mqtt_topic_prefix', 'yahboom')
+        
+        self.mqtt_broker = self.get_parameter('mqtt_broker').value
+        self.mqtt_port = self.get_parameter('mqtt_port').value
+        self.mqtt_topic_prefix = self.get_parameter('mqtt_topic_prefix').value
+        self.mqtt_client = None
+        self.mqtt_connected = False
+        
+        # Set up MQTT client
+        self.setup_mqtt_client()
         
         self.get_logger().info('b4m_waypoint_nav node initialized')
         
@@ -374,192 +388,102 @@ class B4MWaypointNav(Node):
             
             self.get_logger().info(f'Created custom RViz configuration with waypoint markers display')
     
-    def keyboard_control(self):
-        # Keyboard control implementation
-        self.get_logger().info("""
-        Keyboard Control:
-        ---------------------------
-        Movement Controls:
-        'i': Go forward
-        ',': Move back
-        'l': Right rotation
-        'j': Left rotation
-        'u': Turn left
-        'o': Turn right
-        'm': Reverse left
-        '.': Reverse right
-        ' ': Stop
-        
-        Speed Controls:
-        'q': Increase both speeds
-        'z': Decrease both speeds
-        'w': Increase linear speed
-        'x': Decrease linear speed
-        'e': Increase angular speed
-        'c': Decrease angular speed
-        
-        Waypoint Controls:
-        's': Store waypoint
-        'g': Go to waypoint
-        'p': List waypoints
-        'c': Cancel navigation
-        'd': Delete waypoint
-        'q': Quit
-        ---------------------------
-        """)
-        
-        # Set terminal to raw mode to process key presses directly
-        old_settings = termios.tcgetattr(sys.stdin)
+    def setup_mqtt_client(self):
+        """Set up MQTT client and connection"""
         try:
-            tty.setraw(sys.stdin.fileno())
+            # Create MQTT client
+            client_id = f'b4m_waypoint_nav_{random.randint(0, 1000)}'  # Random client ID to avoid conflicts
+            self.mqtt_client = mqtt.Client(client_id=client_id, protocol=mqtt.MQTTv5)
             
-            while True:
-                # Check if key is pressed
-                if select.select([sys.stdin], [], [], 0)[0]:
-                    key = sys.stdin.read(1)
-                    
-                    if key == 'q':  # Quit
-                        self.get_logger().info('Exiting...')
-                        break
-                        
-                    elif key == 's':  # Store waypoint
-                        # Reset terminal for input
-                        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-                        print("\nEnter waypoint name: ", end='', flush=True)
-                        name = input().strip()
-                        if name:
-                            self.store_current_waypoint(name)
-                        # Set terminal back to raw mode
-                        tty.setraw(sys.stdin.fileno())
-                        
-                    elif key == 'g':  # Go to waypoint
-                        # Reset terminal for input
-                        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-                        print("\nEnter waypoint name to navigate to: ", end='', flush=True)
-                        name = input().strip()
-                        if name:
-                            self.navigate_to_waypoint(name)
-                        # Set terminal back to raw mode
-                        tty.setraw(sys.stdin.fileno())
-                        
-                    elif key == 'p':  # List waypoints
-                        # Reset terminal for display
-                        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-                        self.list_waypoints()
-                        print("Press any key to continue...", end='', flush=True)
-                        input()
-                        # Set terminal back to raw mode
-                        tty.setraw(sys.stdin.fileno())
-                    
-                    elif key == 'd':  # Delete waypoint
-                        # Reset terminal for input
-                        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-                        print("\nEnter waypoint name to delete: ", end='', flush=True)
-                        name = input().strip()
-                        if name:
-                            self.delete_waypoint(name)
-                        # Set terminal back to raw mode
-                        tty.setraw(sys.stdin.fileno())
-                        
-                    elif key == 'c':  # Cancel navigation
-                        # Reset terminal for display
-                        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-                        self.get_logger().info('Canceling navigation...')
-                        # Cancel the navigation goal if one is active
-                        if hasattr(self, '_send_goal_future') and self._send_goal_future is not None:
-                            try:
-                                goal_handle = self._send_goal_future.result()
-                                if goal_handle is not None and goal_handle.accepted:
-                                    self.get_logger().info('Canceling goal...')
-                                    goal_handle.cancel_goal_async()
-                                    self.get_logger().info('Goal canceled')
-                            except Exception as e:
-                                self.get_logger().error(f'Error canceling navigation: {str(e)}')
-                        print("Navigation canceled. Press any key to continue...", end='', flush=True)
-                        input()
-                        # Set terminal back to raw mode
-                        tty.setraw(sys.stdin.fileno())
-                    
-                    # Movement controls based on VM Remote control scheme
-                    elif key == 'i':  # Go forward
-                        twist = Twist()
-                        twist.linear.x = self.linear_speed
-                        twist.angular.z = 0.0
-                        self.vel_publisher.publish(twist)
-                        self.get_logger().info('Moving forward')
-                    elif key == ',':  # Move back
-                        twist = Twist()
-                        twist.linear.x = -self.linear_speed
-                        twist.angular.z = 0.0
-                        self.vel_publisher.publish(twist)
-                        self.get_logger().info('Moving backward')
-                    elif key == 'l':  # Right rotation
-                        twist = Twist()
-                        twist.linear.x = 0.0
-                        twist.angular.z = -self.angular_speed
-                        self.vel_publisher.publish(twist)
-                        self.get_logger().info('Rotating right')
-                    elif key == 'j':  # Left rotation
-                        twist = Twist()
-                        twist.linear.x = 0.0
-                        twist.angular.z = self.angular_speed
-                        self.vel_publisher.publish(twist)
-                        self.get_logger().info('Rotating left')
-                    elif key == 'u':  # Turn left
-                        twist = Twist()
-                        twist.linear.x = self.linear_speed
-                        twist.angular.z = self.angular_speed
-                        self.vel_publisher.publish(twist)
-                        self.get_logger().info('Turning left')
-                    elif key == 'o':  # Turn right
-                        twist = Twist()
-                        twist.linear.x = self.linear_speed
-                        twist.angular.z = -self.angular_speed
-                        self.vel_publisher.publish(twist)
-                        self.get_logger().info('Turning right')
-                    elif key == 'm':  # Reverse left
-                        twist = Twist()
-                        twist.linear.x = -self.linear_speed
-                        twist.angular.z = self.angular_speed
-                        self.vel_publisher.publish(twist)
-                        self.get_logger().info('Reverse left')
-                    elif key == '.':  # Reverse right
-                        twist = Twist()
-                        twist.linear.x = -self.linear_speed
-                        twist.angular.z = -self.angular_speed
-                        self.vel_publisher.publish(twist)
-                        self.get_logger().info('Reverse right')
-                    elif key == ' ':  # Stop
-                        twist = Twist()
-                        twist.linear.x = 0.0
-                        twist.angular.z = 0.0
-                        self.vel_publisher.publish(twist)
-                        self.get_logger().info('Stopping')
-                        
-                    # Speed adjustment commands
-                    elif key == 'q':  # Increase both speeds
-                        self.linear_speed = min(self.linear_speed + self.speed_increment, self.linear_speed_limit)
-                        self.angular_speed = min(self.angular_speed + self.speed_increment, self.angular_speed_limit)
-                        self.get_logger().info(f'Speed increased to linear: {self.linear_speed:.2f}, angular: {self.angular_speed:.2f}')
-                    elif key == 'z':  # Decrease both speeds
-                        self.linear_speed = max(self.linear_speed - self.speed_increment, 0.1)
-                        self.angular_speed = max(self.angular_speed - self.speed_increment, 0.1)
-                        self.get_logger().info(f'Speed decreased to linear: {self.linear_speed:.2f}, angular: {self.angular_speed:.2f}')
-                    elif key == 'w':  # Increase linear speed
-                        self.linear_speed = min(self.linear_speed + self.speed_increment, self.linear_speed_limit)
-                        self.get_logger().info(f'Linear speed increased to {self.linear_speed:.2f}')
-                    elif key == 'x':  # Decrease linear speed
-                        self.linear_speed = max(self.linear_speed - self.speed_increment, 0.1)
-                        self.get_logger().info(f'Linear speed decreased to {self.linear_speed:.2f}')
-                    elif key == 'e':  # Increase angular speed
-                        self.angular_speed = min(self.angular_speed + self.speed_increment, self.angular_speed_limit)
-                        self.get_logger().info(f'Angular speed increased to {self.angular_speed:.2f}')
-                    elif key == 'c':  # Decrease angular speed
-                        self.angular_speed = max(self.angular_speed - self.speed_increment, 0.1)
-                        self.get_logger().info(f'Angular speed decreased to {self.angular_speed:.2f}')
-                    
-        finally:
-            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+            # Set up callbacks
+            self.mqtt_client.on_connect = self.on_mqtt_connect
+            self.mqtt_client.on_disconnect = self.on_mqtt_disconnect
+            self.mqtt_client.on_message = self.on_mqtt_message
+            
+            # Attempt connection
+            try:
+                self.get_logger().info(f'Connecting to MQTT broker at {self.mqtt_broker}:{self.mqtt_port}')
+                self.mqtt_client.connect_async(self.mqtt_broker, self.mqtt_port, 60)
+                self.mqtt_client.loop_start()  # Start the loop in a separate thread
+            except Exception as e:
+                self.get_logger().error(f'Failed to connect to MQTT broker: {e}')
+                self.mqtt_connected = False
+                self.publish_mqtt_status(f'Error: Failed to connect to MQTT broker: {e}')
+        except Exception as e:
+            self.get_logger().error(f'Error setting up MQTT client: {e}')
+            self.publish_mqtt_status(f'Error: Failed to set up MQTT client: {e}')
+    
+    def on_mqtt_connect(self, client, userdata, flags, rc, properties=None):
+        """Callback when connected to MQTT broker"""
+        if rc == 0:
+            self.get_logger().info('Connected to MQTT broker')
+            self.mqtt_connected = True
+            
+            # Subscribe to navigation commands
+            navigation_topic = f"{self.mqtt_topic_prefix}/navigation/command"
+            self.mqtt_client.subscribe(navigation_topic)
+            self.get_logger().info(f'Subscribed to {navigation_topic}')
+            
+            # Publish status message
+            self.publish_mqtt_status('Connected to MQTT broker')
+        else:
+            self.get_logger().error(f'Failed to connect to MQTT broker with code {rc}')
+            self.mqtt_connected = False
+            self.publish_mqtt_status(f'Error: Failed to connect to MQTT broker with code {rc}')
+    
+    def on_mqtt_disconnect(self, client, userdata, rc):
+        """Callback when disconnected from MQTT broker"""
+        self.get_logger().warn(f'Disconnected from MQTT broker with code {rc}')
+        self.mqtt_connected = False
+        self.publish_mqtt_status('Disconnected from MQTT broker')
+    
+    def on_mqtt_message(self, client, userdata, msg):
+        """Callback when a message is received"""
+        try:
+            topic = msg.topic
+            payload = msg.payload.decode('utf-8')
+            self.get_logger().info(f'Received MQTT message on {topic}: {payload}')
+            
+            # Handle navigation commands
+            if topic == f"{self.mqtt_topic_prefix}/navigation/command":
+                self.handle_navigation_command(payload)
+        except Exception as e:
+            self.get_logger().error(f'Error processing MQTT message: {e}')
+            self.publish_mqtt_status(f'Error: Failed to process MQTT message: {e}')
+    
+    def handle_navigation_command(self, waypoint_name):
+        """Handle navigation command received via MQTT"""
+        self.get_logger().info(f'Handling navigation command for waypoint: {waypoint_name}')
+        
+        # Check if waypoint exists in current map
+        current_map = self.get_current_map_name()
+        if not current_map:
+            self.get_logger().error('No map is currently active')
+            self.publish_mqtt_status(f'Error: No map is currently active')
+            return
+        
+        if current_map not in self.waypoints or waypoint_name not in self.waypoints[current_map]:
+            self.get_logger().error(f'Waypoint {waypoint_name} not found in map {current_map}')
+            self.publish_mqtt_status(f'Error: Waypoint {waypoint_name} not found in map {current_map}')
+            return
+        
+        # Navigate to the waypoint
+        self.navigate_to_waypoint(current_map, waypoint_name)
+    
+    def publish_mqtt_status(self, status_message):
+        """Publish status message to MQTT status topic"""
+        if hasattr(self, 'mqtt_status_publisher'):
+            status_msg = String()
+            status_msg.data = status_message
+            self.mqtt_status_publisher.publish(status_msg)
+            
+    def get_current_map_name(self):
+        """Get the name of the current map"""
+        # In this implementation, we assume there's only one map
+        # If there are multiple maps, we would need to track the active map
+        if self.waypoints and len(self.waypoints) > 0:
+            return list(self.waypoints.keys())[0]
+        return None
 
 def main(args=None):
     rclpy.init(args=args)
