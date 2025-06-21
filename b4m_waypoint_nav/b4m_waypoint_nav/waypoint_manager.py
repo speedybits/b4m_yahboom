@@ -1096,13 +1096,30 @@ class WaypointManager(Node):
             # Get waypoints for current map and ensure it's a dictionary
             map_waypoints = self.waypoints[self.current_map]
             if not isinstance(map_waypoints, dict):
-                else:
-                    self.get_logger().warn(f'Invalid position for waypoint {name}')
+                self.get_logger().warn(f'Waypoints for map {self.current_map} is not a dictionary')
+                return
+            
+            # Loop through waypoints
+            for i, (name, waypoint) in enumerate(map_waypoints.items()):
+                try:
+                    # Create marker
+                    marker = Marker()
+                    marker.header.frame_id = 'map'
+                    marker.header.stamp = self.get_clock().now().to_msg()
+                    marker.ns = 'waypoints'
+                    marker.id = i
+                    marker.type = Marker.SPHERE
+                    marker.action = Marker.ADD
+                
+                    # Set position
+                    if 'position' in waypoint and isinstance(waypoint['position'], dict):
+                        marker.pose.position.x = waypoint['position'].get('x', 0.0)
+                        marker.pose.position.y = waypoint['position'].get('y', 0.0)
                         marker.pose.position.z = 0.0
                     else:
                         self.get_logger().warn(f'Invalid position for waypoint {name}')
                         continue
-                    
+                
                     # Set orientation
                     if 'orientation' in waypoint and isinstance(waypoint['orientation'], dict):
                         marker.pose.orientation.x = waypoint['orientation'].get('x', 0.0)
@@ -1112,24 +1129,24 @@ class WaypointManager(Node):
                     else:
                         # Default to identity quaternion
                         marker.pose.orientation.w = 1.0
-                    
+                
                     # Set scale
                     vis = waypoint.get('visualization', {})
                     scale = vis.get('scale', 0.3)
                     marker.scale.x = scale
                     marker.scale.y = scale
                     marker.scale.z = scale
-                    
+                
                     # Set color
                     color = vis.get('color', {'r': 0.0, 'g': 0.0, 'b': 1.0})
                     marker.color.r = float(color.get('r', 0.0))
                     marker.color.g = float(color.get('g', 0.0))
                     marker.color.b = float(color.get('b', 1.0))
                     marker.color.a = 0.7  # Semi-transparent
-                    
+                
                     # Add to marker array
                     marker_array.markers.append(marker)
-                    
+                
                     # Create text marker for waypoint name
                     text_marker = Marker()
                     text_marker.header.frame_id = 'map'
@@ -1138,27 +1155,27 @@ class WaypointManager(Node):
                     text_marker.id = i
                     text_marker.type = Marker.TEXT_VIEW_FACING
                     text_marker.action = Marker.ADD
-                    
+                
                     # Set position (slightly above waypoint)
                     text_marker.pose.position.x = marker.pose.position.x
                     text_marker.pose.position.y = marker.pose.position.y
                     text_marker.pose.position.z = 0.5  # Above the waypoint
-                    
+                
                     # Set orientation (identity)
                     text_marker.pose.orientation.w = 1.0
-                    
+                
                     # Set scale
                     text_marker.scale.z = 0.2  # Text height
-                    
+                
                     # Set color (white)
                     text_marker.color.r = 1.0
                     text_marker.color.g = 1.0
                     text_marker.color.b = 1.0
                     text_marker.color.a = 1.0
-                    
+                
                     # Set text
                     text_marker.text = str(name)
-                    
+                
                     # Add to marker array
                     marker_array.markers.append(text_marker)
                 except Exception as e:
@@ -1173,7 +1190,7 @@ class WaypointManager(Node):
                 self.get_logger().error(f'Error publishing marker array: {e}')
                 traceback.print_exc()
         except Exception as e:
-            self.get_logger().error(f'Error in publish_waypoint_markers: {e}')
+            self.get_logger().error(f'Error publishing waypoint markers: {e}')
             traceback.print_exc()
 
 def main(args=None):

@@ -9,11 +9,9 @@ import os
 
 
 def generate_launch_description():
-    package_share_path = str(get_package_share_path('yahboomcar_nav'))
-    package_path = os.path.abspath(os.path.join(
-        package_share_path, "../../../../src/yahboomcar_nav"))
+    # Use the direct path to yahboomcar_nav/maps where the waypoint manager expects maps
     map_name = "yahboom_map"
-    default_map_path = os.path.join(package_path, 'maps', map_name)
+    default_map_path = os.path.join('/home/yahboom/b4m_yahboom/yahboomcar_nav/maps', map_name)
 
     map_arg = DeclareLaunchArgument(name='map_path', default_value=str(default_map_path),
                                     description='The path of the map')
