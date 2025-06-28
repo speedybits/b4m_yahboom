@@ -45,32 +45,70 @@ ros2 launch yahboomcar_nav display_launch.py
 ```bash
 cd /home/yahboom/b4m_yahboom
 . install/setup.bash
-ros2 launch yahboomcar_nav waypoint_navigation_launch.py
+ros2 launch yahboomcar_nav waypoint_navigation_launch.py maps:=/home/yahboom/b4m_yahboom/yahboomcar_nav/maps/yahboom_map.yaml
 ```
 
-### 6. Set Initial Pose Estimate in RViz
+> **NOTE**: Explicitly specifying the map file path ensures that the correct map is loaded. If you see the wrong map in RViz or get a "Frame [map] does not exist" error, this command should fix the issue by loading the correct map file.
 
-**CRITICAL STEP**: The robot must be properly localized before navigation commands will be accepted.
+### 6. Verify Map Display in RViz
 
-1. In the RViz window, click on the "2D Pose Estimate" button in the top toolbar
-2. Click and drag on the map to set the initial pose:
-   - Click where the robot is currently located on the map
-   - Drag in the direction the robot is facing
-3. Verify that the red arrow (representing the robot) appears at the correct position on the map
+> **IMPORTANT**: After RViz starts, verify that the correct map is displayed:
+> 1. Check that the Fixed Frame in the Global Options panel is set to "map"
+> 2. Verify that the Map display is enabled and showing the correct map file (yahboom_map.pgm)
+> 3. If the wrong map appears, try the following:
+>    - Click on the Map display in the left panel
+>    - Change the Topic to "/map" if it's not already set
+>    - Set "Draw Behind" to true
+>    - If the map still doesn't appear correctly, restart RViz and try again
 
-> **Note**: Without setting the initial pose, all navigation commands will be rejected by the navigation stack because it doesn't know the robot's starting position.
 
-### 7. Start the Waypoint Manager GUI
+### 7. Initial Robot Positioning
+
+**IMPORTANT**: The robot must be placed at the exact same starting position and orientation each time.
+
+1. Place the robot at the designated starting position in your environment
+2. Use the "2D Pose Estimate" button in RViz to manually set the robot's initial pose
+3. Verify in RViz that the red arrow (representing the robot) appears at the correct position on the map
+
+> **Note**: Manual pose setting in RViz is required each time you start the system. Make sure to set the pose accurately to ensure proper navigation.
+
+### 8. Start the B4M Waypoint Navigation Node
 
 ```bash
+cd /home/yahboom/b4m_yahboom
+. install/setup.bash
+python3 /home/yahboom/b4m_yahboom/b4m_waypoint_nav/b4m_waypoint_nav/b4m_waypoint_nav.py
+```
+
+> **IMPORTANT**: This node processes MQTT messages from the Waypoint Manager GUI and sends navigation commands to the robot. Without this node running, navigation commands from the GUI will not be executed.
+
+### 9. Start the Waypoint Manager GUI
+
+**IMPORTANT**: Always stop ALL existing waypoint manager GUI instances before starting a new one to ensure the latest code changes are used and to prevent conflicts.
+
+```bash
+# First, stop ALL existing waypoint manager GUI instances
+pkill -9 -f "waypoint_manager_node.py"
+
+# Verify all instances are stopped
+ps aux | grep -i waypoint_manager_node.py
+
+# Then start the waypoint manager GUI
 cd /home/yahboom/b4m_yahboom
 . install/setup.bash
 ros2 run b4m_waypoint_nav waypoint_manager_node.py
 ```
 
+> **IMPORTANT**: The waypoint manager GUI sends coordinate-based navigation commands in JSON format. The navigation node only accepts commands in the format: `{"command": "goto", "waypoint_id": "debug_name", "position": {"x": float, "y": float}, "orientation": {"x": float, "y": float, "z": float, "w": float}}`. Legacy plain text waypoint names are no longer supported.
+
 ## Testing the Waypoint Manager GUI
 
-1. **Create Waypoints**:
+1. **Set and Verify Initial Pose**:
+   - After starting the navigation system, use the "2D Pose Estimate" button in RViz to manually set the robot's initial pose
+   - Set the pose to match the robot's actual position (X=-0.4019, Y=0.5530, orientation Z=0.0456, W=0.9989)
+   - Verify that the red arrow (representing the robot) appears at the correct location on the map
+
+2. **Create Waypoints**:
    - Select a map from the dropdown menu
    - Click "Add Waypoint" and provide a name
    - Use the "Set Current Pose" button to set the waypoint at the robot's current position

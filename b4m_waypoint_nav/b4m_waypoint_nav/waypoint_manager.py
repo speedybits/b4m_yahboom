@@ -342,20 +342,65 @@ class WaypointManagerGUI(QMainWindow):
             self.statusBar.showMessage(f'Selected waypoint: {waypoint_name} at ({pos_x:.2f}, {pos_y:.2f})')
     
     def navigateToWaypoint(self):
-        """Send MQTT command to navigate to the selected waypoint"""
+        """Send MQTT command to navigate to the selected waypoint
+        
+        Uses coordinate-based navigation commands in JSON format.
+        """
         if hasattr(self, 'selected_waypoint') and self.selected_waypoint:
             # Show status message
             self.statusBar.showMessage(f'Navigating to waypoint: {self.selected_waypoint}...')
             
-            # Send navigation command via MQTT
-            success = self.ros_node.navigate_to_waypoint(self.selected_waypoint)
+            # Get the current map and waypoint data
+            current_map = self.ros_node.current_map
+            waypoint_name = self.selected_waypoint
             
-            if success:
-                self.statusBar.showMessage(f'Navigation command sent for waypoint: {self.selected_waypoint}')
-            else:
-                self.statusBar.showMessage(f'Failed to send navigation command for waypoint: {self.selected_waypoint}')
+            # Check if waypoint exists
+            if current_map not in self.ros_node.waypoints or waypoint_name not in self.ros_node.waypoints[current_map]:
+                self.statusBar.showMessage(f'Cannot navigate to waypoint: {waypoint_name} not found in map {current_map}')
                 QMessageBox.warning(self, 'Navigation Error', 
-                                'Failed to send navigation command. Check MQTT connection and robot status.')
+                                f'Waypoint {waypoint_name} not found in map {current_map}')
+                return
+            
+            # Get waypoint data
+            waypoint = self.ros_node.waypoints[current_map][waypoint_name]
+            
+            # Create coordinate-based navigation command
+            command = {
+                "command": "goto",
+                "waypoint_id": waypoint_name,
+                "position": waypoint["position"],
+                "orientation": waypoint["orientation"]
+            }
+            
+            # Convert to JSON
+            import json
+            command_json = json.dumps(command)
+            
+            # Send navigation command via MQTT
+            try:
+                # Get MQTT client from ros_node
+                if not self.ros_node.mqtt_connected:
+                    self.statusBar.showMessage('Cannot navigate to waypoint: not connected to MQTT broker')
+                    QMessageBox.warning(self, 'Navigation Error', 'Not connected to MQTT broker')
+                    return
+                
+                # Publish directly to MQTT
+                full_topic = f"{self.ros_node.mqtt_topic_prefix}/navigation/command"
+                result = self.ros_node.mqtt_client.publish(full_topic, command_json)
+                
+                if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                    self.statusBar.showMessage(f'Navigation command sent for waypoint: {self.selected_waypoint}')
+                    print(f'Published coordinate-based navigation command to {full_topic}: {command_json}')
+                else:
+                    self.statusBar.showMessage(f'Failed to send navigation command for waypoint: {self.selected_waypoint}')
+                    QMessageBox.warning(self, 'Navigation Error', 
+                                    'Failed to send navigation command. Check MQTT connection and robot status.')
+            except Exception as e:
+                self.statusBar.showMessage(f'Error sending navigation command: {str(e)}')
+                QMessageBox.warning(self, 'Navigation Error', 
+                                f'Error sending navigation command: {str(e)}')
+                import traceback
+                traceback.print_exc()
         else:
             self.statusBar.showMessage('No waypoint selected for navigation')
     
@@ -1054,7 +1099,13 @@ class WaypointManager(Node):
             return False
             
     def navigate_to_waypoint(self, waypoint_name):
-        """Send MQTT command to navigate to a waypoint"""
+        """Send MQTT command to navigate to a waypoint
+        
+        Uses coordinate-based navigation commands in the format:
+        {"command": "goto", "waypoint_id": "debug_name", 
+         "position": {"x": float, "y": float}, 
+         "orientation": {"x": float, "y": float, "z": float, "w": float}}
+        """
         if not self.mqtt_connected:
             self.get_logger().warn('Cannot navigate to waypoint: not connected to MQTT broker')
             return False
@@ -1067,9 +1118,39 @@ class WaypointManager(Node):
         if self.current_map not in self.waypoints or waypoint_name not in self.waypoints[self.current_map]:
             self.get_logger().warn(f'Cannot navigate to waypoint: {waypoint_name} not found in map {self.current_map}')
             return False
+        
+        # Get waypoint data
+        waypoint = self.waypoints[self.current_map][waypoint_name]
+        
+        # Create coordinate-based navigation command
+        command = {
+            "command": "goto",
+            "waypoint_id": waypoint_name,
+            "position": waypoint["position"],
+            "orientation": waypoint["orientation"]
+        }
+        
+        # Convert to JSON and publish
+        command_json = json.dumps(command)
+        self.get_logger().info(f'Sending coordinate-based navigation command: {command_json}')
+        
+        # Publish navigation command directly to avoid any issues
+        try:
+            # Prepend the topic prefix
+            full_topic = f"{self.mqtt_topic_prefix}/navigation/command"
             
-        # Publish navigation command
-        return self.publish_mqtt_message('navigation/command', waypoint_name)
+            # Publish the message
+            result = self.mqtt_client.publish(full_topic, command_json)
+            if result.rc != mqtt.MQTT_ERR_SUCCESS:
+                self.get_logger().error(f'Failed to publish MQTT message: {mqtt.error_string(result.rc)}')
+                return False
+            
+            self.get_logger().info(f'Published coordinate-based navigation command to {full_topic}: {command_json}')
+            return True
+        except Exception as e:
+            self.get_logger().error(f'Error publishing coordinate-based navigation command: {e}')
+            traceback.print_exc()
+            return False
     
     def publish_waypoint_markers(self):
         """Publish waypoint visualization markers"""

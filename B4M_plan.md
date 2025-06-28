@@ -22,12 +22,12 @@ The implementation will build upon the existing Navigation2 framework as describ
    - Provide GUI interface for adding, listing, and selecting waypoints
    - Support map-based waypoint placement and management
 
-2. **Waypoint Manager GUI**
-   - Central dashboard for all waypoint operations
+2. **Waypoint Manager GUI** (Interim Solution)
+   - Tool for waypoint creation, editing, and management
    - Map visualization with waypoint overlay
    - Add, edit, delete, and rename waypoints
-   - Select and navigate to waypoints with a single click
-   - Send navigation commands via MQTT
+   - Send navigation commands via MQTT for testing purposes
+   - Designed with loose coupling to be replaceable by other systems
 
 3. **Navigation Integration**
    - Leverage Navigation2 for path planning and obstacle avoidance
@@ -44,10 +44,14 @@ The implementation will build upon the existing Navigation2 framework as describ
    MQTT Topic Structure:
    - `yahboom/navigation/command`: Topic for sending navigation commands
    - `yahboom/navigation/status`: Topic for receiving navigation status updates
+   - `yahboom/navigation/info`: Topic for receiving information about command formats and system capabilities
    
    MQTT Message Format:
-   - Navigation Command: `{"command": "goto", "waypoint_id": "waypoint_name"}`
+   - Navigation Command (waypoint-based): `{"command": "goto", "waypoint_id": "waypoint_name"}`
+   - Navigation Command (coordinate-based): `{"command": "goto", "waypoint_id": "optional_name", "position": {"x": float, "y": float}, "orientation": {"x": float, "y": float, "z": float, "w": float}}`
    - Navigation Status: `{"status": "[in_progress|completed|failed]", "waypoint_id": "waypoint_name", "message": "status message"}`
+   
+   The coordinate-based command format allows for dynamic waypoint navigation without requiring the waypoint to be pre-defined in the waypoints.json file. This enables adding, editing, and removing waypoints without restarting the navigation node.
 
 ### Data Structure
 
@@ -86,8 +90,9 @@ Develop a ROS2 node (`b4m_waypoint_nav.py`) that will:
 - Subscribe to robot pose topics to get current position and orientation
 - Publish goal poses to the Navigation2 stack
 - Implement waypoint management logic
-- ~~Handle keyboard input for robot control and waypoint operations~~ (Deprecated: Keyboard functionality will be removed as the waypoint manager GUI becomes the central dashboard for waypoint operations)
-- Subscribe to MQTT topics for receiving navigation commands
+- ~~Handle keyboard input for robot control and waypoint operations~~ (Deprecated: Keyboard functionality will be removed as navigation will be controlled via MQTT)
+- Subscribe to MQTT topics for receiving navigation commands from any external system
+- Rely on manual initial pose setting via the 2D Pose Estimate tool in RViz
 
 ## Usage Instructions
 
@@ -313,6 +318,7 @@ The Waypoint Manager will be implemented within the existing repository structur
    - Executes the navigation to waypoints when requested via MQTT
    - Publishes status messages to `mqtt_status` topic
    - No longer uses keyboard control (deprecated in favor of GUI control)
+   - Relies on manual initial pose setting via the 2D Pose Estimate tool in RViz
 
 #### Communication Flow
 
@@ -372,7 +378,117 @@ This structure maintains the organization of the codebase while adding the new f
    - Test MQTT communication with external systems
    - Refine UI based on user feedback
 
-This implementation will provide a user-friendly interface for managing waypoints while leveraging the existing ROS2 infrastructure and visualization capabilities.
+This implementation will provide a user-friendly interface for managing waypoints while leveraging the existing ROS2 infrastructure and visualization capabilities. The waypoint manager GUI is designed as an interim solution that will eventually be replaced by other software systems that will deliver MQTT messages to control the robot's navigation. The navigation component is completely decoupled from the GUI and relies solely on standardized MQTT messages for receiving navigation commands.
+
+## Map-Specific Waypoint Storage
+
+### Importance of Map-Specific Waypoints
+
+The waypoint navigation system stores waypoints in a JSON file with a structure that separates waypoints by map name. This is critical for proper operation because:
+
+1. **Different maps have different coordinate systems**: Waypoints created in one map are not valid in another map due to different origins and scales.
+
+2. **Waypoint lookup mechanism**: The b4m_waypoint_nav.py node looks for waypoints under the specific map name currently in use (e.g., "yahboom_map").
+
+3. **Navigation failures**: If a waypoint is requested via MQTT but doesn't exist in the current map, navigation will fail silently - the robot won't move even though the MQTT message is correctly published.
+
+### Waypoint JSON Structure
+
+The waypoints.json file will use a simplified structure with only one map (yahboom_map):
+
+```json
+{
+  "yahboom_map": {
+    "Waypoint1": {
+      "position": { "x": 1.0, "y": 1.0 },
+      "orientation": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0 }
+    },
+    "Door": {
+      "position": { "x": 2.0, "y": 2.0 },
+      "orientation": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0 }
+    },
+    "Kitchen": {
+      "position": { "x": 3.0, "y": 1.5 },
+      "orientation": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0 }
+    }
+  }
+}
+```
+
+### Single Map Approach
+
+The Waypoint Manager GUI will be simplified to work with a single map (yahboom_map):
+
+1. **Map Display**
+   - The GUI will display the yahboom_map by default
+   - No map selection interface is needed as only one map is supported
+   - The map will be loaded from `/home/yahboom/b4m_yahboom/yahboomcar_nav/maps/yahboom_map.yaml`
+
+2. **Waypoint Management**
+   - All waypoints will be associated with the yahboom_map
+   - The waypoint list will display all waypoints in the yahboom_map section of the JSON file
+   - The GUI will clearly indicate that it's working with yahboom_map
+
+3. **Map File Format**
+   - The map will use the standard ROS2 map format (.pgm/.yaml)
+   - Map metadata (resolution, origin) will be read from the yahboom_map.yaml file
+
+### Dynamic Waypoint Management
+
+The system supports dynamic waypoint management without requiring navigation node restarts:
+
+1. **Coordinate-Based Navigation**
+   - The waypoint manager GUI **MUST** send coordinate-based navigation commands
+   - The GUI maintains its own internal mapping of waypoint names to coordinates
+   - When a user selects a waypoint in the GUI, it looks up the coordinates and sends those
+   - The waypoint name is included in the MQTT message for debugging purposes only
+   - The navigation node processes these coordinates directly without any waypoint lookup
+
+2. **Benefits**
+   - Waypoints can be added, edited, or removed without restarting the navigation node
+   - Changes to waypoints take effect immediately
+   - Improved reliability as the navigation node doesn't need to maintain waypoint state
+   - The navigation node is decoupled from waypoint management
+
+3. **Command Format**
+   - The only supported format: `{"command": "goto", "waypoint_id": "debug_name", "position": {"x": float, "y": float}, "orientation": {"x": float, "y": float, "z": float, "w": float}}`
+   - The `waypoint_id` field is used only for debugging and logging purposes
+
+### Implementation Details
+
+1. **Map Handling**: 
+   - The b4m_waypoint_nav.py node will always use "yahboom_map" as the map name
+   - The GUI will always display and work with the yahboom_map
+   - No map selection or switching functionality is needed
+
+2. **Waypoint Storage and Retrieval**:
+   - When adding or editing waypoints, they are stored under the "yahboom_map" section in the JSON file
+   - The GUI maintains an in-memory representation of the waypoint data structure
+   - Changes are written to the waypoints.json file immediately to prevent data loss
+   - A backup of the waypoints file is created before making changes
+
+3. **Error Handling and Validation**:
+   - If a waypoint doesn't exist, an error message is logged and published to the MQTT status topic
+   - The GUI validates waypoint names to ensure uniqueness
+   - Warning displayed if attempting to navigate to a non-existent waypoint
+   - If the map file is corrupted or invalid, a popup message will indicate the error
+
+4. **GUI Integration**: 
+   - The Waypoint Manager GUI shows all waypoints in the yahboom_map section
+   - The GUI title or status bar will indicate that it's working with yahboom_map
+   - The GUI is designed as a standalone tool that communicates with the navigation system solely through MQTT
+
+### Best Practices
+
+1. **Use descriptive waypoint names**: Choose clear, meaningful names for waypoints that describe their location or purpose.
+
+2. **Verify waypoint creation**: After creating a waypoint, test navigation to ensure it works correctly.
+
+3. **Check logs for errors**: If navigation fails, check the waypoint_nav.log file for error messages related to waypoint lookup.
+
+4. **Regular backups**: Periodically back up the waypoints.json file, especially after making significant changes to waypoint configurations.
+
+5. **Consistent positioning**: Ensure the robot is properly localized before saving waypoints to maintain accuracy.
 
 ## Conclusion
 

@@ -21,6 +21,17 @@ import paho.mqtt.client as mqtt
 import logging
 
 class B4MWaypointNav(Node):
+    """Waypoint Navigation Node for Yahboom robot
+    
+    This node provides waypoint navigation capabilities for the Yahboom robot.
+    It uses a single map called 'yahboom_map' and stores waypoints in a JSON file.
+    Navigation commands can be sent via MQTT in either JSON format or plain text.
+    
+    JSON format: {"command": "goto", "waypoint_id": "waypoint_name"}
+    Plain text format: "waypoint_name"
+    
+    All waypoints are stored under the 'yahboom_map' key in the waypoints dictionary.
+    """
     def __init__(self):
         super().__init__('b4m_waypoint_nav')
         
@@ -33,6 +44,7 @@ class B4MWaypointNav(Node):
         logging.info('B4MWaypointNav node starting')
         
         # Initialize waypoints storage
+        # The waypoints dictionary has a single key 'yahboom_map' containing all waypoints
         self.waypoints = {}
         # Store waypoints in the install directory
         self.pkg_share = get_package_share_directory('b4m_waypoint_nav')
@@ -124,6 +136,15 @@ class B4MWaypointNav(Node):
                     
                 self.get_logger().info(f'Loaded waypoints for {len(self.waypoints)} maps: {list(self.waypoints.keys())}')
                 logging.info(f'Loaded waypoints for {len(self.waypoints)} maps: {list(self.waypoints.keys())}')
+                
+                # Print all loaded waypoints for debugging
+                if 'yahboom_map' in self.waypoints:
+                    self.get_logger().info(f'Loaded waypoints for yahboom_map: {list(self.waypoints["yahboom_map"].keys())}')
+                    logging.info(f'Loaded waypoints for yahboom_map: {list(self.waypoints["yahboom_map"].keys())}')
+                else:
+                    self.get_logger().info('No waypoints found for yahboom_map')
+                    logging.info('No waypoints found for yahboom_map')
+                    
                 return True
             except Exception as e:
                 self.get_logger().error(f'Error loading waypoints: {e}')
@@ -169,6 +190,10 @@ class B4MWaypointNav(Node):
             self.get_logger().error(f'Failed to save waypoints: {e}')
     
     def store_current_waypoint(self, name):
+        """Store current robot pose as a waypoint
+        
+        All waypoints are stored under the yahboom_map key in the waypoints dictionary.
+        """
         if self.current_pose is None:
             self.get_logger().warn('Cannot store waypoint: Current pose unknown')
             return False
@@ -201,62 +226,107 @@ class B4MWaypointNav(Node):
             }
         }
         
-        self.waypoints[name] = waypoint
+        # Ensure yahboom_map key exists
+        if 'yahboom_map' not in self.waypoints:
+            self.waypoints['yahboom_map'] = {}
+        
+        # Store waypoint under yahboom_map
+        self.waypoints['yahboom_map'][name] = waypoint
         self.save_waypoints()
-        self.get_logger().info(f'Stored waypoint: {name}')
+        self.get_logger().info(f'Stored waypoint: {name} under yahboom_map')
         return True
         
+    def navigate_to_coordinates(self, name, pos_x, pos_y, orient_x, orient_y, orient_z, orient_w):
+        """Navigate directly to specified coordinates
+        
+        This method allows navigation to arbitrary coordinates without requiring
+        the waypoint to be pre-defined in the waypoints.json file.
+        
+        Args:
+            name: A name for this navigation goal (for status reporting)
+            pos_x: X coordinate in the map frame
+            pos_y: Y coordinate in the map frame
+            orient_x: X component of orientation quaternion
+            orient_y: Y component of orientation quaternion
+            orient_z: Z component of orientation quaternion
+            orient_w: W component of orientation quaternion
+        """
+        # Create goal pose
+        goal_pose = PoseStamped()
+        goal_pose.header.frame_id = 'map'
+        goal_pose.header.stamp = self.get_clock().now().to_msg()
+        
+        # Set position
+        goal_pose.pose.position.x = float(pos_x)
+        goal_pose.pose.position.y = float(pos_y)
+        goal_pose.pose.position.z = 0.0
+        
+        # Set orientation
+        goal_pose.pose.orientation.x = float(orient_x)
+        goal_pose.pose.orientation.y = float(orient_y)
+        goal_pose.pose.orientation.z = float(orient_z)
+        goal_pose.pose.orientation.w = float(orient_w)
+        
+        # Wait for action server
+        self.get_logger().info('Waiting for action server...')
+        self.nav_to_pose_client.wait_for_server()
+        
+        # Send goal
+        self.get_logger().info(f'Sending goal to coordinates: x={goal_pose.pose.position.x}, y={goal_pose.pose.position.y}')
+        self.current_waypoint = name
+        
+        # Create and send goal
+        goal_msg = NavigateToPose.Goal()
+        goal_msg.pose = goal_pose
+        
+        self.publish_mqtt_status(f'Navigating to coordinates: {name} (x={pos_x}, y={pos_y})')
+        
+        # Send the goal and register callbacks
+        self._send_goal_future = self.nav_to_pose_client.send_goal_async(
+            goal_msg,
+            feedback_callback=self.feedback_callback)
+        self._send_goal_future.add_done_callback(self.goal_response_callback)
+        
     def navigate_to_waypoint(self, name):
-        # Get current map name
-        current_map = self.get_current_map_name()
-        if not current_map:
-            self.get_logger().error('No map is currently active')
-            self.send_mqtt_error('No map is currently active')
-            return False
+        # We always use yahboom_map
+        current_map = 'yahboom_map'
         
         # Log the waypoint name and available waypoints for debugging
         self.get_logger().info(f'Attempting to navigate to waypoint: "{name}"')
-        self.get_logger().info(f'Available waypoints in {current_map}: {list(self.waypoints[current_map].keys())}')
+        self.get_logger().info(f'Available waypoints: {list(self.waypoints[current_map].keys())}')
         
-        # Check if waypoint exists in current map
+        # Check if waypoint exists
         if name not in self.waypoints[current_map]:
-            self.get_logger().warn(f'Waypoint not found in map {current_map}: "{name}"')
-            self.send_mqtt_error(f'Waypoint not found in map {current_map}: {name}')
-            return False
-            
+            self.get_logger().warn(f'Waypoint not found: "{name}"')
+            self.send_mqtt_error(f'Waypoint not found: {name}')
+            return
+        
+        # Get waypoint data
         waypoint = self.waypoints[current_map][name]
-        self.get_logger().info(f'Found waypoint: {name} at position x={waypoint["position"]["x"]}, y={waypoint["position"]["y"]}')
         
         # Create goal pose
         goal_pose = PoseStamped()
         goal_pose.header.frame_id = 'map'
         goal_pose.header.stamp = self.get_clock().now().to_msg()
         
+        # Set position
         goal_pose.pose.position.x = waypoint['position']['x']
         goal_pose.pose.position.y = waypoint['position']['y']
         goal_pose.pose.position.z = 0.0
         
+        # Set orientation
         goal_pose.pose.orientation.x = waypoint['orientation']['x']
         goal_pose.pose.orientation.y = waypoint['orientation']['y']
         goal_pose.pose.orientation.z = waypoint['orientation']['z']
         goal_pose.pose.orientation.w = waypoint['orientation']['w']
         
         # Wait for action server
-        self.get_logger().info('Waiting for navigation action server...')
-        try:
-            server_available = self.nav_to_pose_client.wait_for_server(timeout_sec=5.0)
-            if not server_available:
-                self.get_logger().error('Navigation action server not available')
-                self.send_mqtt_error('Navigation action server not available')
-                return False
-        except Exception as e:
-            self.get_logger().error(f'Error waiting for navigation server: {str(e)}')
-            self.send_mqtt_error(f'Navigation server error: {str(e)}')
-            return False
+        self.get_logger().info('Waiting for action server...')
+        self.nav_to_pose_client.wait_for_server()
         
         # Send goal
-        self.get_logger().info(f'Navigating to waypoint: {name}')
-        goal_msg = NavigateToPose.Goal()
+        self.get_logger().info(f'Sending goal: x={goal_pose.pose.position.x}, y={goal_pose.pose.position.y}')
+        self.current_waypoint = name
         goal_msg.pose = goal_pose
         
         try:
@@ -334,15 +404,12 @@ class B4MWaypointNav(Node):
             self.get_logger().info('No waypoints stored')
             return
             
-        # Get current map name
-        current_map = self.get_current_map_name()
-        if not current_map:
-            self.get_logger().info('No map is currently active')
-            return
-            
-        self.get_logger().info(f'Stored waypoints for map {current_map}:')
+        # We always use yahboom_map
+        current_map = 'yahboom_map'
+        
+        self.get_logger().info(f'Stored waypoints:')
         if current_map not in self.waypoints or not self.waypoints[current_map]:
-            self.get_logger().info('No waypoints stored for this map')
+            self.get_logger().info('No waypoints stored')
             return
             
         for name in sorted(self.waypoints[current_map].keys()):
@@ -350,24 +417,20 @@ class B4MWaypointNav(Node):
             self.get_logger().info(f"- {name}: pos({wp['position']['x']:.2f}, {wp['position']['y']:.2f})")
             
         self.get_logger().info(f'Total waypoints: {len(self.waypoints[current_map])}')
-        self.get_logger().info(f'Available maps: {list(self.waypoints.keys())}')
         
     
     def delete_waypoint(self, name):
-        # Get current map name
-        current_map = self.get_current_map_name()
-        if not current_map:
-            self.get_logger().error('No map is currently active')
-            return False
-            
-        # Check if waypoint exists in current map
+        # We always use yahboom_map
+        current_map = 'yahboom_map'
+        
+        # Check if waypoint exists
         if name not in self.waypoints[current_map]:
-            self.get_logger().warn(f'Waypoint not found in map {current_map}: {name}')
+            self.get_logger().warn(f'Waypoint not found: {name}')
             return False
-            
+                
         del self.waypoints[current_map][name]
         self.save_waypoints()
-        self.get_logger().info(f'Deleted waypoint {name} from map {current_map}')
+        self.get_logger().info(f'Deleted waypoint {name}')
         return True
         
     def publish_waypoint_markers(self):
@@ -375,11 +438,8 @@ class B4MWaypointNav(Node):
         try:
             marker_array = MarkerArray()
             
-            # Get the current map name
-            current_map = self.get_current_map_name()
-            if not current_map or current_map not in self.waypoints:
-                self.get_logger().warn(f"No valid map found for waypoint markers")
-                return
+            # We always use yahboom_map
+            current_map = 'yahboom_map'
             
             map_waypoints = self.waypoints[current_map]
             
@@ -540,38 +600,6 @@ class B4MWaypointNav(Node):
         except Exception as e:
             self.get_logger().error(f'Failed to connect to MQTT broker: {e}')
             logging.error(f'Failed to connect to MQTT broker: {e}')
-            self.mqtt_connected = False
-
-    def on_mqtt_connect(self, client, userdata, flags, rc, properties=None):
-        """Callback when connected to MQTT broker"""
-        if rc == 0:
-            self.mqtt_connected = True
-            self.get_logger().info('Connected to MQTT broker')
-            logging.info('Connected to MQTT broker')
-            
-            # Subscribe to navigation command topic
-            navigation_topic = f"{self.mqtt_topic_prefix}/navigation/command"
-            self.mqtt_client.subscribe(navigation_topic)
-            self.get_logger().info(f'Subscribed to {navigation_topic}')
-            logging.info(f'Subscribed to {navigation_topic}')
-            
-            # Log all available topics for debugging
-            self.get_logger().info(f'MQTT topic prefix: {self.mqtt_topic_prefix}')
-            logging.info(f'MQTT topic prefix: {self.mqtt_topic_prefix}')
-            
-            # Publish a test message to confirm MQTT is working
-            test_topic = f"{self.mqtt_topic_prefix}/test"
-            self.mqtt_client.publish(test_topic, 'MQTT connection test from b4m_waypoint_nav')
-            self.get_logger().info(f'Published test message to {test_topic}')
-            logging.info(f'Published test message to {test_topic}')
-            
-            # Publish status message
-            self.publish_mqtt_status('Connected to MQTT broker')
-        else:
-            self.mqtt_connected = False
-            self.get_logger().error(f'Failed to connect to MQTT broker with code {rc}')
-            logging.error(f'Failed to connect to MQTT broker with code {rc}')
-            self.publish_mqtt_status(f'Error: Failed to connect to MQTT broker with code {rc}')
 
     def on_mqtt_disconnect(self, client, userdata, rc):
         """Callback when disconnected from MQTT broker"""
@@ -580,8 +608,56 @@ class B4MWaypointNav(Node):
         self.mqtt_connected = False
         self.publish_mqtt_status('Disconnected from MQTT broker')
 
+    def on_mqtt_connect(self, client, userdata, flags, rc, properties=None):
+        """Callback when connected to MQTT broker"""
+        if rc == 0:
+            self.get_logger().info('Connected to MQTT broker')
+            logging.info('Connected to MQTT broker')
+            self.mqtt_connected = True
+            
+            # Subscribe to navigation command topic
+            command_topic = f"{self.mqtt_topic_prefix}/navigation/command"
+            self.get_logger().info(f'Subscribing to MQTT topic: {command_topic}')
+            logging.info(f'Subscribing to MQTT topic: {command_topic}')
+            
+            try:
+                client.subscribe(command_topic)
+                self.get_logger().info(f'Successfully subscribed to {command_topic}')
+                logging.info(f'Successfully subscribed to {command_topic}')
+                
+                # Publish status message
+                status_topic = f"{self.mqtt_topic_prefix}/navigation/status"
+                client.publish(status_topic, "Waypoint navigation system ready")
+                self.get_logger().info(f'Published ready message to {status_topic}')
+                logging.info(f'Published ready message to {status_topic}')
+                
+                # Publish MQTT command format documentation
+                info_topic = f"{self.mqtt_topic_prefix}/navigation/info"
+                info_message = '{"info": "Command format: {\"command\": \"goto\", \"waypoint_id\": \"debug_name\", \"position\": {\"x\": float, \"y\": float}, \"orientation\": {\"x\": float, \"y\": float, \"z\": float, \"w\": float}}. The waypoint_id is for debugging only."}'
+                client.publish(info_topic, info_message)
+                self.get_logger().info(f'Published command format info to {info_topic}')
+                logging.info(f'Published command format info to {info_topic}')
+            except Exception as e:
+                self.get_logger().error(f'Error subscribing to MQTT topics: {e}')
+                logging.error(f'Error subscribing to MQTT topics: {e}')
+        else:
+            self.get_logger().error(f'Failed to connect to MQTT broker with code {rc}')
+            logging.error(f'Failed to connect to MQTT broker with code {rc}')
+            self.mqtt_connected = False
+            
     def on_mqtt_message(self, client, userdata, msg):
-        """Callback when a message is received"""
+        """Callback when a message is received
+        
+        The waypoint manager GUI must use coordinate-based navigation commands.
+        The only supported format is:
+        
+        {"command": "goto", "waypoint_id": "debug_name", 
+         "position": {"x": float, "y": float}, 
+         "orientation": {"x": float, "y": float, "z": float, "w": float}}
+        
+        The waypoint_id is included only for debugging and logging purposes.
+        The navigation node uses the coordinates directly without any waypoint lookup.
+        """
         try:
             topic = msg.topic
             payload = msg.payload.decode('utf-8')
@@ -592,13 +668,50 @@ class B4MWaypointNav(Node):
                 self.get_logger().info(f'Received navigation command: "{payload}"')
                 logging.info(f'Received navigation command: "{payload}"')
                 
-                # Clean up the waypoint name (remove extra spaces, quotes, etc.)
-                waypoint_name = payload.strip()
-                self.get_logger().info(f'Cleaned waypoint name: "{waypoint_name}"')
-                logging.info(f'Cleaned waypoint name: "{waypoint_name}"')
-                
-                # Handle the navigation command
-                self.handle_navigation_command(waypoint_name)
+                try:
+                    # Parse the JSON message
+                    data = json.loads(payload)
+                    
+                    # Validate the command format
+                    if 'command' not in data or data['command'] != 'goto':
+                        self.get_logger().warn(f'Invalid command format: {payload}')
+                        logging.warn(f'Invalid command format: {payload}')
+                        self.publish_mqtt_status('Error: Invalid command format. Expected {"command": "goto", ...}')
+                        return
+                        
+                    # Validate required fields
+                    if 'position' not in data or 'orientation' not in data:
+                        self.get_logger().warn(f'Missing position or orientation data: {payload}')
+                        logging.warn(f'Missing position or orientation data: {payload}')
+                        self.publish_mqtt_status(f'Error: Navigation command must include position and orientation data')
+                        return
+                    
+                    # Extract position and orientation
+                    position = data['position']
+                    orientation = data['orientation']
+                    waypoint_name = data.get('waypoint_id', 'Custom Waypoint')
+                    
+                    self.get_logger().info(f'Using coordinate-based navigation for: "{waypoint_name}"')
+                    logging.info(f'Using coordinate-based navigation for: "{waypoint_name}"')
+                    
+                    # Navigate directly to the provided coordinates
+                    self.navigate_to_coordinates(
+                        waypoint_name,
+                        position.get('x', 0.0),
+                        position.get('y', 0.0),
+                        orientation.get('x', 0.0),
+                        orientation.get('y', 0.0),
+                        orientation.get('z', 0.0),
+                        orientation.get('w', 1.0)
+                    )
+                except json.JSONDecodeError:
+                    self.get_logger().error(f'Invalid JSON format: {payload}')
+                    logging.error(f'Invalid JSON format: {payload}')
+                    self.publish_mqtt_status('Error: Invalid JSON format. Expected {"command": "goto", "position": {...}, "orientation": {...}}')
+                except Exception as e:
+                    self.get_logger().error(f'Error processing navigation command: {e}')
+                    logging.error(f'Error processing navigation command: {e}')
+                    self.publish_mqtt_status(f'Error: Failed to process navigation command: {e}')
             else:
                 self.get_logger().info(f'Ignoring message on topic: {topic}')
                 logging.info(f'Ignoring message on topic: {topic}')
@@ -609,27 +722,26 @@ class B4MWaypointNav(Node):
             self.get_logger().error(f'Traceback: {traceback.format_exc()}')
             logging.error(f'Traceback: {traceback.format_exc()}')
             self.publish_mqtt_status(f'Error: Failed to process MQTT message: {e}')
-    
+            
     def handle_navigation_command(self, waypoint_name):
-        """Handle navigation command received via MQTT"""
+        """Handle navigation command received via MQTT
+        
+        All waypoints are stored under the yahboom_map key in the waypoints dictionary.
+        This method checks if the requested waypoint exists and initiates navigation.
+        """
         self.get_logger().info(f'Handling navigation command for waypoint: "{waypoint_name}"')
         
         waypoint_name = waypoint_name.strip()
         
-        # Check if waypoint exists in current map
-        current_map = self.get_current_map_name()
-        if not current_map:
-            self.get_logger().error('No map is currently active')
-            self.publish_mqtt_status(f'Error: No map is currently active')
-            return
+        # We always use yahboom_map
+        current_map = 'yahboom_map'
         
-        self.get_logger().info(f'Current map: {current_map}')
-        self.get_logger().info(f'Available waypoints in {current_map}: {list(self.waypoints[current_map].keys())}')
+        self.get_logger().info(f'Available waypoints: {list(self.waypoints[current_map].keys())}')
         
-        # Check if the waypoint exists in the current map
+        # Check if the waypoint exists
         if waypoint_name not in self.waypoints[current_map]:
-            self.get_logger().error(f'Waypoint "{waypoint_name}" not found in map {current_map}')
-            self.publish_mqtt_status(f'Error: Waypoint "{waypoint_name}" not found in map {current_map}')
+            self.get_logger().error(f'Waypoint "{waypoint_name}" not found')
+            self.publish_mqtt_status(f'Error: Waypoint "{waypoint_name}" not found')
             return
         
         # Navigate to the waypoint
@@ -637,7 +749,11 @@ class B4MWaypointNav(Node):
         self.navigate_to_waypoint(waypoint_name)
 
     def publish_mqtt_status(self, status_message):
-        """Publish status message to MQTT status topic"""
+        """Publish status message to MQTT status topic
+        
+        Status messages are published to the yahboom/navigation/status topic
+        and follow a simple string format for maximum compatibility.
+        """
         if hasattr(self, 'mqtt_status_publisher'):
             status_msg = String()
             status_msg.data = status_message
@@ -645,28 +761,10 @@ class B4MWaypointNav(Node):
     
     def get_current_map_name(self):
         """Get the name of the current map"""
-        # For now, we'll use a hardcoded default map name since we know which map we're using
-        # This is a temporary solution until we can properly get the map name from the parameter
-        
-        # Log available maps for debugging
-        if self.waypoints and len(self.waypoints) > 0:
-            self.get_logger().info(f'Available maps: {list(self.waypoints.keys())}')
-            
-            # Use yahboom_map as the default map name if it exists
-            if 'yahboom_map' in self.waypoints:
-                self.get_logger().info('Using yahboom_map as the current map')
-                logging.info('Using yahboom_map as the current map')
-                return 'yahboom_map'
-            
-            # Otherwise, use the first map in the waypoints dictionary
-            default_map = list(self.waypoints.keys())[0]
-            self.get_logger().info(f'Using default map: {default_map}')
-            logging.info(f'Using default map: {default_map}')
-            return default_map
-        
-        self.get_logger().error('No maps available in waypoints dictionary')
-        logging.error('No maps available in waypoints dictionary')
-        return None
+        # We only use yahboom_map in this simplified version
+        self.get_logger().info('Using yahboom_map as the current map')
+        logging.info('Using yahboom_map as the current map')
+        return 'yahboom_map'
 
 def main(args=None):
     rclpy.init(args=args)

@@ -104,3 +104,4 @@ uros_ws/*
 !uros_ws/src/
 uros_ws/src/*
 !uros_ws/src/.gitkeep
+b4m_waypoint_nav/logs/waypoint_nav.log
