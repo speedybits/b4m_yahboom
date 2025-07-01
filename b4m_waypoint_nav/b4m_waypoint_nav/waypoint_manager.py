@@ -60,14 +60,11 @@ class WaypointManagerGUI(QMainWindow):
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
         
-        # Map selection group
-        map_group = QGroupBox('Map Selection')
+        # Map info group
+        map_group = QGroupBox('Map Information')
         map_layout = QVBoxLayout(map_group)
-        self.map_combo = QComboBox()
-        self.refresh_maps_btn = QPushButton('Refresh Maps')
-        map_layout.addWidget(QLabel('Select Map:'))
-        map_layout.addWidget(self.map_combo)
-        map_layout.addWidget(self.refresh_maps_btn)
+        self.map_label = QLabel('Using default map')
+        map_layout.addWidget(self.map_label)
         left_layout.addWidget(map_group)
         
         # Waypoint list group
@@ -111,16 +108,14 @@ class WaypointManagerGUI(QMainWindow):
         self.statusBar.showMessage('Ready')
         
         # Connect signals
-        self.refresh_maps_btn.clicked.connect(self.refreshMaps)
-        self.map_combo.currentIndexChanged.connect(self.loadSelectedMap)
         self.add_waypoint_btn.clicked.connect(self.addWaypoint)
         self.edit_waypoint_btn.clicked.connect(self.editWaypoint)
         self.delete_waypoint_btn.clicked.connect(self.deleteWaypoint)
         self.navigate_waypoint_btn.clicked.connect(self.navigateToWaypoint)
         self.waypoint_list.itemClicked.connect(self.waypointSelected)
         
-        # Initial UI setup
-        self.refreshMaps()
+        # Load default map
+        self.loadDefaultMap()
         
     def loadSettings(self):
         # Load application settings
@@ -130,127 +125,103 @@ class WaypointManagerGUI(QMainWindow):
         if settings.contains('geometry'):
             self.restoreGeometry(settings.value('geometry'))
         
-        # Restore last used map if available
-        if settings.contains('last_map'):
-            last_map = settings.value('last_map')
-            index = self.map_combo.findText(last_map)
-            if index >= 0:
-                self.map_combo.setCurrentIndex(index)
-    
     def closeEvent(self, event):
         # Save application settings when closing
         settings = QSettings('B4M', 'WaypointManager')
         settings.setValue('geometry', self.saveGeometry())
-        settings.setValue('last_map', self.map_combo.currentText())
         super().closeEvent(event)
     
-    def refreshMaps(self):
-        # Get maps from the yahboomcar_nav/maps directory
-        self.ros_node.get_logger().info('Refreshing maps...')
-        self.map_combo.clear()
+    def loadDefaultMap(self):
+        # Get the maps directory
+        maps_dir = self.ros_node.maps_dir
         
-        # Get the maps directory path
-        maps_dir = os.path.join('/home/yahboom/b4m_yahboom/yahboomcar_nav/maps')
-        
+        # Check if directory exists
         if not os.path.exists(maps_dir):
-            self.statusBar.showMessage(f'Maps directory not found: {maps_dir}')
-            self.ros_node.get_logger().error(f'Maps directory not found: {maps_dir}')
+            self.statusBar.showMessage(f"Maps directory not found: {maps_dir}")
             return
         
-        # Find all yaml files (map configurations)
-        yaml_files = [f for f in os.listdir(maps_dir) if f.endswith('.yaml')]
+        # Use the default map
+        default_map = "yahboom_map"
+        map_file = f"{default_map}.yaml"
+        map_path = os.path.join(maps_dir, map_file)
         
-        if not yaml_files:
-            self.statusBar.showMessage('No map files found')
-            self.ros_node.get_logger().warn('No map files found')
+        if not os.path.exists(map_path):
+            self.statusBar.showMessage(f"Default map not found: {map_path}")
             return
-        
-        # Add maps to combo box
-        for yaml_file in sorted(yaml_files):
-            map_name = os.path.splitext(yaml_file)[0]
-            self.map_combo.addItem(map_name)
-        
-        self.statusBar.showMessage(f'Found {len(yaml_files)} maps')
+            
+        self.statusBar.showMessage(f"Loading default map: {default_map}")
+        self.loadMap(default_map)
     
-    def loadSelectedMap(self):
-        # Load the selected map
-        map_name = self.map_combo.currentText()
-        if not map_name:
+    def loadMap(self, map_name):
+        # Get the map file path
+        maps_dir = self.ros_node.maps_dir
+        map_file = os.path.join(maps_dir, f"{map_name}.yaml")
+        
+        # Check if file exists
+        if not os.path.exists(map_file):
+            self.statusBar.showMessage(f"Map file not found: {map_file}")
             return
         
-        self.ros_node.get_logger().info(f'Loading map: {map_name}')
-        self.statusBar.showMessage(f'Loading map: {map_name}...')
-        
-        # Get map file paths
-        maps_dir = os.path.join('/home/yahboom/b4m_yahboom/yahboomcar_nav/maps')
-        yaml_path = os.path.join(maps_dir, f'{map_name}.yaml')
-        
-        if not os.path.exists(yaml_path):
-            self.statusBar.showMessage(f'Map file not found: {yaml_path}')
-            self.ros_node.get_logger().error(f'Map file not found: {yaml_path}')
-            return
-        
-        # Parse YAML file to get map properties
+        # Load the map metadata
         try:
-            import yaml
-            with open(yaml_path, 'r') as f:
+            with open(map_file, 'r') as f:
                 map_data = yaml.safe_load(f)
+                
+            # Get the image file path
+            image_file = os.path.join(os.path.dirname(map_file), map_data['image'])
             
-            # Get map image path
-            image_path = os.path.join(maps_dir, map_data.get('image', ''))
-            if not os.path.exists(image_path):
-                self.statusBar.showMessage(f'Map image not found: {image_path}')
-                self.ros_node.get_logger().error(f'Map image not found: {image_path}')
+            # Check if image file exists
+            if not os.path.exists(image_file):
+                self.statusBar.showMessage(f"Map image not found: {image_file}")
                 return
+                
+            # Load the image
+            image = Image.open(image_file)
             
-            # Get map properties
-            resolution = map_data.get('resolution', 0.05)  # meters/pixel
-            origin = map_data.get('origin', [0, 0, 0])     # [x, y, theta] in meters
+            # Convert to QPixmap
+            if image.mode != "RGB":
+                image = image.convert("RGB")
             
-            # Load map image using PIL
-            try:
-                img = Image.open(image_path)
-                # Convert to RGB if needed
-                if img.mode != 'RGB':
-                    img = img.convert('RGB')
-                
-                # Convert PIL image to QPixmap
-                img_data = img.tobytes('raw', 'RGB')
-                qimg = QPixmap.fromImage(
-                    QImage(img_data, img.width, img.height, QImage.Format_RGB888)
-                )
-                
-                # Update map view
-                self.map_view.setMap(qimg, resolution, (origin[0], origin[1]))
-                
-                # Set current map in ROS node
-                self.ros_node.set_current_map(map_name)
-                
-                # Load waypoints for this map
-                self.updateWaypointList()
-                
-                self.statusBar.showMessage(f'Map loaded: {map_name}')
-                self.ros_node.get_logger().info(f'Map loaded: {map_name}')
-                
-            except Exception as e:
-                self.statusBar.showMessage(f'Failed to load map image: {e}')
-                self.ros_node.get_logger().error(f'Failed to load map image: {e}')
-        
+            # Convert PIL image to QImage
+            qimage = QImage(image.tobytes(), image.width, image.height, QImage.Format_RGB888)
+            pixmap = QPixmap.fromImage(qimage)
+            
+            # Set the map in the map view
+            resolution = map_data['resolution']
+            origin = map_data['origin']
+            self.map_view.setMap(pixmap, resolution, origin)
+            
+            # Update the ROS node with the current map
+            self.ros_node.set_current_map(map_name)
+            
+            # Update waypoint list
+            self.updateWaypointList()
+            
+            # Update map label
+            self.map_label.setText(f"Map: {map_name}")
+            
+            # Update status
+            self.statusBar.showMessage(f"Loaded map: {map_name}")
         except Exception as e:
-            self.statusBar.showMessage(f'Failed to parse map YAML: {e}')
-            self.ros_node.get_logger().error(f'Failed to parse map YAML: {e}')
+            self.statusBar.showMessage(f"Error loading map: {str(e)}")
+            traceback.print_exc()
     
     def updateWaypointList(self):
         # Update the waypoint list for the current map
         self.waypoint_list.clear()
         
-        map_name = self.map_combo.currentText()
-        if not map_name or map_name not in self.ros_node.waypoints:
+        # Get waypoints for current map
+        if self.ros_node.current_map not in self.ros_node.waypoints:
+            return
+        
+        # Get waypoints for current map and ensure it's a dictionary
+        map_waypoints = self.ros_node.waypoints[self.ros_node.current_map]
+        if not isinstance(map_waypoints, dict):
+            self.get_logger().warn(f'Waypoints for map {self.ros_node.current_map} is not a dictionary')
             return
         
         # Add waypoints to list
-        waypoints = self.ros_node.waypoints.get(map_name, {})
-        for name in sorted(waypoints.keys()):
+        for name in sorted(map_waypoints.keys()):
             self.waypoint_list.addItem(name)
             
         # Refresh the map view to show updated waypoints
@@ -274,12 +245,6 @@ class WaypointManagerGUI(QMainWindow):
         
         # Get selected waypoint name
         waypoint_name = selected_items[0].text()
-        map_name = self.map_combo.currentText()
-        
-        # Check if map and waypoint exist
-        if map_name not in self.ros_node.waypoints or waypoint_name not in self.ros_node.waypoints[map_name]:
-            self.statusBar.showMessage(f'Waypoint {waypoint_name} not found in map {map_name}')
-            return
         
         # Enable map click mode for editing
         self.statusBar.showMessage(f'Click on the map to set new position for {waypoint_name}')
@@ -297,7 +262,6 @@ class WaypointManagerGUI(QMainWindow):
         
         # Get selected waypoint name
         waypoint_name = selected_items[0].text()
-        map_name = self.map_combo.currentText()
         
         # Confirm deletion
         from PyQt5.QtWidgets import QMessageBox
@@ -309,7 +273,7 @@ class WaypointManagerGUI(QMainWindow):
         
         if reply == QMessageBox.Yes:
             # Delete waypoint
-            if self.ros_node.delete_waypoint(map_name, waypoint_name):
+            if self.ros_node.delete_waypoint(self.ros_node.current_map, waypoint_name):
                 self.updateWaypointList()
                 self.statusBar.showMessage(f'Deleted waypoint: {waypoint_name}')
                 # Refresh the map view to reflect the deletion
@@ -334,9 +298,8 @@ class WaypointManagerGUI(QMainWindow):
         self.selected_waypoint = waypoint_name
         
         # Show waypoint details in status bar
-        map_name = self.map_combo.currentText()
-        if map_name in self.ros_node.waypoints and waypoint_name in self.ros_node.waypoints[map_name]:
-            waypoint = self.ros_node.waypoints[map_name][waypoint_name]
+        if self.ros_node.current_map in self.ros_node.waypoints and waypoint_name in self.ros_node.waypoints[self.ros_node.current_map]:
+            waypoint = self.ros_node.waypoints[self.ros_node.current_map][waypoint_name]
             pos_x = waypoint['position']['x']
             pos_y = waypoint['position']['y']
             self.statusBar.showMessage(f'Selected waypoint: {waypoint_name} at ({pos_x:.2f}, {pos_y:.2f})')
@@ -492,33 +455,31 @@ class MapView(QWidget):
                 
                 if self.add_waypoint_mode:
                     # Handle adding a new waypoint
-                    map_name = self.parent.map_combo.currentText()
-                    if map_name:
-                        # Create a dialog for waypoint name input
-                        from PyQt5.QtWidgets import QInputDialog
-                        
-                        # Generate a suggested name
-                        existing_waypoints = self.parent.ros_node.waypoints.get(map_name, {})
-                        suggested_name = self.generateUniqueWaypointName(existing_waypoints)
-                        
-                        name, ok = QInputDialog.getText(
-                            self, 'New Waypoint', 'Enter waypoint name:', 
-                            text=suggested_name
-                        )
-                        
-                        if ok and name:
-                            # Ensure name is unique
-                            if name in existing_waypoints:
-                                QMessageBox.warning(
-                                    self, 'Duplicate Name', 
-                                    f'Waypoint name "{name}" already exists. Please choose a different name.'
-                                )
-                            else:
-                                # Add the waypoint
-                                self.parent.ros_node.add_waypoint(map_name, name, x, y)
-                                self.parent.updateWaypointList()
-                                self.parent.statusBar.showMessage(f'Added waypoint: {name}')
-                                self.update()  # Redraw the map view to show the new waypoint
+                    # Create a dialog for waypoint name input
+                    from PyQt5.QtWidgets import QInputDialog
+                    
+                    # Generate a suggested name
+                    existing_waypoints = self.parent.ros_node.waypoints.get(self.parent.ros_node.current_map, {})
+                    suggested_name = self.generateUniqueWaypointName(existing_waypoints)
+                    
+                    name, ok = QInputDialog.getText(
+                        self, 'New Waypoint', 'Enter waypoint name:', 
+                        text=suggested_name
+                    )
+                    
+                    if ok and name:
+                        # Ensure name is unique
+                        if name in existing_waypoints:
+                            QMessageBox.warning(
+                                self, 'Duplicate Name', 
+                                f'Waypoint name "{name}" already exists. Please choose a different name.'
+                            )
+                        else:
+                            # Add the waypoint
+                            self.parent.ros_node.add_waypoint(self.parent.ros_node.current_map, name, x, y)
+                            self.parent.updateWaypointList()
+                            self.parent.statusBar.showMessage(f'Added waypoint: {name}')
+                            self.update()  # Redraw the map view to show the new waypoint
                     
                     # Exit add waypoint mode
                     self.add_waypoint_mode = False
@@ -526,14 +487,12 @@ class MapView(QWidget):
                     
                 elif self.edit_waypoint_mode and self.edit_waypoint_name:
                     # Handle editing an existing waypoint
-                    map_name = self.parent.map_combo.currentText()
-                    if map_name:
-                        # Update the waypoint position
-                        if self.parent.ros_node.edit_waypoint(map_name, self.edit_waypoint_name, x, y):
-                            self.parent.statusBar.showMessage(f'Updated waypoint: {self.edit_waypoint_name}')
-                            self.update()  # Redraw the map view
-                        else:
-                            self.parent.statusBar.showMessage(f'Failed to update waypoint: {self.edit_waypoint_name}')
+                    # Update the waypoint position
+                    if self.parent.ros_node.edit_waypoint(self.parent.ros_node.current_map, self.edit_waypoint_name, x, y):
+                        self.parent.statusBar.showMessage(f'Updated waypoint: {self.edit_waypoint_name}')
+                        self.update()  # Redraw the map view
+                    else:
+                        self.parent.statusBar.showMessage(f'Failed to update waypoint: {self.edit_waypoint_name}')
                     
                     # Exit edit waypoint mode
                     self.edit_waypoint_mode = False
@@ -640,9 +599,8 @@ class MapView(QWidget):
             )
             
             # Draw waypoints
-            map_name = self.parent.map_combo.currentText()
-            if map_name and map_name in self.parent.ros_node.waypoints:
-                waypoints = self.parent.ros_node.waypoints[map_name]
+            if self.parent.ros_node.current_map in self.parent.ros_node.waypoints:
+                waypoints = self.parent.ros_node.waypoints[self.parent.ros_node.current_map]
                 for name, waypoint in waypoints.items():
                     # Get waypoint position
                     if 'position' in waypoint:
@@ -786,9 +744,13 @@ class WaypointManager(Node):
             self.mqtt_client = None
             self.mqtt_connected = False
             
-            # Initialize waypoints storage
-            self.waypoints = {}
-            self.current_map = None
+            # Initialize waypoints dictionary for the default map
+            self.waypoints = {"yahboom_map": {}}
+            self.current_map = "yahboom_map"
+            
+            # Set maps directory
+            self.maps_dir = os.path.join(get_package_share_directory('yahboomcar_nav'), 'maps')
+            self.get_logger().info(f'Maps directory: {self.maps_dir}')
             
             # Store waypoints in the repository root
             self.pkg_share = get_package_share_directory('b4m_waypoint_nav')
@@ -803,7 +765,7 @@ class WaypointManager(Node):
                 import traceback
                 traceback.print_exc()
                 # Reset to empty waypoints
-                self.waypoints = {}
+                self.waypoints = {"yahboom_map": {}}
                 
             # Setup MQTT client
             self.setup_mqtt_client()
@@ -859,25 +821,14 @@ class WaypointManager(Node):
         self.current_pose = msg.pose.pose
     
     def set_current_map(self, map_name):
-        """Set the current map"""
+        self.get_logger().info(f'Setting current map to: {map_name}')
         self.current_map = map_name
         
-        # Initialize waypoints for this map if not already present
-        if map_name not in self.waypoints:
-            self.waypoints[map_name] = {}
-            self.save_waypoints()
-        elif not isinstance(self.waypoints[map_name], dict):
-            # Convert to dictionary if it's not already
-            self.get_logger().warn(f'Converting waypoints for map {map_name} from {type(self.waypoints[map_name])} to dict')
-            if isinstance(self.waypoints[map_name], (set, list)):
-                self.waypoints[map_name] = {f'Waypoint {i+1}': wp for i, wp in enumerate(self.waypoints[map_name])}
-            else:
-                self.waypoints[map_name] = {}
-            self.save_waypoints()
+        # Load waypoints for this map
+        self.load_waypoints()
         
-        # Update visualization if in connected mode
-        if self.connected_mode:
-            self.publish_waypoint_markers()
+        # Publish waypoint markers
+        self.publish_waypoint_markers()
     
     def load_waypoints(self):
         """Load waypoints from JSON file"""
@@ -910,10 +861,10 @@ class WaypointManager(Node):
             except Exception as e:
                 self.get_logger().error(f'Failed to load waypoints: {e}')
                 # Start with empty waypoints
-                self.waypoints = {}
+                self.waypoints = {"yahboom_map": {}}
         else:
             self.get_logger().info('No waypoints file found, starting with empty waypoints')
-            self.waypoints = {}
+            self.waypoints = {"yahboom_map": {}}
     
     def save_waypoints(self):
         """Save waypoints to JSON file"""
@@ -927,92 +878,74 @@ class WaypointManager(Node):
             self.get_logger().error(f'Failed to save waypoints: {e}')
     
     def add_waypoint(self, map_name, name, x, y):
-        """Add a new waypoint"""
-        # Ensure the map exists in waypoints
-        if map_name not in self.waypoints:
-            self.waypoints[map_name] = {}
+        self.get_logger().info(f'Adding waypoint {name} at ({x}, {y}) to map {map_name}')
         
-        # Generate random color for visualization
-        import random
-        r = random.random()
-        g = random.random()
-        b = random.random()
+        # Check if waypoint with this name already exists
+        if name in self.waypoints[map_name]:
+            self.get_logger().warn(f'Waypoint {name} already exists, overwriting')
         
-        # Create waypoint with default orientation (identity quaternion)
-        waypoint = {
-            'name': name,
-            'position': {
-                'x': x,
-                'y': y
-            },
-            'orientation': {
-                'x': 0.0,
-                'y': 0.0,
-                'z': 0.0,
-                'w': 1.0
-            },
-            'timestamp': datetime.now().isoformat(),
-            'visualization': {
-                'color': {
-                    'r': r,
-                    'g': g,
-                    'b': b
-                },
-                'scale': 0.3
-            }
+        # Add the waypoint
+        self.waypoints[map_name][name] = {
+            'position': {'x': x, 'y': y},
+            'orientation': {'x': 0.0, 'y': 0.0, 'z': 0.0, 'w': 1.0}
         }
         
-        # Add to waypoints dictionary
-        self.waypoints[map_name][name] = waypoint
+        # If we have current robot pose, update orientation
+        if hasattr(self, 'current_pose') and self.current_pose is not None:
+            self.waypoints[map_name][name]['orientation'] = {
+                'x': self.current_pose.orientation.x,
+                'y': self.current_pose.orientation.y,
+                'z': self.current_pose.orientation.z,
+                'w': self.current_pose.orientation.w
+            }
         
         # Save waypoints
         self.save_waypoints()
         
-        # Update visualization if in connected mode
-        if self.connected_mode:
-            self.publish_waypoint_markers()
+        # Publish waypoint markers
+        self.publish_waypoint_markers()
         
-        self.get_logger().info(f'Added waypoint {name} at ({x:.2f}, {y:.2f})')
-        return True
+        # Return the waypoint
+        return self.waypoints[map_name][name]
     
     def edit_waypoint(self, map_name, name, x, y):
-        """Edit an existing waypoint"""
-        if map_name not in self.waypoints or name not in self.waypoints[map_name]:
-            self.get_logger().error(f'Waypoint {name} not found in map {map_name}')
-            return False
+        self.get_logger().info(f'Editing waypoint {name} to ({x}, {y}) on map {map_name}')
         
-        # Update position
+        # Check if waypoint exists
+        if name not in self.waypoints[map_name]:
+            self.get_logger().error(f'Waypoint {name} not found')
+            return None
+        
+        # Update the waypoint position
         self.waypoints[map_name][name]['position']['x'] = x
         self.waypoints[map_name][name]['position']['y'] = y
-        self.waypoints[map_name][name]['timestamp'] = datetime.now().isoformat()
         
         # Save waypoints
         self.save_waypoints()
         
-        # Update visualization if in connected mode
-        if self.connected_mode:
-            self.publish_waypoint_markers()
+        # Publish waypoint markers
+        self.publish_waypoint_markers()
         
-        self.get_logger().info(f'Updated waypoint {name} to ({x:.2f}, {y:.2f})')
-        return True
+        # Return the updated waypoint
+        return self.waypoints[map_name][name]
     
     def delete_waypoint(self, map_name, name):
-        """Delete a waypoint"""
-        if map_name not in self.waypoints or name not in self.waypoints[map_name]:
-            self.get_logger().error(f'Waypoint {name} not found in map {map_name}')
+        self.get_logger().info(f'Deleting waypoint {name} from map {map_name}')
+        
+        # Check if waypoint exists
+        if name not in self.waypoints[map_name]:
+            self.get_logger().error(f'Waypoint {name} not found')
             return False
         
-        # Remove waypoint
+        # Delete the waypoint
         del self.waypoints[map_name][name]
         
         # Save waypoints
         self.save_waypoints()
         
-        # Update visualization if in connected mode
-        if self.connected_mode:
-            self.publish_waypoint_markers()
+        # Publish waypoint markers
+        self.publish_waypoint_markers()
         
-        self.get_logger().info(f'Deleted waypoint {name}')
         return True
     
     def setup_mqtt_client(self):

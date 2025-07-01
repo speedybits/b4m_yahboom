@@ -95,10 +95,18 @@ class B4MWaypointNav(Node):
         self.declare_parameter('mqtt_broker', 'localhost')
         self.declare_parameter('mqtt_port', 1883)
         self.declare_parameter('mqtt_topic_prefix', 'yahboom')
+        self.declare_parameter('mqtt_username', '')
+        self.declare_parameter('mqtt_password', '')
         
         self.mqtt_broker = self.get_parameter('mqtt_broker').value
         self.mqtt_port = self.get_parameter('mqtt_port').value
         self.mqtt_topic_prefix = self.get_parameter('mqtt_topic_prefix').value
+        self.mqtt_username = self.get_parameter('mqtt_username').value
+        self.mqtt_password = self.get_parameter('mqtt_password').value
+        
+        # Log MQTT connection parameters (excluding password)
+        self.get_logger().info(f'MQTT Configuration - Broker: {self.mqtt_broker}, Port: {self.mqtt_port}, Username: {self.mqtt_username}')
+        logging.info(f'MQTT Configuration - Broker: {self.mqtt_broker}, Port: {self.mqtt_port}, Username: {self.mqtt_username}')
         self.mqtt_client = None
         self.mqtt_connected = False
         
@@ -595,6 +603,13 @@ class B4MWaypointNav(Node):
         try:
             self.get_logger().info(f'Connecting to MQTT broker at {self.mqtt_broker}:{self.mqtt_port}')
             logging.info(f'Connecting to MQTT broker at {self.mqtt_broker}:{self.mqtt_port}')
+            
+            # Set username and password if provided
+            if self.mqtt_username and self.mqtt_password:
+                self.get_logger().info(f'Using authentication for MQTT broker with username: {self.mqtt_username}')
+                logging.info(f'Using authentication for MQTT broker with username: {self.mqtt_username}')
+                self.mqtt_client.username_pw_set(self.mqtt_username, self.mqtt_password)
+            
             self.mqtt_client.connect(self.mqtt_broker, self.mqtt_port)
             self.mqtt_client.loop_start()
         except Exception as e:
