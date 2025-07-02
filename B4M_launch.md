@@ -76,12 +76,6 @@ python3 /home/yahboom/b4m_yahboom/b4m_waypoint_nav/b4m_waypoint_nav/b4m_waypoint
 **IMPORTANT**: Always stop ALL existing waypoint manager GUI instances before starting a new one to ensure the latest code changes are used and to prevent conflicts.
 
 ```bash
-# First, stop ALL existing waypoint manager GUI instances
-pkill -9 -f "waypoint_manager_node.py"
-
-# Verify all instances are stopped
-ps aux | grep -i waypoint_manager_node.py
-
 # Then start the waypoint manager GUI
 cd /home/yahboom/b4m_yahboom
 . install/setup.bash
