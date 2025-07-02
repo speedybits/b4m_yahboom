@@ -38,11 +38,6 @@ find_maps() {
         # Get base name without extension
         local base_name=$(basename "$pgm_file" .pgm)
         
-        # Skip yahboom_map as it's the target name
-        if [[ "$base_name" == "yahboom_map" ]]; then
-            continue
-        fi
-        
         # Check if corresponding .yaml file exists
         if [[ -f "$MAPS_DIR/$base_name.yaml" ]]; then
             echo "$base_name"
@@ -116,14 +111,18 @@ process_selection() {
     local selected_map=${maps[$((selection-1))]}
     echo -e "\n${GREEN}Selected map: $selected_map${NC}"
     
-    # Copy map files
-    echo "Copying map files to source directory..."
-    cp "$MAPS_DIR/$selected_map.pgm" "$MAPS_DIR/yahboom_map.pgm"
-    cp "$MAPS_DIR/$selected_map.yaml" "$MAPS_DIR/yahboom_map.yaml"
-    
-    if [[ $? -ne 0 ]]; then
-        echo -e "${RED}Error copying map files${NC}"
-        return 1
+    # Only copy files if not selecting yahboom_map
+    if [[ "$selected_map" != "yahboom_map" ]]; then
+        echo "Copying map files to source directory..."
+        cp "$MAPS_DIR/$selected_map.pgm" "$MAPS_DIR/yahboom_map.pgm"
+        cp "$MAPS_DIR/$selected_map.yaml" "$MAPS_DIR/yahboom_map.yaml"
+        
+        if [[ $? -ne 0 ]]; then
+            echo -e "${RED}Error copying map files${NC}"
+            return 1
+        fi
+    else
+        echo -e "${YELLOW}Using existing yahboom_map files (no copying needed)${NC}"
     fi
     
     # Run colcon build
