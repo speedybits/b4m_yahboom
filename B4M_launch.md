@@ -32,7 +32,7 @@ cd /home/yahboom/b4m_yahboom
 ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py
 ```
 
-### 4. Start RViz for Visualization (Optional)
+### 4. Start RViz for Visualization
 
 ```bash
 cd /home/yahboom/b4m_yahboom
@@ -48,23 +48,12 @@ cd /home/yahboom/b4m_yahboom
 ros2 launch yahboomcar_nav waypoint_navigation_launch.py maps:=/home/yahboom/b4m_yahboom/yahboomcar_nav/maps/yahboom_map.yaml
 ```
 
-> **NOTE**: Explicitly specifying the map file path ensures that the correct map is loaded. If you see the wrong map in RViz or get a "Frame [map] does not exist" error, this command should fix the issue by loading the correct map file.
-
 ### 6. Verify Map Display in RViz
 
 > **IMPORTANT**: After RViz starts, verify that the correct map is displayed:
-> 1. Check that the Fixed Frame in the Global Options panel is set to "map"
-> 2. Verify that the Map display is enabled and showing the correct map file (yahboom_map.pgm)
-> 3. If the wrong map appears, try the following:
->    - Click on the Map display in the left panel
->    - Change the Topic to "/map" if it's not already set
->    - Set "Draw Behind" to true
->    - If the map still doesn't appear correctly, restart RViz and try again
 
 
 ### 7. Initial Robot Positioning
-
-**IMPORTANT**: The robot must be placed at the exact same starting position and orientation each time.
 
 1. Place the robot at the designated starting position in your environment
 2. Use the "2D Pose Estimate" button in RViz to manually set the robot's initial pose
@@ -99,7 +88,7 @@ cd /home/yahboom/b4m_yahboom
 ros2 run b4m_waypoint_nav waypoint_manager_node.py
 ```
 
-> **IMPORTANT**: The waypoint manager GUI sends coordinate-based navigation commands in JSON format. The navigation node only accepts commands in the format: `{"command": "goto", "waypoint_id": "debug_name", "position": {"x": float, "y": float}, "orientation": {"x": float, "y": float, "z": float, "w": float}}`. Legacy plain text waypoint names are no longer supported.
+> **IMPORTANT**: The waypoint manager GUI sends coordinate-based navigation commands in JSON format. The navigation node only accepts commands in the format: `{"command": "goto", "waypoint_id": "debug_name", "position": {"x": float, "y": float}, "orientation": {"x": float, "y": float, "z": float, "w": float}}`.
 
 ## Testing the Waypoint Manager GUI
 
