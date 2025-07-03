@@ -22,7 +22,7 @@ page data that needs to be displayed.
 
 This case is located in the factory docker container. The source code location is:
 
-/home/yahboom/b4m_yahboom/src/pkg_service
+/home/yahboom/b4m_yahboom/pkg_service
 
  
 

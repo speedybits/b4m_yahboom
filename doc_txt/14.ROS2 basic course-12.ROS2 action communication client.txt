@@ -19,9 +19,9 @@ action client.
 
 This case is located in the factory docker container. The source code location is:
 
-/home/yahboom/b4m_yahboom/src/pkg_interfaces
+/home/yahboom/b4m_yahboom/pkg_interfaces
 
-/home/yahboom/b4m_yahboom/src/pkg_action
+/home/yahboom/b4m_yahboom/pkg_action
 
  
 

@@ -13,7 +13,7 @@ the system. In this lesson, we will implement this function ourselves.
 2. Source code path  
 For the complete code, please view the following path in docker:
 
-/home/yahboom/b4m_yahboom/src/pkg_tf
+/home/yahboom/b4m_yahboom/pkg_tf
 
  
 

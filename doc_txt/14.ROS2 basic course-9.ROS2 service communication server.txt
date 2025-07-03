@@ -22,7 +22,7 @@ needs to be displayed after receiving it.
 
 This case is located in the factory docker container. The source code location is:
 
-/home/yahboom/b4m_yahboom/src/pkg_service
+/home/yahboom/b4m_yahboom/pkg_service
 
  
 
