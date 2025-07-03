@@ -54,7 +54,7 @@ ros2 launch yahboomcar_nav display_launch.py
 In another terminal, launch the waypoint navigation system:
 
 ```bash
-ros2 launch yahboomcar_nav waypoint_navigation_launch.py
+ros2 launch yahboomcar_nav waypoint_navigation_launch.py maps:=/home/yahboom/b4m_yahboom/yahboomcar_nav/maps/yahboom_map.yaml
 ```
 
 ### 4. Set Initial Pose

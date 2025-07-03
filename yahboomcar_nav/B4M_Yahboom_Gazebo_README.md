@@ -83,7 +83,7 @@ Without setting the initial pose:
 ```bash
 cd /home/yahboom/b4m_yahboom
 source /opt/ros/humble/setup.bash
-ros2 launch yahboomcar_nav/launch/waypoint_navigation_launch.py
+ros2 launch yahboomcar_nav/launch/waypoint_navigation_launch.py maps:=/home/yahboom/b4m_yahboom/yahboomcar_nav/maps/yahboom_map.yaml
 ```
 
 ### Using Keyboard Commands
