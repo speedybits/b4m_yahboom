@@ -132,7 +132,7 @@ The B4M Waypoint Navigation system supports MQTT for remote control. To test thi
 ## Troubleshooting
 
 ### Map Not Found
-- Ensure maps are in the correct directory: `/home/yahboom/b4m_yahboom/src/yahboomcar_nav/maps`
+- Ensure maps are in the correct directory: `/home/yahboom/b4m_yahboom/yahboomcar_nav/maps`
 - Maps should have both .pgm and .yaml files
 - The default map is yahboom_map
 
@@ -148,6 +148,6 @@ The B4M Waypoint Navigation system supports MQTT for remote control. To test thi
 
 ## File Locations
 
-- **Maps**: `/home/yahboom/b4m_yahboom/src/yahboomcar_nav/maps`
+- **Maps**: `/home/yahboom/b4m_yahboom/yahboomcar_nav/maps`
 - **Waypoints**: `/home/yahboom/b4m_yahboom/waypoints.json`
 - **B4M Waypoint Nav Code**: `/home/yahboom/b4m_yahboom/b4m_waypoint_nav/b4m_waypoint_nav/`

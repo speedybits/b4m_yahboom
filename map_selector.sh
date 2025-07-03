@@ -3,7 +3,7 @@
 # Map Selector for Yahboom Navigation
 # This script provides a text-based menu to select which map to use for navigation
 # It copies the selected map files to yahboom_map.pgm and yahboom_map.yaml
-# Then runs colcon build to update the install directory
+# No rebuild is necessary as map files are loaded at runtime
 
 # Define colors for better readability
 GREEN='\033[0;32m'
@@ -125,16 +125,8 @@ process_selection() {
         echo -e "${YELLOW}Using existing yahboom_map files (no copying needed)${NC}"
     fi
     
-    # Run colcon build
-    echo -e "\nRunning colcon build to update installed maps..."
-    cd /home/yahboom/b4m_yahboom
-    . /opt/ros/humble/setup.bash
-    colcon build --packages-select yahboomcar_nav
-    
-    if [[ $? -ne 0 ]]; then
-        echo -e "${RED}Error running colcon build${NC}"
-        return 1
-    fi
+    # No need to run colcon build as map files are loaded at runtime
+    echo -e "\n${BLUE}Note: No rebuild necessary - map files are loaded at runtime${NC}"
     
     echo -e "\n${GREEN}Map selection complete! The robot will now use the '$selected_map' map for navigation.${NC}"
     echo -e "\nTo use this map, launch the navigation system with:"

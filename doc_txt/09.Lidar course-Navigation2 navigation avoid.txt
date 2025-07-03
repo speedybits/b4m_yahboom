@@ -1,4 +1,4 @@
-﻿Navigation2 navigation avoid  
+Navigation2 navigation avoid  
 1、Introduction to Navigation2  
 Navigation2 overall architecture diagram
 
@@ -76,9 +76,11 @@ ros2 launch yahboomcar_nav display_launch.py
 At this time, the map loading is not displayed because the navigation program has not been started 
 yet, so there is no map loading. Next run the navigation node and enter in the terminal.
 
-ros2 launch  yahboomcar_nav navigation_dwb_launch.py
+ros2 launch yahboomcar_nav navigation_dwb_launch.py maps:=/home/yahboom/b4m_yahboom/yahboomcar_nav/maps/yahboom_map.yaml
 
 
+
+IMPORTANT: When launching Navigation2 after creating a new map with Cartographer, you must explicitly specify the map file path using the 'maps' parameter as shown above. Otherwise, Navigation2 may not load your most recent map.
 
 At this point you can see that the map is loaded, and then we click [2D Pose Estimate] to set the initial 
 pose for the car. According to the position of the car in the actual environment, click and drag with the 
