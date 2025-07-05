@@ -26,6 +26,7 @@ The implementation will build upon the existing Navigation2 framework as describ
    - Tool for waypoint creation, editing, and management
    - Map visualization with waypoint overlay
    - Add, edit, delete, and rename waypoints
+   - Display X/Y coordinates next to waypoint names on the left side of the interface (formatted to 2 decimal places in parentheses)
    - Send navigation commands via MQTT for testing purposes
    - Designed with loose coupling to be replaceable by other systems
 
@@ -476,6 +477,9 @@ The system supports dynamic waypoint management without requiring navigation nod
 4. **GUI Integration**: 
    - The Waypoint Manager GUI shows all waypoints in the yahboom_map section
    - The GUI title or status bar will indicate that it's working with yahboom_map
+   - Waypoint list displays the name of each waypoint along with its X/Y coordinates (formatted to 2 decimal places in parentheses)
+   - Coordinates are displayed as static values showing the saved waypoint position
+   - Only the waypoint name (without coordinates) is used for reference when editing or deleting waypoints
    - The GUI is designed as a standalone tool that communicates with the navigation system solely through MQTT
 
 ### Best Practices
