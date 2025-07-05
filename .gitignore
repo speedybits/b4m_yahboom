@@ -105,3 +105,9 @@ uros_ws/*
 uros_ws/src/*
 !uros_ws/src/.gitkeep
 b4m_waypoint_nav/logs/waypoint_nav.log
+
+# Ignore all .pgm and .yaml files in yahboomcar_nav/maps except for yahboom_map.pgm and yahboom_map.yaml
+yahboomcar_nav/maps/*.pgm
+yahboomcar_nav/maps/*.yaml
+!yahboomcar_nav/maps/yahboom_map.pgm
+!yahboomcar_nav/maps/yahboom_map.yaml
