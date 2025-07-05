@@ -23,7 +23,7 @@ from std_msgs.msg import String
 import paho.mqtt.client as mqtt
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                             QHBoxLayout, QLabel, QPushButton, QListWidget, 
+                             QHBoxLayout, QLabel, QPushButton, QListWidget, QListWidgetItem,
                              QSplitter, QComboBox, QGroupBox, QStatusBar,
                              QMessageBox, QFileDialog, QInputDialog)
 from PyQt5.QtCore import Qt, QSettings, QTimer, QRectF
@@ -71,6 +71,9 @@ class WaypointManagerGUI(QMainWindow):
         waypoint_group = QGroupBox('Waypoints')
         waypoint_layout = QVBoxLayout(waypoint_group)
         self.waypoint_list = QListWidget()
+        # Enable rich text interpretation for HTML formatting
+        self.waypoint_list.setTextElideMode(Qt.ElideRight)
+        self.waypoint_list.setWordWrap(True)
         waypoint_layout.addWidget(self.waypoint_list)
         left_layout.addWidget(waypoint_group)
         
@@ -220,10 +223,25 @@ class WaypointManagerGUI(QMainWindow):
             self.get_logger().warn(f'Waypoints for map {self.ros_node.current_map} is not a dictionary')
             return
         
-        # Add waypoints to list
+        # Add waypoints to list with coordinates
         for name in sorted(map_waypoints.keys()):
-            self.waypoint_list.addItem(name)
-            
+            waypoint = map_waypoints[name]
+            if 'position' in waypoint and isinstance(waypoint['position'], dict):
+                pos_x = waypoint['position'].get('x', 0.0)
+                pos_y = waypoint['position'].get('y', 0.0)
+                # Create a list item with the waypoint name and coordinates
+                item = QListWidgetItem()
+                # Display coordinates in parentheses without HTML formatting
+                item.setText(f"{name} ({pos_x:.2f}, {pos_y:.2f})")
+                # Store the original name for reference
+                item.setData(Qt.UserRole, name)
+                self.waypoint_list.addItem(item)
+            else:
+                # Fallback for waypoints without valid position data
+                item = QListWidgetItem(name)
+                item.setData(Qt.UserRole, name)
+                self.waypoint_list.addItem(item)
+        
         # Refresh the map view to show updated waypoints
         self.map_view.update()
         
@@ -260,8 +278,9 @@ class WaypointManagerGUI(QMainWindow):
             self.statusBar.showMessage('No waypoint selected')
             return
         
-        # Get selected waypoint name
-        waypoint_name = selected_items[0].text()
+        # Get selected waypoint name from UserRole data if available
+        item = selected_items[0]
+        waypoint_name = item.data(Qt.UserRole) if item.data(Qt.UserRole) else item.text()
         
         # Confirm deletion
         from PyQt5.QtWidgets import QMessageBox
@@ -283,7 +302,9 @@ class WaypointManagerGUI(QMainWindow):
     
     def waypointSelected(self, item):
         # Handle waypoint selection
-        waypoint_name = item.text()
+        # Get the original waypoint name from UserRole data if available
+        waypoint_name = item.data(Qt.UserRole) if item.data(Qt.UserRole) else item.text()
+        
         self.ros_node.get_logger().info(f'Waypoint selected: {waypoint_name}')
         
         # Update map view to highlight selected waypoint
