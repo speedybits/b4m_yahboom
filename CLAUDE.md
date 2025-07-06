@@ -99,6 +99,8 @@ The system follows a specific startup sequence (automated in `b4m_HA_launch.sh`)
 - **GUI tool**: PyQt5-based waypoint manager with map visualization
 - **Coordinate-based navigation**: Direct coordinate sending via MQTT eliminates waypoint lookup
 - **Waypoint structure**: Includes position, orientation, timestamp, and visualization properties
+- **Map format support**: Compatible with both Gmapping and Cartographer maps
+- **Coordinate transformation**: Proper ROS coordinate system handling (bottom-left origin)
 
 ### Multi-Robot Support
 The system supports multi-robot configurations:
@@ -164,6 +166,9 @@ The B4M system integrates with Home Assistant via MQTT:
 - **Map visualization**: Click-to-place waypoints with zoom/pan support
 - **Error handling**: Terminal-based logging with ROS2 logging mechanisms
 - **Connected mode**: Automatic robot detection and live position updates
+- **Map format handling**: Enhanced support for different image formats (P, L, RGB modes)
+- **Coordinate debugging**: Built-in coordinate conversion testing and validation
+- **View controls**: Reset view, zoom, pan, and proper map centering
 
 ## Testing Strategy
 

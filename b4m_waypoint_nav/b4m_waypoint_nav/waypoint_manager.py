@@ -86,10 +86,13 @@ class WaypointManagerGUI(QMainWindow):
         self.navigate_waypoint_btn = QPushButton('Go to Selected Waypoint')
         self.navigate_waypoint_btn.setStyleSheet('background-color: #4CAF50; color: white; font-weight: bold;')
         self.navigate_waypoint_btn.setEnabled(False)  # Disabled until a waypoint is selected
+        self.reset_view_btn = QPushButton('Reset Map View')
+        self.reset_view_btn.setStyleSheet('background-color: #2196F3; color: white;')
         actions_layout.addWidget(self.add_waypoint_btn)
         actions_layout.addWidget(self.edit_waypoint_btn)
         actions_layout.addWidget(self.delete_waypoint_btn)
         actions_layout.addWidget(self.navigate_waypoint_btn)
+        actions_layout.addWidget(self.reset_view_btn)
         left_layout.addWidget(actions_group)
         
         # Create right panel (map view)
@@ -115,6 +118,7 @@ class WaypointManagerGUI(QMainWindow):
         self.edit_waypoint_btn.clicked.connect(self.editWaypoint)
         self.delete_waypoint_btn.clicked.connect(self.deleteWaypoint)
         self.navigate_waypoint_btn.clicked.connect(self.navigateToWaypoint)
+        self.reset_view_btn.clicked.connect(self.resetMapView)
         self.waypoint_list.itemClicked.connect(self.waypointSelected)
         
         # Load default map
@@ -178,21 +182,67 @@ class WaypointManagerGUI(QMainWindow):
                 self.statusBar.showMessage(f"Map image not found: {image_file}")
                 return
                 
-            # Load the image
+            # Load the image with enhanced handling for different formats
             image = Image.open(image_file)
             
-            # Convert to QPixmap
-            if image.mode != "RGB":
-                image = image.convert("RGB")
+            # Debug: Log image information
+            self.ros_node.get_logger().info(f'Loaded image: {image_file}')
+            self.ros_node.get_logger().info(f'Image mode: {image.mode}, size: {image.size}')
             
-            # Convert PIL image to QImage
-            qimage = QImage(image.tobytes(), image.width, image.height, QImage.Format_RGB888)
+            # Handle different image modes appropriately
+            if image.mode == 'P':
+                # Palette mode - convert to RGB to handle properly
+                image = image.convert('RGB')
+            elif image.mode == 'L':
+                # Grayscale - convert to RGB for consistent handling
+                image = image.convert('RGB')
+            elif image.mode == '1':
+                # Monochrome - convert to RGB
+                image = image.convert('RGB')
+            elif image.mode != 'RGB':
+                # Any other mode - convert to RGB
+                image = image.convert('RGB')
+            
+            # Verify image is not corrupted or empty
+            if image.width == 0 or image.height == 0:
+                self.statusBar.showMessage(f"Invalid image dimensions: {image.width}x{image.height}")
+                return
+                
+            # Convert PIL image to QImage with proper format
+            image_data = image.tobytes()
+            qimage = QImage(image_data, image.width, image.height, QImage.Format_RGB888)
+            
+            # Verify QImage is valid
+            if qimage.isNull():
+                self.statusBar.showMessage("Failed to create QImage from map data")
+                return
+                
             pixmap = QPixmap.fromImage(qimage)
             
+            # Verify pixmap is valid
+            if pixmap.isNull():
+                self.statusBar.showMessage("Failed to create QPixmap from QImage")
+                return
+            
+            # Extract and validate map metadata
+            resolution = map_data.get('resolution', 0.05)  # Default to 5cm/pixel
+            origin = map_data.get('origin', [0, 0, 0])      # Default origin
+            
+            # Log map metadata for debugging
+            self.ros_node.get_logger().info(f'Map resolution: {resolution} meters/pixel')
+            self.ros_node.get_logger().info(f'Map origin: {origin}')
+            self.ros_node.get_logger().info(f'Map image size: {image.width}x{image.height} pixels')
+            
+            # Calculate map bounds for debugging
+            map_width_meters = image.width * resolution
+            map_height_meters = image.height * resolution
+            self.ros_node.get_logger().info(f'Map size: {map_width_meters:.2f}x{map_height_meters:.2f} meters')
+            
             # Set the map in the map view
-            resolution = map_data['resolution']
-            origin = map_data['origin']
             self.map_view.setMap(pixmap, resolution, origin)
+            
+            # Test coordinate conversion for debugging
+            self.map_view.testCoordinateConversion()
             
             # Update the ROS node with the current map
             self.ros_node.set_current_map(map_name)
@@ -397,6 +447,11 @@ class WaypointManagerGUI(QMainWindow):
         else:
             self.statusBar.showMessage('MQTT disconnected', 3000)  # Show for 3 seconds
             self.navigate_waypoint_btn.setEnabled(False)
+    
+    def resetMapView(self):
+        """Reset the map view to center and fit the map"""
+        self.map_view.resetView()
+        self.statusBar.showMessage('Map view reset to center')
 
 class MapView(QWidget):
     def __init__(self, parent):
@@ -436,6 +491,10 @@ class MapView(QWidget):
         self.scale_factor = 1.0
         self.map_offset_x = 0
         self.map_offset_y = 0
+        
+        # Reset view to center and fit the map
+        self.resetView()
+        
         self.update()  # Trigger repaint
     
     def setWaypoints(self, waypoints):
@@ -567,36 +626,126 @@ class MapView(QWidget):
         return f"{base_name} {counter}"
     
     def pixelToMapCoordinates(self, pixel_x, pixel_y):
-        """Convert pixel coordinates to map coordinates"""
+        """Convert pixel coordinates to map coordinates using ROS map conventions
+        
+        ROS map coordinate system:
+        - Origin (0,0) is typically at the bottom-left of the map in meters
+        - X-axis points right (east)
+        - Y-axis points up (north)
+        
+        Image coordinate system:
+        - Origin (0,0) is at the top-left of the image in pixels
+        - X-axis points right
+        - Y-axis points down
+        """
         if not self.map_image:
             return 0, 0
             
-        # Adjust for scale and offset
-        adjusted_x = (pixel_x - self.map_offset_x) / self.scale_factor
-        adjusted_y = (pixel_y - self.map_offset_y) / self.scale_factor
+        # Adjust for scale and offset to get image pixel coordinates
+        image_x = (pixel_x - self.map_offset_x) / self.scale_factor
+        image_y = (pixel_y - self.map_offset_y) / self.scale_factor
         
-        # Convert to map coordinates (ROS uses a different coordinate system)
-        # In ROS, the origin is typically at the bottom-left of the map
-        # In Qt, the origin is at the top-left of the widget
-        map_x = adjusted_x * self.map_resolution + self.map_origin[0]
-        map_y = (self.map_image.height() - adjusted_y) * self.map_resolution + self.map_origin[1]
+        # Clamp to image bounds to prevent invalid coordinates
+        image_x = max(0, min(self.map_image.width() - 1, image_x))
+        image_y = max(0, min(self.map_image.height() - 1, image_y))
+        
+        # Convert from image coordinates to map coordinates
+        # ROS maps have origin at bottom-left, images have origin at top-left
+        # So we need to flip the Y coordinate
+        map_x = image_x * self.map_resolution + self.map_origin[0]
+        map_y = (self.map_image.height() - 1 - image_y) * self.map_resolution + self.map_origin[1]
         
         return map_x, map_y
     
     def mapToPixelCoordinates(self, map_x, map_y):
-        """Convert map coordinates to pixel coordinates"""
+        """Convert map coordinates to pixel coordinates using ROS map conventions
+        
+        This is the inverse of pixelToMapCoordinates
+        """
         if not self.map_image:
             return 0, 0
             
-        # Convert from map coordinates to pixel coordinates
-        pixel_x = (map_x - self.map_origin[0]) / self.map_resolution
-        pixel_y = self.map_image.height() - (map_y - self.map_origin[1]) / self.map_resolution
+        # Convert from map coordinates to image coordinates
+        # First, convert map position to image pixel position
+        image_x = (map_x - self.map_origin[0]) / self.map_resolution
+        # Flip Y coordinate: ROS origin at bottom-left, image origin at top-left
+        image_y = (self.map_image.height() - 1) - (map_y - self.map_origin[1]) / self.map_resolution
         
-        # Adjust for scale and offset
-        adjusted_x = pixel_x * self.scale_factor + self.map_offset_x
-        adjusted_y = pixel_y * self.scale_factor + self.map_offset_y
+        # Clamp to image bounds
+        image_x = max(0, min(self.map_image.width() - 1, image_x))
+        image_y = max(0, min(self.map_image.height() - 1, image_y))
         
-        return adjusted_x, adjusted_y
+        # Apply scale and offset for display
+        display_x = image_x * self.scale_factor + self.map_offset_x
+        display_y = image_y * self.scale_factor + self.map_offset_y
+        
+        return display_x, display_y
+    
+    def testCoordinateConversion(self):
+        """Test coordinate conversion functions for debugging
+        
+        This function tests the round-trip conversion from pixel to map coordinates
+        and back to verify the coordinate transformation is working correctly.
+        """
+        if not self.map_image:
+            return
+            
+        # Test several points
+        test_points = [
+            (0, 0),  # Top-left corner
+            (self.map_image.width() - 1, 0),  # Top-right corner
+            (0, self.map_image.height() - 1),  # Bottom-left corner
+            (self.map_image.width() - 1, self.map_image.height() - 1),  # Bottom-right corner
+            (self.map_image.width() // 2, self.map_image.height() // 2),  # Center
+        ]
+        
+        print("=== Coordinate Conversion Test ===")
+        print(f"Map image size: {self.map_image.width()}x{self.map_image.height()}")
+        print(f"Map resolution: {self.map_resolution}")
+        print(f"Map origin: {self.map_origin}")
+        
+        for i, (pixel_x, pixel_y) in enumerate(test_points):
+            # Convert to map coordinates
+            map_x, map_y = self.pixelToMapCoordinates(pixel_x, pixel_y)
+            
+            # Convert back to pixel coordinates
+            back_pixel_x, back_pixel_y = self.mapToPixelCoordinates(map_x, map_y)
+            
+            print(f"Test {i+1}: Pixel({pixel_x}, {pixel_y}) -> Map({map_x:.3f}, {map_y:.3f}) -> Pixel({back_pixel_x:.1f}, {back_pixel_y:.1f})")
+            
+        print("=== End Coordinate Test ===\n")
+    
+    def resetView(self):
+        """Reset the map view to center and fit the map in the widget"""
+        if not self.map_image:
+            return
+            
+        # Get widget dimensions
+        widget_width = self.width()
+        widget_height = self.height()
+        
+        if widget_width <= 0 or widget_height <= 0:
+            return
+            
+        # Calculate scale to fit map in widget with some padding
+        padding = 50  # pixels of padding
+        scale_x = (widget_width - 2 * padding) / self.map_image.width()
+        scale_y = (widget_height - 2 * padding) / self.map_image.height()
+        
+        # Use the smaller scale to ensure the entire map fits
+        self.scale_factor = min(scale_x, scale_y, 1.0)  # Don't scale larger than 1:1
+        
+        # Center the map in the widget
+        scaled_width = self.map_image.width() * self.scale_factor
+        scaled_height = self.map_image.height() * self.scale_factor
+        
+        self.map_offset_x = (widget_width - scaled_width) / 2
+        self.map_offset_y = (widget_height - scaled_height) / 2
+        
+        # Update the display
+        self.update()
+        
+        print(f"Reset view: scale={self.scale_factor:.2f}, offset=({self.map_offset_x:.1f}, {self.map_offset_y:.1f})")
     
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -612,12 +761,22 @@ class MapView(QWidget):
             x_offset = int(self.map_offset_x)
             y_offset = int(self.map_offset_y)
             
-            # Use the correct overload of drawPixmap with integer coordinates
-            painter.drawPixmap(
-                x_offset, y_offset, 
-                scaled_width, scaled_height,
-                self.map_image
-            )
+            # Check if the map would be visible in the current view
+            widget_rect = self.rect()
+            map_rect = QRectF(x_offset, y_offset, scaled_width, scaled_height)
+            
+            if widget_rect.intersects(map_rect):
+                # Only draw if the map is at least partially visible
+                painter.drawPixmap(
+                    x_offset, y_offset, 
+                    scaled_width, scaled_height,
+                    self.map_image
+                )
+            else:
+                # Draw a placeholder to indicate the map is off-screen
+                painter.setPen(QColor(150, 150, 150))
+                painter.drawText(self.rect(), Qt.AlignCenter, 
+                               f'Map off-screen\nZoom: {self.scale_factor:.1f}x\nOffset: ({x_offset}, {y_offset})')
             
             # Draw waypoints
             if self.parent.ros_node.current_map in self.parent.ros_node.waypoints:
