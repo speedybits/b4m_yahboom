@@ -1,0 +1,183 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Build Commands
+
+### ROS2 Workspace Build
+```bash
+# Build the main workspace
+colcon build --symlink-install
+
+# Build specific packages
+colcon build --packages-select package_name
+
+# Build with parallel jobs
+colcon build --parallel-workers 4
+```
+
+### Environment Setup
+```bash
+# Source ROS2 and all workspaces
+source source_workspaces.sh
+
+# Source only the main workspace (without external dependencies)
+source setup_env.sh
+```
+
+### Testing and Linting
+The project uses standard ROS2 testing patterns:
+```bash
+# Run tests for specific package
+colcon test --packages-select package_name
+
+# Run all tests
+colcon test
+```
+
+## Architecture Overview
+
+### ROS2 Multi-Workspace Structure
+This repository contains a complex ROS2 system with multiple workspaces:
+
+- **Main workspace**: Core Yahboom robot packages at the root level
+- **gmapping_ws**: SLAM mapping packages (openslam_gmapping, slam_gmapping)
+- **imu_ws**: IMU sensor processing packages (imu_tools, filters)
+- **uros_ws**: Micro-ROS agent for ESP32 communication
+
+### Key Components
+
+#### Robot Control & Navigation
+- **yahboomcar_bringup**: Core robot launch files and sensor integration
+- **yahboomcar_nav**: Navigation stack including waypoint navigation, mapping, and localization
+- **yahboomcar_ctrl**: Robot control interfaces (joystick, keyboard)
+- **b4m_waypoint_nav**: Advanced waypoint navigation with MQTT integration and GUI
+
+#### Hardware Integration
+- **yahboomcar_base_node**: Low-level hardware interface (C++)
+- **yahboom_esp32_camera**: ESP32 camera integration
+- **yahboom_esp32_mediapipe**: Computer vision with MediaPipe
+- **yahboom_esp32ai_car**: AI-powered robot control features
+
+#### SLAM & Mapping
+- **Gmapping**: Traditional laser-based SLAM
+- **Cartographer**: Google's SLAM implementation
+- **Nav2**: Modern ROS2 navigation stack
+
+### System Architecture Flow
+
+1. **Hardware Layer**: ESP32 microcontroller communicates via Micro-ROS
+2. **Communication Layer**: Micro-ROS agent bridges ESP32 to ROS2
+3. **Sensor Layer**: IMU, LIDAR, camera data processing
+4. **Navigation Layer**: SLAM mapping, localization, path planning
+5. **Control Layer**: Waypoint navigation, teleoperation, autonomous behavior
+6. **Integration Layer**: MQTT integration for Home Assistant, GUI tools
+
+### Launch Sequence
+The system follows a specific startup sequence (automated in `b4m_HA_launch.sh`):
+1. Start Micro-ROS agent for ESP32 communication
+2. Power on physical robot
+3. Launch robot bringup (sensor integration)
+4. Start visualization (RViz)
+5. Launch navigation system
+6. Initialize robot pose
+7. Start waypoint navigation with MQTT
+8. Launch GUI tools
+
+## Common Development Patterns
+
+### ROS2 Package Structure
+- Most packages follow standard ROS2 Python package layout
+- Launch files in `launch/` directory
+- Parameters in `param/` or `params/` directory
+- RViz configs in `rviz/` directory
+- Maps stored in `maps/` directory
+
+### Waypoint Management System
+- **Single map approach**: All waypoints stored under `yahboom_map` key
+- **Data storage**: JSON format at `/home/yahboom/b4m_yahboom/install/b4m_waypoint_nav/waypoints.json`
+- **GUI tool**: PyQt5-based waypoint manager with map visualization
+- **Coordinate-based navigation**: Direct coordinate sending via MQTT eliminates waypoint lookup
+- **Waypoint structure**: Includes position, orientation, timestamp, and visualization properties
+
+### Multi-Robot Support
+The system supports multi-robot configurations:
+- **yahboomcar_multi**: Multi-robot navigation and coordination
+- Separate parameter files for robot1, robot2, etc.
+- Namespace-based separation of robot instances
+
+### Custom Message Types
+- **yahboomcar_msgs**: Custom message definitions for robot-specific data
+- **yahboom_web_savmap_interfaces**: Web interface message types
+
+## File Organization
+
+### Configuration Files
+- `waypoints.json`: Stored waypoint data
+- `*.yaml` files: ROS2 parameters and map configurations
+- `*.rviz`: RViz visualization configurations
+
+### Scripts & Utilities
+- `b4m_HA_launch.sh`: Automated launch sequence for Home Assistant integration
+- `source_workspaces.sh`: Environment setup for all workspaces
+- `setup_env.sh`: Simplified environment setup
+- `map_selector.sh`: Map selection utility
+
+### Documentation
+- `GIT_README.md`: Repository structure and git workflow
+- `WORKSPACE_README.md`: Workspace usage instructions
+- `B4M_*.md`: Project-specific documentation
+
+## Development Notes
+
+### Workspace Dependencies
+The system requires proper workspace sourcing order:
+1. ROS2 Humble base environment
+2. Main workspace
+3. Gmapping workspace
+4. IMU workspace
+5. Micro-ROS workspace
+
+### Known Issues
+- **rviz_imu_plugin**: May fail to build due to tinyxml2 linking issues
+- **Path dependencies**: Always use provided sourcing scripts to ensure correct paths
+- **Multi-workspace complexity**: Changes to one workspace may affect others
+
+### MQTT Integration
+The B4M system integrates with Home Assistant via MQTT:
+- **Topics**: `yahboom/navigation/command`, `yahboom/navigation/status`, `yahboom/navigation/info`
+- **Command formats**: 
+  - Coordinate-based (preferred): `{"command": "goto", "waypoint_id": "name", "position": {"x": float, "y": float}, "orientation": {"x": float, "y": float, "z": float, "w": float}}`
+  - Simple waypoint: `{"command": "goto", "waypoint_id": "waypoint_name"}`
+- **Status updates**: Real-time navigation progress and completion status
+- **Dynamic waypoint management**: Coordinates sent directly via MQTT without navigation node restart
+
+### Hardware Dependencies
+- **ESP32**: Micro-ROS compatible firmware required
+- **LIDAR**: Laser scanner for SLAM and navigation
+- **IMU**: Inertial measurement unit for pose estimation
+- **Camera**: Optional vision processing capabilities
+
+### GUI Development
+- **PyQt5**: Primary GUI framework for waypoint manager
+- **Dependencies**: `python3-pyqt5`, `python3-pyqt5.qtsvg`, `pillow`, `numpy`
+- **Map visualization**: Click-to-place waypoints with zoom/pan support
+- **Error handling**: Terminal-based logging with ROS2 logging mechanisms
+- **Connected mode**: Automatic robot detection and live position updates
+
+## Testing Strategy
+
+### Unit Testing
+Standard ROS2 testing framework with pytest for Python nodes and gtest for C++ nodes.
+
+### Integration Testing
+- End-to-end navigation tests
+- SLAM mapping validation
+- Multi-robot coordination tests
+- MQTT command/status validation
+
+### Hardware Testing
+- Sensor integration validation
+- Motor control verification
+- Communication link testing
+- ESP32 Micro-ROS connectivity
