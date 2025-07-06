@@ -26,7 +26,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QPushButton, QListWidget, QListWidgetItem,
                              QSplitter, QComboBox, QGroupBox, QStatusBar,
                              QMessageBox, QFileDialog, QInputDialog)
-from PyQt5.QtCore import Qt, QSettings, QTimer, QRectF
+from PyQt5.QtCore import Qt, QSettings, QTimer, QRectF, QRect
 from PyQt5.QtGui import QPainter, QColor, QPen, QBrush, QPixmap, QFont, QImage
 
 class WaypointManagerGUI(QMainWindow):
@@ -477,6 +477,9 @@ class MapView(QWidget):
         # Enable mouse tracking for panning
         self.setMouseTracking(True)
         
+        # Enable focus to receive keyboard events
+        self.setFocusPolicy(Qt.StrongFocus)
+        
         # Set background color
         self.setAutoFillBackground(True)
         palette = self.palette()
@@ -747,6 +750,21 @@ class MapView(QWidget):
         
         print(f"Reset view: scale={self.scale_factor:.2f}, offset=({self.map_offset_x:.1f}, {self.map_offset_y:.1f})")
     
+    def keyPressEvent(self, event):
+        """Handle keyboard events"""
+        if event.key() == Qt.Key_R:
+            # R key to reset view
+            self.resetView()
+            if hasattr(self.parent, 'statusBar'):
+                self.parent.statusBar.showMessage('Map view reset (R key)')
+        elif event.key() == Qt.Key_T:
+            # T key to test coordinate conversion
+            self.testCoordinateConversion()
+            if hasattr(self.parent, 'statusBar'):
+                self.parent.statusBar.showMessage('Coordinate conversion test run (T key)')
+        else:
+            super().keyPressEvent(event)
+    
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
@@ -763,7 +781,7 @@ class MapView(QWidget):
             
             # Check if the map would be visible in the current view
             widget_rect = self.rect()
-            map_rect = QRectF(x_offset, y_offset, scaled_width, scaled_height)
+            map_rect = QRect(x_offset, y_offset, scaled_width, scaled_height)
             
             if widget_rect.intersects(map_rect):
                 # Only draw if the map is at least partially visible
