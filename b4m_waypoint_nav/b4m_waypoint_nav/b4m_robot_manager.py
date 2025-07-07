@@ -34,6 +34,7 @@ from PyQt5.QtGui import QPainter, QColor, QPen, QBrush, QPixmap, QFont, QImage
 
 class B4MRobotManagerGUI(QMainWindow):
     def __init__(self, ros_node):
+        print("*** B4MRobotManagerGUI CONSTRUCTOR CALLED ***")
         super().__init__()
         
         # Store reference to ROS node
@@ -388,6 +389,8 @@ class B4MRobotManagerGUI(QMainWindow):
     def updateWaypointList(self):
         # Update the waypoint list for the current map
         self.waypoint_list.clear()
+        # Clear any selected waypoint since list is being refreshed
+        self.selected_waypoint = None
         
         # Get waypoints for current map
         if self.ros_node.current_map not in self.ros_node.waypoints:
@@ -420,6 +423,9 @@ class B4MRobotManagerGUI(QMainWindow):
         
         # Refresh the map view to show updated waypoints
         self.map_view.update()
+        
+        # Update navigate button state since waypoint selection was cleared
+        self.updateNavigateButtonState()
         
     def addWaypoint(self):
         # Add a new waypoint
@@ -486,10 +492,13 @@ class B4MRobotManagerGUI(QMainWindow):
         # Update map view to highlight selected waypoint
         self.map_view.selectWaypoint(waypoint_name)
         
-        # Enable edit, delete, and navigate buttons
+        # Enable edit, delete buttons and restore their normal styling
         self.edit_waypoint_btn.setEnabled(True)
+        self.edit_waypoint_btn.setStyleSheet('')  # Restore default style
         self.delete_waypoint_btn.setEnabled(True)
-        self.navigate_waypoint_btn.setEnabled(True)
+        self.delete_waypoint_btn.setStyleSheet('')  # Restore default style
+        # Navigate button state depends on both waypoint selection AND system state
+        self.updateNavigateButtonState()
         
         # Store the selected waypoint name
         self.selected_waypoint = waypoint_name
@@ -568,11 +577,12 @@ class B4MRobotManagerGUI(QMainWindow):
         """Update the UI to reflect MQTT connection status"""
         if connected:
             self.status_bar.showMessage('MQTT connected', 3000)  # Show for 3 seconds
-            if hasattr(self, 'selected_waypoint') and self.selected_waypoint:
-                self.navigate_waypoint_btn.setEnabled(True)
+            # Update navigate button state based on all conditions
+            self.updateNavigateButtonState()
         else:
             self.status_bar.showMessage('MQTT disconnected', 3000)  # Show for 3 seconds
-            self.navigate_waypoint_btn.setEnabled(False)
+            # Update navigate button state based on all conditions
+            self.updateNavigateButtonState()
     
     def resetMapView(self):
         """Reset the map view to center and fit the map"""
@@ -1097,6 +1107,7 @@ class B4MRobotManagerGUI(QMainWindow):
 
     def updateControlButtonStates(self):
         """Update the enabled/disabled state of control buttons based on system and agent state"""
+        print(f"DEBUG: updateControlButtonStates called - agent_state: {self.agent_state}, system_state: {self.system_state}")
         # Update agent control buttons
         if self.agent_state == 'stopped':
             self.start_agent_btn.setEnabled(True)
@@ -1204,6 +1215,7 @@ class B4MRobotManagerGUI(QMainWindow):
                 self.navigate_waypoint_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
                 self.reset_view_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
             elif self.system_state == 'running':
+                print(f"DEBUG: System is RUNNING - enabling Actions buttons")
                 self.rebuild_btn.setEnabled(False)
                 self.start_btn.setEnabled(False)
                 self.stop_btn.setEnabled(True)
@@ -1218,18 +1230,44 @@ class B4MRobotManagerGUI(QMainWindow):
                 self.setParametersReadOnly(True)
                 
                 # Actions buttons enabled when system is fully running
+                print(f"DEBUG: Enabling Actions buttons - system is RUNNING")
                 self.add_waypoint_btn.setEnabled(True)
+                self.add_waypoint_btn.setStyleSheet('')  # Restore default style
+                print(f"DEBUG: Add waypoint button enabled")
                 self.edit_waypoint_btn.setEnabled(True)
+                self.edit_waypoint_btn.setStyleSheet('')  # Restore default style
+                print(f"DEBUG: Edit waypoint button enabled")
                 self.delete_waypoint_btn.setEnabled(True)
-                # navigate_waypoint_btn stays disabled until waypoint is selected
+                self.delete_waypoint_btn.setStyleSheet('')  # Restore default style
+                print(f"DEBUG: Delete waypoint button enabled")
+                # navigate_waypoint_btn state depends on waypoint selection
+                self.updateNavigateButtonState()
                 self.reset_view_btn.setEnabled(True)
-                
-                # Restore normal colors for enabled Actions buttons
-                self.add_waypoint_btn.setStyleSheet('')  # Default style
-                self.edit_waypoint_btn.setStyleSheet('')  # Default style
-                self.delete_waypoint_btn.setStyleSheet('')  # Default style
-                # navigate_waypoint_btn style depends on waypoint selection
                 self.reset_view_btn.setStyleSheet('background-color: #2196F3; color: white;')  # Restore blue style
+                print(f"DEBUG: Reset view button enabled and styled blue - isEnabled: {self.reset_view_btn.isEnabled()}")
+                print(f"DEBUG: Reset view button stylesheet: {self.reset_view_btn.styleSheet()}")
+
+    def updateNavigateButtonState(self):
+        """Update the Go to Selected Waypoint button state based on system state and waypoint selection"""
+        # Navigate button should be enabled when:
+        # 1. System is running AND
+        # 2. A waypoint is selected
+        waypoint_selected = hasattr(self, 'selected_waypoint') and bool(self.selected_waypoint)
+        system_running = self.system_state == 'running'
+        
+        # Debug output
+        print(f"DEBUG: updateNavigateButtonState - system_state: {self.system_state}, waypoint_selected: {waypoint_selected}")
+        
+        should_enable = system_running and waypoint_selected
+        
+        self.navigate_waypoint_btn.setEnabled(should_enable)
+        
+        if should_enable:
+            # Restore normal green style when enabled
+            self.navigate_waypoint_btn.setStyleSheet('background-color: #4CAF50; color: white; font-weight: bold;')
+        else:
+            # Gray out when disabled
+            self.navigate_waypoint_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
 
     def setParametersReadOnly(self, read_only=True):
         """Set navigation parameters to read-only mode"""
@@ -1254,6 +1292,196 @@ class B4MRobotManagerGUI(QMainWindow):
                     widget.setReadOnly(False)
                 elif isinstance(widget, QLineEdit):
                     widget.setReadOnly(False)
+
+    def rebuildSystem(self):
+        """Rebuild the system using colcon build"""
+        self.status_display.setText('Rebuilding system...')
+        self.rebuild_btn.setEnabled(False)
+        
+        # Run colcon build in a separate thread
+        def build_thread():
+            try:
+                result = subprocess.run(['colcon', 'build', '--symlink-install'], 
+                                      cwd='/home/yahboom/b4m_yahboom',
+                                      capture_output=True, text=True)
+                if result.returncode == 0:
+                    self.status_display.setText('System rebuilt successfully')
+                    self.build_required = False
+                else:
+                    self.status_display.setText(f'Build failed: {result.stderr}')
+            except Exception as e:
+                self.status_display.setText(f'Build error: {str(e)}')
+            
+            self.updateControlButtonStates()
+        
+        thread = threading.Thread(target=build_thread)
+        thread.start()
+
+    def startSystem(self):
+        """Start the system by executing the launch sequence"""
+        print(f"DEBUG: startSystem called, current state: {self.system_state}")
+        self.system_state = 'starting'
+        self.current_launch_step = 0
+        self.updateControlButtonStates()
+        
+        # For testing: Add a quick mode by checking if Ctrl key is held
+        # If you hold Ctrl while clicking Start, it will skip to running state
+        from PyQt5.QtWidgets import QApplication
+        modifiers = QApplication.keyboardModifiers()
+        from PyQt5.QtCore import Qt
+        
+        if modifiers == Qt.ControlModifier:
+            print("DEBUG: Ctrl+Start detected - skipping to running state for testing")
+            print(f"DEBUG: Previous system_state: {self.system_state}")
+            self.system_state = 'running'
+            print(f"DEBUG: New system_state: {self.system_state}")
+            self.status_display.setText('System fully operational (TEST MODE)')
+            print("DEBUG: About to call updateControlButtonStates()")
+            self.updateControlButtonStates()
+            print("DEBUG: updateControlButtonStates() completed")
+            return
+        
+        # Start the launch sequence normally
+        self.executeNextLaunchStep()
+
+    def executeNextLaunchStep(self):
+        """Execute the next step in the launch sequence"""
+        launch_steps = [
+            ('Starting sensor integration...', 'ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py'),
+            ('Starting RViz visualization...', 'ros2 launch yahboomcar_nav display_launch.py'),
+            ('Starting navigation system...', 'ros2 launch yahboomcar_nav waypoint_navigation_launch.py'),
+            ('Manual robot positioning required', None),  # Special case for manual step
+            ('Starting waypoint navigation...', 'python3 /home/yahboom/b4m_yahboom/b4m_waypoint_nav/b4m_waypoint_nav/b4m_waypoint_nav.py --ros-args -p mqtt_broker:=192.168.68.111 -p mqtt_port:=1883 -p mqtt_username:=robot -p mqtt_password:=robot123')
+        ]
+        
+        if self.current_launch_step < len(launch_steps):
+            step_name, command = launch_steps[self.current_launch_step]
+            self.status_display.setText(f'Step {self.current_launch_step + 1}: {step_name}')
+            
+            if command is None:
+                # Manual step - show dialog
+                self.show2DPoseDialog()
+            else:
+                # Launch command in terminal
+                self.launchInTerminal(command)
+                # Move to next step after 3 seconds
+                QTimer.singleShot(3000, self.executeNextLaunchStep)
+            
+            self.current_launch_step += 1
+        else:
+            # All steps completed
+            print(f"DEBUG: Setting system_state to 'running'")
+            self.system_state = 'running'
+            self.status_display.setText('System fully operational')
+            self.updateControlButtonStates()
+
+    def show2DPoseDialog(self):
+        """Show dialog for manual 2D pose estimation"""
+        dialog = QDialog(self)
+        dialog.setWindowTitle('Manual Robot Positioning')
+        dialog.setModal(True)
+        
+        layout = QVBoxLayout(dialog)
+        
+        instructions = QLabel(
+            'Please use RViz to set the robot\'s initial position:\n\n'
+            '1. In RViz, click the "2D Pose Estimate" tool\n'
+            '2. Click and drag on the map to set robot position and orientation\n'
+            '3. Click OK below when positioning is complete'
+        )
+        instructions.setWordWrap(True)
+        layout.addWidget(instructions)
+        
+        button_layout = QHBoxLayout()
+        ok_button = QPushButton('OK - Position Set')
+        ok_button.clicked.connect(dialog.accept)
+        button_layout.addWidget(ok_button)
+        layout.addLayout(button_layout)
+        
+        dialog.exec_()
+        
+        # Continue with next step after dialog is closed
+        QTimer.singleShot(1000, self.executeNextLaunchStep)
+
+    def launchInTerminal(self, command):
+        """Launch a command in a new terminal window"""
+        terminal_command = f"gnome-terminal -- bash -c 'cd /home/yahboom/b4m_yahboom && source install/setup.bash && {command}; exec bash'"
+        subprocess.Popen(terminal_command, shell=True)
+
+    def stopSystem(self):
+        """Stop the robot system"""
+        self.system_state = 'stopped'
+        self.updateControlButtonStates()
+        
+        # Stop ROS2 processes
+        try:
+            subprocess.run(['pkill', '-f', 'ros2 launch'], check=False)
+            subprocess.run(['pkill', '-f', 'b4m_waypoint_nav.py'], check=False)
+            self.status_display.setText('System stopped')
+        except Exception as e:
+            self.status_display.setText(f'Error stopping system: {str(e)}')
+
+    def onParameterChanged(self):
+        """Handle when navigation parameters are changed"""
+        self.build_required = True
+        self.updateControlButtonStates()
+
+    def onMapChanged(self):
+        """Handle when map is changed"""
+        self.build_required = True
+        self.updateControlButtonStates()
+
+    def startAgent(self):
+        """Start the Micro-ROS Agent Docker container"""
+        try:
+            # Check if container is already running
+            result = subprocess.run(['docker', 'ps'], capture_output=True, text=True)
+            if 'microros/micro-ros-agent:humble' in result.stdout:
+                self.agent_status_display.setText('Micro-ROS Agent already running')
+                self.agent_state = 'running'
+                self.updateControlButtonStates()
+                return
+            
+            # Start the container
+            command = [
+                'docker', 'run', '-it', '--rm', '--net=host',
+                'microros/micro-ros-agent:humble',
+                'udp4', '--port', '8888'
+            ]
+            
+            # Launch in terminal for visibility
+            terminal_command = f"gnome-terminal -- bash -c '{' '.join(command)}; exec bash'"
+            self.agent_process = subprocess.Popen(terminal_command, shell=True)
+            
+            self.agent_state = 'running'
+            self.updateControlButtonStates()
+            
+        except Exception as e:
+            self.agent_status_display.setText(f'Failed to start agent: {str(e)}')
+
+    def stopAll(self):
+        """Stop all processes including the Micro-ROS Agent"""
+        # Stop system first
+        self.stopSystem()
+        
+        # Stop Micro-ROS agent
+        try:
+            result = subprocess.run(['docker', 'ps', '--filter', 'ancestor=microros/micro-ros-agent:humble', '--format', '{{.ID}}'], 
+                                  capture_output=True, text=True)
+            container_ids = result.stdout.strip().split('\n')
+            
+            for container_id in container_ids:
+                if container_id:
+                    subprocess.run(['docker', 'stop', container_id], check=False)
+                    subprocess.run(['docker', 'rm', container_id], check=False)
+            
+            self.agent_state = 'stopped'
+            self.agent_status_display.setText('All processes stopped')
+            
+        except Exception as e:
+            self.agent_status_display.setText(f'Error stopping processes: {str(e)}')
+        
+        self.updateControlButtonStates()
 
 class MapView(QWidget):
     def __init__(self, parent):
@@ -1737,6 +1965,7 @@ class MapView(QWidget):
 
 class WaypointManager(Node):
     def __init__(self):
+        print("*** WaypointManager CONSTRUCTOR CALLED ***")
         try:
             super().__init__('b4m_robot_manager')
             self.get_logger().info('B4M Robot Manager starting...')
@@ -1816,14 +2045,17 @@ class WaypointManager(Node):
         else:
             self.get_logger().info('Running in standalone mode')
         
-        # Create GUI
-        self.gui = B4MRobotManagerGUI(self)
-        self.gui.show()
+        # GUI will be created by main function
+        self.gui = None
         
         # Create timer for ROS2 callbacks
         self.timer = QTimer()
         self.timer.timeout.connect(self.spin_once)
         self.timer.start(100)  # 10 Hz
+    
+    def set_gui(self, gui):
+        """Set the GUI reference after it's created by main"""
+        self.gui = gui
     
     def spin_once(self):
         rclpy.spin_once(self, timeout_sec=0)
@@ -2219,285 +2451,8 @@ class WaypointManager(Node):
             self.get_logger().error(f'Error publishing waypoint markers: {e}')
             traceback.print_exc()
 
-# Add these methods to the B4MRobotManagerGUI class before main function
-
-def rebuildSystem(self):
-    """Rebuild the system using colcon build"""
-    self.status_display.setText('Rebuilding system...')
-    self.rebuild_btn.setEnabled(False)
-    
-    # Run colcon build in a separate thread
-    def build_thread():
-        try:
-            result = subprocess.run(['colcon', 'build', '--symlink-install'], 
-                                  cwd='/home/yahboom/b4m_yahboom',
-                                  capture_output=True, text=True)
-            if result.returncode == 0:
-                self.status_display.setText('System rebuilt successfully')
-                self.build_required = False
-            else:
-                self.status_display.setText(f'Build failed: {result.stderr}')
-        except Exception as e:
-            self.status_display.setText(f'Build error: {str(e)}')
-        
-        self.updateControlButtonStates()
-    
-    thread = threading.Thread(target=build_thread)
-    thread.start()
-
-def startSystem(self):
-    """Start the system by executing the launch sequence"""
-    self.system_state = 'starting'
-    self.current_launch_step = 0
-    self.updateControlButtonStates()
-    
-    # Launch sequence steps (excluding Micro-ROS agent and manual robot power-on)
-    self.launch_steps = [
-        {
-            'name': 'Starting sensor integration',
-            'command': 'cd /home/yahboom/b4m_yahboom && . install/setup.bash && ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py'
-        },
-        {
-            'name': 'Starting RViz visualization',
-            'command': 'cd /home/yahboom/b4m_yahboom && . install/setup.bash && ros2 launch yahboomcar_nav display_launch.py'
-        },
-        {
-            'name': 'Starting navigation system',
-            'command': 'cd /home/yahboom/b4m_yahboom && . install/setup.bash && ros2 launch yahboomcar_nav waypoint_navigation_launch.py maps:=/home/yahboom/b4m_yahboom/yahboomcar_nav/maps/yahboom_map.yaml'
-        },
-        {
-            'name': 'Manual robot positioning',
-            'command': 'manual_pose_dialog'
-        },
-        {
-            'name': 'Starting waypoint navigation',
-            'command': 'cd /home/yahboom/b4m_yahboom && . install/setup.bash && python3 /home/yahboom/b4m_yahboom/b4m_waypoint_nav/b4m_waypoint_nav/b4m_waypoint_nav.py --ros-args -p mqtt_broker:=192.168.68.111 -p mqtt_port:=1883 -p mqtt_username:=robot -p mqtt_password:=robot123'
-        }
-    ]
-    
-    self.executeNextLaunchStep()
-
-def executeNextLaunchStep(self):
-    """Execute the next step in the launch sequence"""
-    if self.current_launch_step < len(self.launch_steps):
-        step = self.launch_steps[self.current_launch_step]
-        self.status_display.setText(f'Step {self.current_launch_step + 1}: {step["name"]}')
-        
-        if step['command'] == 'manual_pose_dialog':
-            # Show 2D Pose Estimate dialog
-            self.show2DPoseDialog()
-        else:
-            # Launch the process in a terminal
-            self.launchInTerminal(step['command'])
-        
-        self.current_launch_step += 1
-        
-        # Use a timer to automatically continue to next step after a delay
-        QTimer.singleShot(3000, self.executeNextLaunchStep)  # 3 second delay
-    else:
-        # All steps completed
-        self.system_state = 'running'
-        self.status_display.setText('System running - All components started successfully')
-        self.updateControlButtonStates()
-
-def show2DPoseDialog(self):
-    """Show dialog for 2D Pose Estimate step"""
-    dialog = QDialog(self)
-    dialog.setWindowTitle('Robot Positioning Required')
-    dialog.setModal(True)
-    dialog.setFixedSize(400, 200)
-    
-    layout = QVBoxLayout(dialog)
-    
-    # Instructions
-    label = QLabel('Please use RViz to set the robot\'s initial position:\n\n'
-                   '1. Click "2D Pose Estimate" button in RViz\n'
-                   '2. Click and drag on the map to set robot position\n'
-                   '3. Verify the red arrow matches robot location\n'
-                   '4. Click OK when positioning is complete')
-    label.setWordWrap(True)
-    layout.addWidget(label)
-    
-    # OK button
-    ok_button = QPushButton('OK - Positioning Complete')
-    ok_button.clicked.connect(dialog.accept)
-    layout.addWidget(ok_button)
-    
-    dialog.exec_()
-
-def launchInTerminal(self, command):
-    """Launch a command in a new terminal window"""
-    try:
-        # Use gnome-terminal to launch the command
-        terminal_command = f'gnome-terminal -- bash -c "{command}; echo \'Process completed. Press Enter to close...\'; read"'
-        process = subprocess.Popen(terminal_command, shell=True)
-        self.launch_processes.append(process)
-    except Exception as e:
-        self.status_display.setText(f'Error launching terminal: {str(e)}')
-
-def stopSystem(self):
-    """Stop the robot system (but leave Micro ROS Agent running)"""
-    self.system_state = 'stopped'
-    self.status_display.setText('Stopping robot system...')
-    self.updateControlButtonStates()
-    
-    # Execute shutdown sequence from b4m_shutdown.sh (but leave agent running)
-    def shutdown_thread():
-        try:
-            # Stop all ROS2 and system processes (from b4m_shutdown.sh)
-            subprocess.run(['pkill', '-f', 'ros2 launch'], capture_output=True)
-            subprocess.run(['pkill', '-f', 'b4m_waypoint_nav.py'], capture_output=True)
-            subprocess.run(['pkill', '-f', 'python3 /home/yahboom/b4m_yahboom'], capture_output=True)
-            subprocess.run(['pkill', '-f', 'rviz'], capture_output=True)
-            
-            # Give processes time to shutdown gracefully
-            import time
-            time.sleep(2)
-            
-            # Force kill remaining processes if needed
-            subprocess.run(['pkill', '-9', '-f', 'ros2'], capture_output=True)
-            subprocess.run(['pkill', '-9', '-f', 'rviz'], capture_output=True)
-            
-            self.status_display.setText('Robot system stopped - Micro ROS Agent still running')
-            
-        except Exception as e:
-            self.status_display.setText(f'Shutdown error: {str(e)}')
-        
-        # Clear launched processes list
-        self.launch_processes = []
-        self.current_launch_step = 0
-        
-        # Restore parameter editing
-        self.setParametersReadOnly(False)
-        self.updateControlButtonStates()
-    
-    thread = threading.Thread(target=shutdown_thread)
-    thread.start()
-
-def onParameterChanged(self):
-    """Called when any navigation parameter is changed"""
-    self.parameters_modified = True
-    self.build_required = True
-    self.updateControlButtonStates()
-
-def onMapChanged(self):
-    """Called when the map is changed"""
-    # TODO: Implement map changing functionality in the GUI
-    # Currently, the system uses a fixed map (yahboom_map). If map changing
-    # functionality is added in the future, it will require a colcon build
-    # because:
-    # 1. Navigation launch files reference specific map paths
-    # 2. Map server parameters need to be updated
-    # 3. Costmap configurations may need adjustment for different map properties
-    # 4. AMCL localization parameters might need tuning for different maps
-    self.build_required = True
-    self.updateControlButtonStates()
-
-def startAgent(self):
-    """Start the Micro ROS Agent Docker container"""
-    self.agent_status_display.setText('Starting Micro ROS Agent...')
-    self.start_agent_btn.setEnabled(False)
-    
-    # Docker command from b4m_HA_launch.sh
-    docker_command = 'docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host microros/micro-ros-agent:humble udp4 --port 8090'
-    
-    def start_agent_thread():
-        try:
-            # Launch the Docker container in a terminal
-            terminal_command = f'gnome-terminal -- bash -c "{docker_command}; echo \'Micro-ROS Agent stopped. Press Enter to close...\'; read"'
-            self.agent_process = subprocess.Popen(terminal_command, shell=True)
-            
-            # Wait a moment for the container to start
-            import time
-            time.sleep(3)
-            
-            # Check if Docker container is running
-            result = subprocess.run(['docker', 'ps', '--filter', 'ancestor=microros/micro-ros-agent:humble', '--format', '{{.ID}}'], 
-                                  capture_output=True, text=True)
-            
-            if result.returncode == 0 and result.stdout.strip():
-                self.agent_state = 'running'
-                self.agent_status_display.setText('Micro ROS Agent running - Docker container started successfully')
-            else:
-                self.agent_status_display.setText('Failed to start Micro ROS Agent - Check Docker installation')
-                self.start_agent_btn.setEnabled(True)
-                return
-                
-        except Exception as e:
-            self.agent_status_display.setText(f'Error starting agent: {str(e)}')
-            self.start_agent_btn.setEnabled(True)
-            return
-        
-        self.updateControlButtonStates()
-    
-    thread = threading.Thread(target=start_agent_thread)
-    thread.start()
-
-def stopAll(self):
-    """Stop all processes including the Micro ROS Agent"""
-    self.agent_state = 'stopped'
-    self.system_state = 'stopped'
-    self.agent_status_display.setText('Stopping all processes...')
-    self.updateControlButtonStates()
-    
-    def stop_all_thread():
-        try:
-            # Stop all ROS2 and system processes (from b4m_shutdown.sh)
-            subprocess.run(['pkill', '-f', 'ros2 launch'], capture_output=True)
-            subprocess.run(['pkill', '-f', 'b4m_waypoint_nav.py'], capture_output=True)
-            subprocess.run(['pkill', '-f', 'python3 /home/yahboom/b4m_yahboom'], capture_output=True)
-            subprocess.run(['pkill', '-f', 'rviz'], capture_output=True)
-            
-            # Give processes time to shutdown gracefully
-            import time
-            time.sleep(2)
-            
-            # Force kill remaining processes if needed
-            subprocess.run(['pkill', '-9', '-f', 'ros2'], capture_output=True)
-            subprocess.run(['pkill', '-9', '-f', 'rviz'], capture_output=True)
-            
-            # Stop Micro ROS Agent Docker container
-            # Get all running micro-ros-agent containers
-            result = subprocess.run(['docker', 'ps', '--filter', 'ancestor=microros/micro-ros-agent:humble', '--format', '{{.ID}}'], 
-                                  capture_output=True, text=True)
-            
-            if result.returncode == 0 and result.stdout.strip():
-                container_ids = result.stdout.strip().split('\n')
-                for container_id in container_ids:
-                    if container_id:
-                        subprocess.run(['docker', 'stop', container_id], capture_output=True)
-                        subprocess.run(['docker', 'rm', container_id], capture_output=True)
-            
-            # Clear process references
-            self.launch_processes = []
-            self.current_launch_step = 0
-            self.agent_process = None
-            
-            self.agent_status_display.setText('All processes stopped - System reset to clean state')
-            
-        except Exception as e:
-            self.agent_status_display.setText(f'Error during shutdown: {str(e)}')
-        
-        # Restore parameter editing
-        self.setParametersReadOnly(False)
-        self.updateControlButtonStates()
-    
-    thread = threading.Thread(target=stop_all_thread)
-    thread.start()
-
-# Add these methods to the B4MRobotManagerGUI class above
-B4MRobotManagerGUI.rebuildSystem = rebuildSystem
-B4MRobotManagerGUI.startSystem = startSystem
-B4MRobotManagerGUI.executeNextLaunchStep = executeNextLaunchStep
-B4MRobotManagerGUI.show2DPoseDialog = show2DPoseDialog
-B4MRobotManagerGUI.launchInTerminal = launchInTerminal
-B4MRobotManagerGUI.stopSystem = stopSystem
-B4MRobotManagerGUI.onParameterChanged = onParameterChanged
-B4MRobotManagerGUI.onMapChanged = onMapChanged
-B4MRobotManagerGUI.startAgent = startAgent
-B4MRobotManagerGUI.stopAll = stopAll
-
 def main(args=None):
+    print("*** MAIN FUNCTION CALLED ***")
     print("Starting B4M Robot Manager...")
     try:
         rclpy.init(args=args)
@@ -2508,34 +2463,26 @@ def main(args=None):
         from datetime import datetime
         print("Datetime imported")
         
-        # Import QImage for map display
-        global QImage
-        from PyQt5.QtGui import QImage
-        print("QImage imported")
-        
-        # Create Qt application
-        print("Creating Qt application...")
+        # Create the GUI application FIRST (before any widgets)
         app = QApplication(sys.argv)
-        print("Qt application created")
+        print("QApplication created")
         
-        # Set application style
-        app.setStyle('Fusion')
-        print("Application style set to Fusion")
+        # Create the waypoint manager node
+        node = WaypointManager()
+        print("Waypoint manager node created")
         
-        # Create the ROS2 node with detailed error handling
-        print("Creating B4M Robot Manager node...")
+        # Create the main window with the ROS node
         try:
-            # Initialize waypoints dictionary first to avoid any issues
-            print("Initializing empty waypoints dictionary")
-            waypoints = {}
+            window = B4MRobotManagerGUI(node)
+            print("Main window created")
             
-            # Create the node
-            print("Creating B4M Robot Manager instance")
-            robot_manager = WaypointManager()
-            print("B4M Robot Manager node created successfully")
+            # Set the GUI reference in the node
+            node.set_gui(window)
             
-            # Start the application
-            print("Starting Qt application main loop")
+            window.show()
+            print("Window shown, starting event loop...")
+            
+            # Run the application
             sys.exit(app.exec_())
         except TypeError as e:
             print(f"TypeError in WaypointManager: {e}")
