@@ -21,13 +21,12 @@ setup(
     zip_safe=True,
     maintainer='yahboom',
     maintainer_email='user@todo.todo',
-    description='Waypoint Navigation with Orientation for Yahboom Robot',
+    description='B4M Robot Manager with Navigation and Waypoint Control',
     license='Apache License 2.0',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'b4m_waypoint_nav = b4m_waypoint_nav.b4m_waypoint_nav:main',
-            'waypoint_manager = b4m_waypoint_nav.waypoint_manager:main',
+            'b4m_robot_manager = b4m_waypoint_nav.b4m_robot_manager:main',
         ],
     },
 )

@@ -21,11 +21,11 @@ def generate_launch_description():
         description='Enable connection to running robot/simulation'
     )
     
-    # Create the waypoint manager node
-    waypoint_manager_node = Node(
+    # Create the B4M Robot Manager node
+    b4m_robot_manager_node = Node(
         package='b4m_waypoint_nav',
-        executable='waypoint_manager',
-        name='waypoint_manager',
+        executable='b4m_robot_manager',
+        name='b4m_robot_manager',
         output='screen',
         parameters=[{
             'connected_mode': connected_mode
@@ -35,5 +35,5 @@ def generate_launch_description():
     # Return the launch description
     return LaunchDescription([
         declare_connected_mode,
-        waypoint_manager_node
+        b4m_robot_manager_node
     ])

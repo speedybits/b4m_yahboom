@@ -32,7 +32,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 from PyQt5.QtCore import Qt, QSettings, QTimer, QRectF, QRect
 from PyQt5.QtGui import QPainter, QColor, QPen, QBrush, QPixmap, QFont, QImage
 
-class WaypointManagerGUI(QMainWindow):
+class B4MRobotManagerGUI(QMainWindow):
     def __init__(self, ros_node):
         super().__init__()
         
@@ -53,7 +53,7 @@ class WaypointManagerGUI(QMainWindow):
         
     def initUI(self):
         # Set window properties
-        self.setWindowTitle('Waypoint Manager')
+        self.setWindowTitle('B4M Robot Manager')
         self.setGeometry(100, 100, 1200, 800)
         
         # Create central widget and main layout
@@ -1492,7 +1492,7 @@ class MapView(QWidget):
 class WaypointManager(Node):
     def __init__(self):
         try:
-            super().__init__('waypoint_manager')
+            super().__init__('b4m_robot_manager')
             self.get_logger().info('Waypoint Manager starting...')
             
             # Get parameters
@@ -1571,7 +1571,7 @@ class WaypointManager(Node):
             self.get_logger().info('Running in standalone mode')
         
         # Create GUI
-        self.gui = WaypointManagerGUI(self)
+        self.gui = B4MRobotManagerGUI(self)
         self.gui.show()
         
         # Create timer for ROS2 callbacks
@@ -1718,7 +1718,7 @@ class WaypointManager(Node):
         """Set up MQTT client and connection"""
         try:
             # Create MQTT client
-            client_id = f'waypoint_manager_{random.randint(0, 1000)}'  # Random client ID to avoid conflicts
+            client_id = f'b4m_robot_manager_{random.randint(0, 1000)}'  # Random client ID to avoid conflicts
             self.mqtt_client = mqtt.Client(client_id=client_id, protocol=mqtt.MQTTv5)
             
             # Set up callbacks

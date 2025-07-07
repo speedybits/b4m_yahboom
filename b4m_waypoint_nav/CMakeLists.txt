@@ -19,7 +19,7 @@ ament_python_install_package(${PROJECT_NAME})
 
 # Install Python executables
 install(PROGRAMS
-  scripts/waypoint_manager_node.py
+  scripts/b4m_robot_manager_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
