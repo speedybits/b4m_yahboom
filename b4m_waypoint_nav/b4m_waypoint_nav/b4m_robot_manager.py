@@ -28,8 +28,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QPushButton, QListWidget, QListWidgetItem,
                              QSplitter, QComboBox, QGroupBox, QStatusBar, QScrollArea,
                              QMessageBox, QFileDialog, QInputDialog, QSpinBox, QDoubleSpinBox,
-                             QCheckBox, QTextEdit, QProgressBar, QLineEdit)
-from PyQt5.QtCore import Qt, QSettings, QTimer, QRectF, QRect
+                             QCheckBox, QTextEdit, QProgressBar, QLineEdit, QDialog)
+from PyQt5.QtCore import Qt, QSettings, QTimer, QRectF, QRect, QThread, pyqtSignal
 from PyQt5.QtGui import QPainter, QColor, QPen, QBrush, QPixmap, QFont, QImage
 
 class B4MRobotManagerGUI(QMainWindow):
@@ -44,6 +44,15 @@ class B4MRobotManagerGUI(QMainWindow):
         self.parameter_widgets = {}
         self.parameters_modified = False
         self.build_required = False
+        
+        # System state management
+        self.system_state = 'stopped'  # 'stopped', 'starting', 'running'
+        self.launch_processes = []  # Track launched processes
+        self.current_launch_step = 0
+        
+        # Agent state management
+        self.agent_state = 'stopped'  # 'stopped', 'running'
+        self.agent_process = None  # Track agent Docker process
         
         # Initialize UI
         self.initUI()
@@ -69,7 +78,78 @@ class B4MRobotManagerGUI(QMainWindow):
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
         
-        # Configuration Management (at top to show it saves everything)
+        # Micro ROS Agent Control (at very top for foundational control)
+        agent_group = QGroupBox('Micro ROS Agent')
+        agent_layout = QVBoxLayout(agent_group)
+        
+        # Agent control buttons
+        agent_buttons_layout = QHBoxLayout()
+        self.start_agent_btn = QPushButton('🚀 Start Agent')
+        self.stop_all_btn = QPushButton('🛑 Stop All')
+        
+        # Set initial states (agent stopped by default)
+        self.start_agent_btn.setEnabled(True)  # Only this should be enabled initially
+        self.stop_all_btn.setEnabled(False)    # Disabled when agent stopped
+        
+        # Style the agent buttons
+        self.start_agent_btn.setStyleSheet('background-color: #2196F3; color: white; font-weight: bold;')
+        self.stop_all_btn.setStyleSheet('background-color: #d32f2f; color: white; font-weight: bold;')
+        
+        # Connect agent button actions
+        self.start_agent_btn.clicked.connect(self.startAgent)
+        self.stop_all_btn.clicked.connect(self.stopAll)
+        
+        agent_buttons_layout.addWidget(self.start_agent_btn)
+        agent_buttons_layout.addWidget(self.stop_all_btn)
+        agent_layout.addLayout(agent_buttons_layout)
+        
+        # Agent status display
+        self.agent_status_display = QLabel('Micro ROS Agent stopped - Click Start Agent to begin')
+        self.agent_status_display.setStyleSheet('font-size: 11px; color: #333333; padding: 5px; background-color: #ffebee; border-radius: 3px;')
+        self.agent_status_display.setWordWrap(True)
+        agent_layout.addWidget(self.agent_status_display)
+        
+        left_layout.addWidget(agent_group)
+        
+        # System Control Panel (for robot system launch control)
+        control_group = QGroupBox('System Control')
+        control_layout = QVBoxLayout(control_group)
+        
+        # Control buttons
+        control_buttons_layout = QHBoxLayout()
+        self.rebuild_btn = QPushButton('🔧 Rebuild')
+        self.start_btn = QPushButton('▶️ Start')
+        self.stop_btn = QPushButton('⏹️ Stop')
+        
+        # Set initial states (agent stopped, so all system controls disabled)
+        self.rebuild_btn.setEnabled(False)    # Disabled when agent stopped
+        self.start_btn.setEnabled(False)      # Disabled when agent stopped
+        self.stop_btn.setEnabled(False)       # Disabled when agent stopped
+        
+        # Style the buttons
+        self.rebuild_btn.setStyleSheet('background-color: #FF9800; color: white; font-weight: bold;')
+        self.start_btn.setStyleSheet('background-color: #4CAF50; color: white; font-weight: bold;')
+        self.stop_btn.setStyleSheet('background-color: #f44336; color: white; font-weight: bold;')
+        
+        # Connect button actions
+        self.rebuild_btn.clicked.connect(self.rebuildSystem)
+        self.start_btn.clicked.connect(self.startSystem)
+        self.stop_btn.clicked.connect(self.stopSystem)
+        
+        control_buttons_layout.addWidget(self.rebuild_btn)
+        control_buttons_layout.addWidget(self.start_btn)
+        control_buttons_layout.addWidget(self.stop_btn)
+        control_layout.addLayout(control_buttons_layout)
+        
+        # Status display
+        self.status_display = QLabel('System ready - Click Start to begin launch sequence')
+        self.status_display.setStyleSheet('font-size: 11px; color: #333333; padding: 5px; background-color: #f0f0f0; border-radius: 3px;')
+        self.status_display.setWordWrap(True)
+        control_layout.addWidget(self.status_display)
+        
+        left_layout.addWidget(control_group)
+        
+        # Configuration Management
         config_group = QGroupBox('Configuration Management')
         config_layout = QVBoxLayout(config_group)
         
@@ -135,6 +215,7 @@ class B4MRobotManagerGUI(QMainWindow):
         self.params_group = QGroupBox('Navigation Parameters')
         self.params_group.setCheckable(True)
         self.params_group.setChecked(False)  # Collapsed by default
+        self.params_group.setEnabled(False)  # Disabled when agent stopped initially
         params_layout = QVBoxLayout(self.params_group)
         
         # Parameter controls will be added here
@@ -165,6 +246,9 @@ class B4MRobotManagerGUI(QMainWindow):
         
         # Load default map
         self.loadDefaultMap()
+        
+        # Initialize button states after all UI elements are created
+        self.updateControlButtonStates()
         
     def loadSettings(self):
         # Load application settings
@@ -702,6 +786,8 @@ class B4MRobotManagerGUI(QMainWindow):
         """Handle parameter value changes"""
         self.parameters_modified = True
         self.status_bar.showMessage('Parameters modified - click Apply to update')
+        # Trigger rebuild requirement for system control
+        self.onParameterChanged()
     
     def applyParameters(self):
         """Apply parameters to running system or mark for build"""
@@ -931,7 +1017,7 @@ class B4MRobotManagerGUI(QMainWindow):
             # Create configuration data
             config_data = {
                 'timestamp': datetime.now().isoformat(),
-                'description': f'Configuration saved from waypoint manager',
+                'description': f'Configuration saved from b4m robot manager',
                 'map_name': self.ros_node.current_map,
                 'parameters': current_params,
                 'waypoints': self.ros_node.waypoints,
@@ -1008,6 +1094,166 @@ class B4MRobotManagerGUI(QMainWindow):
         except Exception as e:
             self.status_bar.showMessage(f'Error loading configuration: {str(e)}')
             self.ros_node.get_logger().error(f'Error loading configuration: {e}')
+
+    def updateControlButtonStates(self):
+        """Update the enabled/disabled state of control buttons based on system and agent state"""
+        # Update agent control buttons
+        if self.agent_state == 'stopped':
+            self.start_agent_btn.setEnabled(True)
+            self.stop_all_btn.setEnabled(False)
+            self.agent_status_display.setText('Micro ROS Agent stopped - Click Start Agent to begin')
+            self.agent_status_display.setStyleSheet('font-size: 11px; color: #333333; padding: 5px; background-color: #ffebee; border-radius: 3px;')
+            
+            # When agent is stopped, disable all system controls
+            self.rebuild_btn.setEnabled(False)
+            self.start_btn.setEnabled(False)
+            self.stop_btn.setEnabled(False)
+            
+            # Gray out the disabled system control buttons (very obvious graying)
+            self.rebuild_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
+            self.start_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
+            self.stop_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
+            self.stop_all_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
+            
+            self.status_display.setText('Agent required - Start Micro ROS Agent first')
+            
+            # When agent is stopped, disable parameter section completely
+            self.params_group.setEnabled(False)
+            
+            # When agent is stopped, disable all Actions buttons
+            self.add_waypoint_btn.setEnabled(False)
+            self.edit_waypoint_btn.setEnabled(False)
+            self.delete_waypoint_btn.setEnabled(False)
+            self.navigate_waypoint_btn.setEnabled(False)
+            self.reset_view_btn.setEnabled(False)
+            
+            # Gray out the disabled Actions buttons
+            self.add_waypoint_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
+            self.edit_waypoint_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
+            self.delete_waypoint_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
+            self.navigate_waypoint_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
+            self.reset_view_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
+            
+        elif self.agent_state == 'running':
+            self.start_agent_btn.setEnabled(False)
+            self.stop_all_btn.setEnabled(True)
+            self.agent_status_display.setText('Micro ROS Agent running - System ready for robot operations')
+            self.agent_status_display.setStyleSheet('font-size: 11px; color: #333333; padding: 5px; background-color: #e8f5e8; border-radius: 3px;')
+            
+            # Restore normal colors for agent buttons
+            self.start_agent_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')  # Very gray when disabled
+            self.stop_all_btn.setStyleSheet('background-color: #d32f2f; color: white; font-weight: bold;')  # Normal red when enabled
+            
+            # When agent is running, enable system controls based on system state
+            if self.system_state == 'stopped':
+                self.rebuild_btn.setEnabled(self.build_required)
+                self.start_btn.setEnabled(True)
+                self.stop_btn.setEnabled(False)
+                self.status_display.setText('System ready - Click Start to begin launch sequence')
+                
+                # Restore normal colors for enabled buttons, very gray for disabled
+                if self.build_required:
+                    self.rebuild_btn.setStyleSheet('background-color: #FF9800; color: white; font-weight: bold;')
+                else:
+                    self.rebuild_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
+                self.start_btn.setStyleSheet('background-color: #4CAF50; color: white; font-weight: bold;')
+                self.stop_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
+                
+                # Parameters editable only when agent running AND system stopped
+                self.params_group.setEnabled(True)
+                self.setParametersReadOnly(False)
+                
+                # Actions buttons disabled when system stopped (not yet started)
+                self.add_waypoint_btn.setEnabled(False)
+                self.edit_waypoint_btn.setEnabled(False)
+                self.delete_waypoint_btn.setEnabled(False)
+                self.navigate_waypoint_btn.setEnabled(False)
+                self.reset_view_btn.setEnabled(False)
+                
+                # Gray out Actions buttons until system is started
+                self.add_waypoint_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
+                self.edit_waypoint_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
+                self.delete_waypoint_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
+                self.navigate_waypoint_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
+                self.reset_view_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
+            elif self.system_state == 'starting':
+                self.rebuild_btn.setEnabled(False)
+                self.start_btn.setEnabled(False)
+                self.stop_btn.setEnabled(True)
+                
+                # Very gray disabled buttons, normal color for enabled
+                self.rebuild_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
+                self.start_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
+                self.stop_btn.setStyleSheet('background-color: #f44336; color: white; font-weight: bold;')
+                
+                # Parameters read-only (grayed but functional) during system starting
+                self.params_group.setEnabled(True)
+                self.setParametersReadOnly(True)
+                
+                # Actions buttons still disabled during system starting
+                self.add_waypoint_btn.setEnabled(False)
+                self.edit_waypoint_btn.setEnabled(False)
+                self.delete_waypoint_btn.setEnabled(False)
+                self.navigate_waypoint_btn.setEnabled(False)
+                self.reset_view_btn.setEnabled(False)
+                
+                # Gray out Actions buttons during system starting
+                self.add_waypoint_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
+                self.edit_waypoint_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
+                self.delete_waypoint_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
+                self.navigate_waypoint_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
+                self.reset_view_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
+            elif self.system_state == 'running':
+                self.rebuild_btn.setEnabled(False)
+                self.start_btn.setEnabled(False)
+                self.stop_btn.setEnabled(True)
+                
+                # Very gray disabled buttons, normal color for enabled
+                self.rebuild_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
+                self.start_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
+                self.stop_btn.setStyleSheet('background-color: #f44336; color: white; font-weight: bold;')
+                
+                # Parameters read-only (grayed but functional) when system running
+                self.params_group.setEnabled(True)
+                self.setParametersReadOnly(True)
+                
+                # Actions buttons enabled when system is fully running
+                self.add_waypoint_btn.setEnabled(True)
+                self.edit_waypoint_btn.setEnabled(True)
+                self.delete_waypoint_btn.setEnabled(True)
+                # navigate_waypoint_btn stays disabled until waypoint is selected
+                self.reset_view_btn.setEnabled(True)
+                
+                # Restore normal colors for enabled Actions buttons
+                self.add_waypoint_btn.setStyleSheet('')  # Default style
+                self.edit_waypoint_btn.setStyleSheet('')  # Default style
+                self.delete_waypoint_btn.setStyleSheet('')  # Default style
+                # navigate_waypoint_btn style depends on waypoint selection
+                self.reset_view_btn.setStyleSheet('background-color: #2196F3; color: white;')  # Restore blue style
+
+    def setParametersReadOnly(self, read_only=True):
+        """Set navigation parameters to read-only mode"""
+        # Gray out the group box but keep it functional for viewing
+        if read_only:
+            self.params_group.setStyleSheet("QGroupBox { color: gray; }")
+            # Make all parameter widgets read-only
+            for widget in self.parameter_widgets.values():
+                if isinstance(widget, QCheckBox):
+                    widget.setEnabled(False)
+                elif isinstance(widget, (QSpinBox, QDoubleSpinBox)):
+                    widget.setReadOnly(True)
+                elif isinstance(widget, QLineEdit):
+                    widget.setReadOnly(True)
+        else:
+            self.params_group.setStyleSheet("")
+            # Restore parameter widgets to editable
+            for widget in self.parameter_widgets.values():
+                if isinstance(widget, QCheckBox):
+                    widget.setEnabled(True)
+                elif isinstance(widget, (QSpinBox, QDoubleSpinBox)):
+                    widget.setReadOnly(False)
+                elif isinstance(widget, QLineEdit):
+                    widget.setReadOnly(False)
 
 class MapView(QWidget):
     def __init__(self, parent):
@@ -1493,7 +1739,7 @@ class WaypointManager(Node):
     def __init__(self):
         try:
             super().__init__('b4m_robot_manager')
-            self.get_logger().info('Waypoint Manager starting...')
+            self.get_logger().info('B4M Robot Manager starting...')
             
             # Get parameters
             self.declare_parameter('connected_mode', False)
@@ -1973,8 +2219,286 @@ class WaypointManager(Node):
             self.get_logger().error(f'Error publishing waypoint markers: {e}')
             traceback.print_exc()
 
+# Add these methods to the B4MRobotManagerGUI class before main function
+
+def rebuildSystem(self):
+    """Rebuild the system using colcon build"""
+    self.status_display.setText('Rebuilding system...')
+    self.rebuild_btn.setEnabled(False)
+    
+    # Run colcon build in a separate thread
+    def build_thread():
+        try:
+            result = subprocess.run(['colcon', 'build', '--symlink-install'], 
+                                  cwd='/home/yahboom/b4m_yahboom',
+                                  capture_output=True, text=True)
+            if result.returncode == 0:
+                self.status_display.setText('System rebuilt successfully')
+                self.build_required = False
+            else:
+                self.status_display.setText(f'Build failed: {result.stderr}')
+        except Exception as e:
+            self.status_display.setText(f'Build error: {str(e)}')
+        
+        self.updateControlButtonStates()
+    
+    thread = threading.Thread(target=build_thread)
+    thread.start()
+
+def startSystem(self):
+    """Start the system by executing the launch sequence"""
+    self.system_state = 'starting'
+    self.current_launch_step = 0
+    self.updateControlButtonStates()
+    
+    # Launch sequence steps (excluding Micro-ROS agent and manual robot power-on)
+    self.launch_steps = [
+        {
+            'name': 'Starting sensor integration',
+            'command': 'cd /home/yahboom/b4m_yahboom && . install/setup.bash && ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py'
+        },
+        {
+            'name': 'Starting RViz visualization',
+            'command': 'cd /home/yahboom/b4m_yahboom && . install/setup.bash && ros2 launch yahboomcar_nav display_launch.py'
+        },
+        {
+            'name': 'Starting navigation system',
+            'command': 'cd /home/yahboom/b4m_yahboom && . install/setup.bash && ros2 launch yahboomcar_nav waypoint_navigation_launch.py maps:=/home/yahboom/b4m_yahboom/yahboomcar_nav/maps/yahboom_map.yaml'
+        },
+        {
+            'name': 'Manual robot positioning',
+            'command': 'manual_pose_dialog'
+        },
+        {
+            'name': 'Starting waypoint navigation',
+            'command': 'cd /home/yahboom/b4m_yahboom && . install/setup.bash && python3 /home/yahboom/b4m_yahboom/b4m_waypoint_nav/b4m_waypoint_nav/b4m_waypoint_nav.py --ros-args -p mqtt_broker:=192.168.68.111 -p mqtt_port:=1883 -p mqtt_username:=robot -p mqtt_password:=robot123'
+        }
+    ]
+    
+    self.executeNextLaunchStep()
+
+def executeNextLaunchStep(self):
+    """Execute the next step in the launch sequence"""
+    if self.current_launch_step < len(self.launch_steps):
+        step = self.launch_steps[self.current_launch_step]
+        self.status_display.setText(f'Step {self.current_launch_step + 1}: {step["name"]}')
+        
+        if step['command'] == 'manual_pose_dialog':
+            # Show 2D Pose Estimate dialog
+            self.show2DPoseDialog()
+        else:
+            # Launch the process in a terminal
+            self.launchInTerminal(step['command'])
+        
+        self.current_launch_step += 1
+        
+        # Use a timer to automatically continue to next step after a delay
+        QTimer.singleShot(3000, self.executeNextLaunchStep)  # 3 second delay
+    else:
+        # All steps completed
+        self.system_state = 'running'
+        self.status_display.setText('System running - All components started successfully')
+        self.updateControlButtonStates()
+
+def show2DPoseDialog(self):
+    """Show dialog for 2D Pose Estimate step"""
+    dialog = QDialog(self)
+    dialog.setWindowTitle('Robot Positioning Required')
+    dialog.setModal(True)
+    dialog.setFixedSize(400, 200)
+    
+    layout = QVBoxLayout(dialog)
+    
+    # Instructions
+    label = QLabel('Please use RViz to set the robot\'s initial position:\n\n'
+                   '1. Click "2D Pose Estimate" button in RViz\n'
+                   '2. Click and drag on the map to set robot position\n'
+                   '3. Verify the red arrow matches robot location\n'
+                   '4. Click OK when positioning is complete')
+    label.setWordWrap(True)
+    layout.addWidget(label)
+    
+    # OK button
+    ok_button = QPushButton('OK - Positioning Complete')
+    ok_button.clicked.connect(dialog.accept)
+    layout.addWidget(ok_button)
+    
+    dialog.exec_()
+
+def launchInTerminal(self, command):
+    """Launch a command in a new terminal window"""
+    try:
+        # Use gnome-terminal to launch the command
+        terminal_command = f'gnome-terminal -- bash -c "{command}; echo \'Process completed. Press Enter to close...\'; read"'
+        process = subprocess.Popen(terminal_command, shell=True)
+        self.launch_processes.append(process)
+    except Exception as e:
+        self.status_display.setText(f'Error launching terminal: {str(e)}')
+
+def stopSystem(self):
+    """Stop the robot system (but leave Micro ROS Agent running)"""
+    self.system_state = 'stopped'
+    self.status_display.setText('Stopping robot system...')
+    self.updateControlButtonStates()
+    
+    # Execute shutdown sequence from b4m_shutdown.sh (but leave agent running)
+    def shutdown_thread():
+        try:
+            # Stop all ROS2 and system processes (from b4m_shutdown.sh)
+            subprocess.run(['pkill', '-f', 'ros2 launch'], capture_output=True)
+            subprocess.run(['pkill', '-f', 'b4m_waypoint_nav.py'], capture_output=True)
+            subprocess.run(['pkill', '-f', 'python3 /home/yahboom/b4m_yahboom'], capture_output=True)
+            subprocess.run(['pkill', '-f', 'rviz'], capture_output=True)
+            
+            # Give processes time to shutdown gracefully
+            import time
+            time.sleep(2)
+            
+            # Force kill remaining processes if needed
+            subprocess.run(['pkill', '-9', '-f', 'ros2'], capture_output=True)
+            subprocess.run(['pkill', '-9', '-f', 'rviz'], capture_output=True)
+            
+            self.status_display.setText('Robot system stopped - Micro ROS Agent still running')
+            
+        except Exception as e:
+            self.status_display.setText(f'Shutdown error: {str(e)}')
+        
+        # Clear launched processes list
+        self.launch_processes = []
+        self.current_launch_step = 0
+        
+        # Restore parameter editing
+        self.setParametersReadOnly(False)
+        self.updateControlButtonStates()
+    
+    thread = threading.Thread(target=shutdown_thread)
+    thread.start()
+
+def onParameterChanged(self):
+    """Called when any navigation parameter is changed"""
+    self.parameters_modified = True
+    self.build_required = True
+    self.updateControlButtonStates()
+
+def onMapChanged(self):
+    """Called when the map is changed"""
+    # TODO: Implement map changing functionality in the GUI
+    # Currently, the system uses a fixed map (yahboom_map). If map changing
+    # functionality is added in the future, it will require a colcon build
+    # because:
+    # 1. Navigation launch files reference specific map paths
+    # 2. Map server parameters need to be updated
+    # 3. Costmap configurations may need adjustment for different map properties
+    # 4. AMCL localization parameters might need tuning for different maps
+    self.build_required = True
+    self.updateControlButtonStates()
+
+def startAgent(self):
+    """Start the Micro ROS Agent Docker container"""
+    self.agent_status_display.setText('Starting Micro ROS Agent...')
+    self.start_agent_btn.setEnabled(False)
+    
+    # Docker command from b4m_HA_launch.sh
+    docker_command = 'docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host microros/micro-ros-agent:humble udp4 --port 8090'
+    
+    def start_agent_thread():
+        try:
+            # Launch the Docker container in a terminal
+            terminal_command = f'gnome-terminal -- bash -c "{docker_command}; echo \'Micro-ROS Agent stopped. Press Enter to close...\'; read"'
+            self.agent_process = subprocess.Popen(terminal_command, shell=True)
+            
+            # Wait a moment for the container to start
+            import time
+            time.sleep(3)
+            
+            # Check if Docker container is running
+            result = subprocess.run(['docker', 'ps', '--filter', 'ancestor=microros/micro-ros-agent:humble', '--format', '{{.ID}}'], 
+                                  capture_output=True, text=True)
+            
+            if result.returncode == 0 and result.stdout.strip():
+                self.agent_state = 'running'
+                self.agent_status_display.setText('Micro ROS Agent running - Docker container started successfully')
+            else:
+                self.agent_status_display.setText('Failed to start Micro ROS Agent - Check Docker installation')
+                self.start_agent_btn.setEnabled(True)
+                return
+                
+        except Exception as e:
+            self.agent_status_display.setText(f'Error starting agent: {str(e)}')
+            self.start_agent_btn.setEnabled(True)
+            return
+        
+        self.updateControlButtonStates()
+    
+    thread = threading.Thread(target=start_agent_thread)
+    thread.start()
+
+def stopAll(self):
+    """Stop all processes including the Micro ROS Agent"""
+    self.agent_state = 'stopped'
+    self.system_state = 'stopped'
+    self.agent_status_display.setText('Stopping all processes...')
+    self.updateControlButtonStates()
+    
+    def stop_all_thread():
+        try:
+            # Stop all ROS2 and system processes (from b4m_shutdown.sh)
+            subprocess.run(['pkill', '-f', 'ros2 launch'], capture_output=True)
+            subprocess.run(['pkill', '-f', 'b4m_waypoint_nav.py'], capture_output=True)
+            subprocess.run(['pkill', '-f', 'python3 /home/yahboom/b4m_yahboom'], capture_output=True)
+            subprocess.run(['pkill', '-f', 'rviz'], capture_output=True)
+            
+            # Give processes time to shutdown gracefully
+            import time
+            time.sleep(2)
+            
+            # Force kill remaining processes if needed
+            subprocess.run(['pkill', '-9', '-f', 'ros2'], capture_output=True)
+            subprocess.run(['pkill', '-9', '-f', 'rviz'], capture_output=True)
+            
+            # Stop Micro ROS Agent Docker container
+            # Get all running micro-ros-agent containers
+            result = subprocess.run(['docker', 'ps', '--filter', 'ancestor=microros/micro-ros-agent:humble', '--format', '{{.ID}}'], 
+                                  capture_output=True, text=True)
+            
+            if result.returncode == 0 and result.stdout.strip():
+                container_ids = result.stdout.strip().split('\n')
+                for container_id in container_ids:
+                    if container_id:
+                        subprocess.run(['docker', 'stop', container_id], capture_output=True)
+                        subprocess.run(['docker', 'rm', container_id], capture_output=True)
+            
+            # Clear process references
+            self.launch_processes = []
+            self.current_launch_step = 0
+            self.agent_process = None
+            
+            self.agent_status_display.setText('All processes stopped - System reset to clean state')
+            
+        except Exception as e:
+            self.agent_status_display.setText(f'Error during shutdown: {str(e)}')
+        
+        # Restore parameter editing
+        self.setParametersReadOnly(False)
+        self.updateControlButtonStates()
+    
+    thread = threading.Thread(target=stop_all_thread)
+    thread.start()
+
+# Add these methods to the B4MRobotManagerGUI class above
+B4MRobotManagerGUI.rebuildSystem = rebuildSystem
+B4MRobotManagerGUI.startSystem = startSystem
+B4MRobotManagerGUI.executeNextLaunchStep = executeNextLaunchStep
+B4MRobotManagerGUI.show2DPoseDialog = show2DPoseDialog
+B4MRobotManagerGUI.launchInTerminal = launchInTerminal
+B4MRobotManagerGUI.stopSystem = stopSystem
+B4MRobotManagerGUI.onParameterChanged = onParameterChanged
+B4MRobotManagerGUI.onMapChanged = onMapChanged
+B4MRobotManagerGUI.startAgent = startAgent
+B4MRobotManagerGUI.stopAll = stopAll
+
 def main(args=None):
-    print("Starting Waypoint Manager...")
+    print("Starting B4M Robot Manager...")
     try:
         rclpy.init(args=args)
         print("ROS2 initialized")
@@ -1999,16 +2523,16 @@ def main(args=None):
         print("Application style set to Fusion")
         
         # Create the ROS2 node with detailed error handling
-        print("Creating WaypointManager node...")
+        print("Creating B4M Robot Manager node...")
         try:
             # Initialize waypoints dictionary first to avoid any issues
             print("Initializing empty waypoints dictionary")
             waypoints = {}
             
             # Create the node
-            print("Creating WaypointManager instance")
-            waypoint_manager = WaypointManager()
-            print("WaypointManager node created successfully")
+            print("Creating B4M Robot Manager instance")
+            robot_manager = WaypointManager()
+            print("B4M Robot Manager node created successfully")
             
             # Start the application
             print("Starting Qt application main loop")

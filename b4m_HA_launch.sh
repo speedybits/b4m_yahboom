@@ -77,16 +77,16 @@ confirm
 launch_in_terminal "Starting the B4M Waypoint Navigation Node with MQTT integration" \
     "cd /home/yahboom/b4m_yahboom && . install/setup.bash && python3 /home/yahboom/b4m_yahboom/b4m_waypoint_nav/b4m_waypoint_nav/b4m_waypoint_nav.py --ros-args -p mqtt_broker:=192.168.68.111 -p mqtt_port:=1883 -p mqtt_username:=robot -p mqtt_password:=robot123"
 
-# Step 8: Start the Waypoint Manager GUI
+# Step 8: Start the Robot Manager GUI
 echo "===================================================="
-echo "STEP: Starting the Waypoint Manager GUI"
+echo "STEP: Starting the B4M Robot Manager GUI"
 echo "===================================================="
-echo "IMPORTANT: This will launch the waypoint manager GUI for visual control of the robot."
+echo "IMPORTANT: This will launch the robot manager GUI for visual control of the robot."
 echo ""
 confirm
 
-launch_in_terminal "Starting the Waypoint Manager GUI for visual control of waypoints" \
-    "cd /home/yahboom/b4m_yahboom && . install/setup.bash && ros2 run b4m_waypoint_nav waypoint_manager_node.py"
+launch_in_terminal "Starting the B4M Robot Manager GUI for visual control of waypoints" \
+    "cd /home/yahboom/b4m_yahboom && . install/setup.bash && ros2 run b4m_waypoint_nav b4m_robot_manager_node.py"
 
 
 exit 0

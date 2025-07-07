@@ -96,7 +96,7 @@ The system follows a specific startup sequence (automated in `b4m_HA_launch.sh`)
 ### Waypoint Management System
 - **Single map approach**: All waypoints stored under `yahboom_map` key
 - **Data storage**: JSON format at `/home/yahboom/b4m_yahboom/install/b4m_waypoint_nav/waypoints.json`
-- **GUI tool**: PyQt5-based waypoint manager with map visualization
+- **GUI tool**: PyQt5-based robot manager with map visualization
 - **Coordinate-based navigation**: Direct coordinate sending via MQTT eliminates waypoint lookup
 - **Waypoint structure**: Includes position, orientation, timestamp, and visualization properties
 - **Map format support**: Compatible with both Gmapping and Cartographer maps
@@ -161,7 +161,7 @@ The B4M system integrates with Home Assistant via MQTT:
 - **Camera**: Optional vision processing capabilities
 
 ### GUI Development
-- **PyQt5**: Primary GUI framework for waypoint manager
+- **PyQt5**: Primary GUI framework for robot manager
 - **Dependencies**: `python3-pyqt5`, `python3-pyqt5.qtsvg`, `pillow`, `numpy`
 - **Map visualization**: Click-to-place waypoints with zoom/pan support
 - **Error handling**: Terminal-based logging with ROS2 logging mechanisms
@@ -169,6 +169,41 @@ The B4M system integrates with Home Assistant via MQTT:
 - **Map format handling**: Enhanced support for different image formats (P, L, RGB modes)
 - **Coordinate debugging**: Built-in coordinate conversion testing and validation
 - **View controls**: Reset view, zoom, pan, and proper map centering
+
+#### B4M Robot Manager - Central Launch Control
+The B4M Robot Manager serves as the central application for system control, integrating the launch and shutdown sequences directly into the GUI:
+
+**Control Panel Features:**
+- **Three primary buttons**: Rebuild, Start, Stop
+- **Smart state management**: Buttons are enabled/disabled based on system state
+- **Launch sequence integration**: Executes b4m_HA_launch.sh steps programmatically
+- **Shutdown integration**: Executes b4m_shutdown.sh sequence when stopping
+- **Status display**: Shows current step in launch sequence below control buttons
+- **Parameter protection**: Navigation parameters become read-only during active system operation
+
+**Button State Logic:**
+- **Initial state**: Only "Start" button enabled
+- **During launch**: "Start" disabled, "Stop" enabled, status shows current step
+- **Parameter changes**: "Rebuild" becomes enabled when GUI changes require colcon build
+- **Active system**: Navigation parameters section becomes read-only (browsable but not editable)
+
+**Launch Sequence Steps (from b4m_HA_launch.sh):**
+1. Start Micro-ROS Agent (Docker container)
+2. Power on physical robot (manual confirmation)
+3. Launch car's underlying data processing (sensor integration)
+4. Start RViz for visualization
+5. Launch navigation system with pre-built map
+6. Initial robot positioning (manual pose estimation)
+7. Start B4M Waypoint Navigation Node with MQTT
+8. Complete - Robot Manager GUI ready for operation
+
+**Shutdown Sequence Steps (from b4m_shutdown.sh):**
+1. Stop all ROS2 nodes
+2. Force kill remaining ROS2 processes if needed
+3. Stop waypoint navigation and robot manager processes
+4. Leave Micro-ROS agent running
+5. Clean up remaining Python processes
+6. Stop RViz if running
 
 ## Testing Strategy
 

@@ -14,7 +14,7 @@ is_running() {
 echo "Stopping all ROS2 nodes..."
 pkill -f "ros2 launch"
 pkill -f "b4m_waypoint_nav.py"
-pkill -f "waypoint_manager_node.py"
+pkill -f "b4m_robot_manager_node.py"
 
 # Give ROS2 nodes time to shutdown gracefully
 sleep 2
@@ -30,20 +30,13 @@ if is_running "b4m_waypoint_nav.py"; then
     pkill -9 -f "b4m_waypoint_nav.py"
 fi
 
-if is_running "waypoint_manager_node.py"; then
-    echo "Force killing waypoint manager GUI..."
-    pkill -9 -f "waypoint_manager_node.py"
+if is_running "b4m_robot_manager_node.py"; then
+    echo "Force killing robot manager GUI..."
+    pkill -9 -f "b4m_robot_manager_node.py"
 fi
 
-# Stop the Micro-ROS agent Docker container
-echo "Stopping Micro-ROS agent Docker container..."
-CONTAINER_ID=$(docker ps | grep "microros/micro-ros-agent:humble" | awk '{print $1}')
-if [ ! -z "$CONTAINER_ID" ]; then
-    docker stop $CONTAINER_ID
-    echo "Micro-ROS agent container stopped."
-else
-    echo "No running Micro-ROS agent container found."
-fi
+# Note: Micro-ROS agent is left running intentionally
+echo "Leaving Micro-ROS agent running..."
 
 # Kill any remaining Python processes related to the B4M system
 echo "Checking for remaining Python processes..."
