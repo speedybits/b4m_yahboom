@@ -7,6 +7,8 @@ import yaml
 import numpy as np
 import random
 import traceback
+import subprocess
+import threading
 from PIL import Image
 from datetime import datetime
 
@@ -24,8 +26,9 @@ import paho.mqtt.client as mqtt
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QLabel, QPushButton, QListWidget, QListWidgetItem,
-                             QSplitter, QComboBox, QGroupBox, QStatusBar,
-                             QMessageBox, QFileDialog, QInputDialog)
+                             QSplitter, QComboBox, QGroupBox, QStatusBar, QScrollArea,
+                             QMessageBox, QFileDialog, QInputDialog, QSpinBox, QDoubleSpinBox,
+                             QCheckBox, QTextEdit, QProgressBar, QLineEdit)
 from PyQt5.QtCore import Qt, QSettings, QTimer, QRectF, QRect
 from PyQt5.QtGui import QPainter, QColor, QPen, QBrush, QPixmap, QFont, QImage
 
@@ -35,6 +38,12 @@ class WaypointManagerGUI(QMainWindow):
         
         # Store reference to ROS node
         self.ros_node = ros_node
+        
+        # Parameter management
+        self.parameters = {}
+        self.parameter_widgets = {}
+        self.parameters_modified = False
+        self.build_required = False
         
         # Initialize UI
         self.initUI()
@@ -59,6 +68,28 @@ class WaypointManagerGUI(QMainWindow):
         # Create left panel (controls)
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
+        
+        # Configuration Management (at top to show it saves everything)
+        config_group = QGroupBox('Configuration Management')
+        config_layout = QVBoxLayout(config_group)
+        
+        config_buttons_layout = QHBoxLayout()
+        save_config_btn = QPushButton('💾 Save Config')
+        restore_config_btn = QPushButton('📁 Load Config')
+        save_config_btn.setStyleSheet('background-color: #4CAF50; color: white; font-weight: bold;')
+        restore_config_btn.setStyleSheet('background-color: #2196F3; color: white; font-weight: bold;')
+        save_config_btn.clicked.connect(self.saveConfiguration)
+        restore_config_btn.clicked.connect(self.loadConfiguration)
+        config_buttons_layout.addWidget(save_config_btn)
+        config_buttons_layout.addWidget(restore_config_btn)
+        config_layout.addLayout(config_buttons_layout)
+        
+        # Add explanatory label
+        config_help = QLabel('Saves/loads: parameters, map, and all waypoints')
+        config_help.setStyleSheet('font-size: 10px; color: #666666; font-style: italic;')
+        config_layout.addWidget(config_help)
+        
+        left_layout.addWidget(config_group)
         
         # Map info group
         map_group = QGroupBox('Map Information')
@@ -95,6 +126,22 @@ class WaypointManagerGUI(QMainWindow):
         actions_layout.addWidget(self.reset_view_btn)
         left_layout.addWidget(actions_group)
         
+        # Create status bar first (needed by parameter controls)
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self.status_bar.showMessage('Ready')
+        
+        # Navigation Parameters group
+        self.params_group = QGroupBox('Navigation Parameters')
+        self.params_group.setCheckable(True)
+        self.params_group.setChecked(False)  # Collapsed by default
+        params_layout = QVBoxLayout(self.params_group)
+        
+        # Parameter controls will be added here
+        self.setupParameterControls(params_layout)
+        
+        left_layout.addWidget(self.params_group)
+        
         # Create right panel (map view)
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
@@ -107,11 +154,6 @@ class WaypointManagerGUI(QMainWindow):
         
         # Set initial splitter sizes (30% left, 70% right)
         splitter.setSizes([300, 700])
-        
-        # Create status bar
-        self.statusBar = QStatusBar()
-        self.setStatusBar(self.statusBar)
-        self.statusBar.showMessage('Ready')
         
         # Connect signals
         self.add_waypoint_btn.clicked.connect(self.addWaypoint)
@@ -144,7 +186,7 @@ class WaypointManagerGUI(QMainWindow):
         
         # Check if directory exists
         if not os.path.exists(maps_dir):
-            self.statusBar.showMessage(f"Maps directory not found: {maps_dir}")
+            self.status_bar.showMessage(f"Maps directory not found: {maps_dir}")
             return
         
         # Use the default map
@@ -153,10 +195,10 @@ class WaypointManagerGUI(QMainWindow):
         map_path = os.path.join(maps_dir, map_file)
         
         if not os.path.exists(map_path):
-            self.statusBar.showMessage(f"Default map not found: {map_path}")
+            self.status_bar.showMessage(f"Default map not found: {map_path}")
             return
             
-        self.statusBar.showMessage(f"Loading default map: {default_map}")
+        self.status_bar.showMessage(f"Loading default map: {default_map}")
         self.loadMap(default_map)
     
     def loadMap(self, map_name):
@@ -166,7 +208,7 @@ class WaypointManagerGUI(QMainWindow):
         
         # Check if file exists
         if not os.path.exists(map_file):
-            self.statusBar.showMessage(f"Map file not found: {map_file}")
+            self.status_bar.showMessage(f"Map file not found: {map_file}")
             return
         
         # Load the map metadata
@@ -179,7 +221,7 @@ class WaypointManagerGUI(QMainWindow):
             
             # Check if image file exists
             if not os.path.exists(image_file):
-                self.statusBar.showMessage(f"Map image not found: {image_file}")
+                self.status_bar.showMessage(f"Map image not found: {image_file}")
                 return
                 
             # Load the image with enhanced handling for different formats
@@ -205,7 +247,7 @@ class WaypointManagerGUI(QMainWindow):
             
             # Verify image is not corrupted or empty
             if image.width == 0 or image.height == 0:
-                self.statusBar.showMessage(f"Invalid image dimensions: {image.width}x{image.height}")
+                self.status_bar.showMessage(f"Invalid image dimensions: {image.width}x{image.height}")
                 return
                 
             # Convert PIL image to QImage with proper format
@@ -214,14 +256,14 @@ class WaypointManagerGUI(QMainWindow):
             
             # Verify QImage is valid
             if qimage.isNull():
-                self.statusBar.showMessage("Failed to create QImage from map data")
+                self.status_bar.showMessage("Failed to create QImage from map data")
                 return
                 
             pixmap = QPixmap.fromImage(qimage)
             
             # Verify pixmap is valid
             if pixmap.isNull():
-                self.statusBar.showMessage("Failed to create QPixmap from QImage")
+                self.status_bar.showMessage("Failed to create QPixmap from QImage")
                 return
             
             # Extract and validate map metadata
@@ -254,9 +296,9 @@ class WaypointManagerGUI(QMainWindow):
             self.map_label.setText(f"Map: {map_name}")
             
             # Update status
-            self.statusBar.showMessage(f"Loaded map: {map_name}")
+            self.status_bar.showMessage(f"Loaded map: {map_name}")
         except Exception as e:
-            self.statusBar.showMessage(f"Error loading map: {str(e)}")
+            self.status_bar.showMessage(f"Error loading map: {str(e)}")
             traceback.print_exc()
     
     def updateWaypointList(self):
@@ -298,7 +340,7 @@ class WaypointManagerGUI(QMainWindow):
     def addWaypoint(self):
         # Add a new waypoint
         self.ros_node.get_logger().info('Add waypoint requested')
-        self.statusBar.showMessage('Click on the map to place a waypoint')
+        self.status_bar.showMessage('Click on the map to place a waypoint')
         self.map_view.setAddWaypointMode(True)
     
     def editWaypoint(self):
@@ -308,14 +350,14 @@ class WaypointManagerGUI(QMainWindow):
         # Check if a waypoint is selected
         selected_items = self.waypoint_list.selectedItems()
         if not selected_items:
-            self.statusBar.showMessage('No waypoint selected')
+            self.status_bar.showMessage('No waypoint selected')
             return
         
         # Get selected waypoint name
         waypoint_name = selected_items[0].text()
         
         # Enable map click mode for editing
-        self.statusBar.showMessage(f'Click on the map to set new position for {waypoint_name}')
+        self.status_bar.showMessage(f'Click on the map to set new position for {waypoint_name}')
         self.map_view.setEditWaypointMode(True, waypoint_name)
     
     def deleteWaypoint(self):
@@ -325,7 +367,7 @@ class WaypointManagerGUI(QMainWindow):
         # Check if a waypoint is selected
         selected_items = self.waypoint_list.selectedItems()
         if not selected_items:
-            self.statusBar.showMessage('No waypoint selected')
+            self.status_bar.showMessage('No waypoint selected')
             return
         
         # Get selected waypoint name from UserRole data if available
@@ -344,11 +386,11 @@ class WaypointManagerGUI(QMainWindow):
             # Delete waypoint
             if self.ros_node.delete_waypoint(self.ros_node.current_map, waypoint_name):
                 self.updateWaypointList()
-                self.statusBar.showMessage(f'Deleted waypoint: {waypoint_name}')
+                self.status_bar.showMessage(f'Deleted waypoint: {waypoint_name}')
                 # Refresh the map view to reflect the deletion
                 self.map_view.update()
             else:
-                self.statusBar.showMessage(f'Failed to delete waypoint: {waypoint_name}')
+                self.status_bar.showMessage(f'Failed to delete waypoint: {waypoint_name}')
     
     def waypointSelected(self, item):
         # Handle waypoint selection
@@ -373,7 +415,7 @@ class WaypointManagerGUI(QMainWindow):
             waypoint = self.ros_node.waypoints[self.ros_node.current_map][waypoint_name]
             pos_x = waypoint['position']['x']
             pos_y = waypoint['position']['y']
-            self.statusBar.showMessage(f'Selected waypoint: {waypoint_name} at ({pos_x:.2f}, {pos_y:.2f})')
+            self.status_bar.showMessage(f'Selected waypoint: {waypoint_name} at ({pos_x:.2f}, {pos_y:.2f})')
     
     def navigateToWaypoint(self):
         """Send MQTT command to navigate to the selected waypoint
@@ -382,7 +424,7 @@ class WaypointManagerGUI(QMainWindow):
         """
         if hasattr(self, 'selected_waypoint') and self.selected_waypoint:
             # Show status message
-            self.statusBar.showMessage(f'Navigating to waypoint: {self.selected_waypoint}...')
+            self.status_bar.showMessage(f'Navigating to waypoint: {self.selected_waypoint}...')
             
             # Get the current map and waypoint data
             current_map = self.ros_node.current_map
@@ -390,7 +432,7 @@ class WaypointManagerGUI(QMainWindow):
             
             # Check if waypoint exists
             if current_map not in self.ros_node.waypoints or waypoint_name not in self.ros_node.waypoints[current_map]:
-                self.statusBar.showMessage(f'Cannot navigate to waypoint: {waypoint_name} not found in map {current_map}')
+                self.status_bar.showMessage(f'Cannot navigate to waypoint: {waypoint_name} not found in map {current_map}')
                 QMessageBox.warning(self, 'Navigation Error', 
                                 f'Waypoint {waypoint_name} not found in map {current_map}')
                 return
@@ -414,7 +456,7 @@ class WaypointManagerGUI(QMainWindow):
             try:
                 # Get MQTT client from ros_node
                 if not self.ros_node.mqtt_connected:
-                    self.statusBar.showMessage('Cannot navigate to waypoint: not connected to MQTT broker')
+                    self.status_bar.showMessage('Cannot navigate to waypoint: not connected to MQTT broker')
                     QMessageBox.warning(self, 'Navigation Error', 'Not connected to MQTT broker')
                     return
                 
@@ -423,35 +465,549 @@ class WaypointManagerGUI(QMainWindow):
                 result = self.ros_node.mqtt_client.publish(full_topic, command_json)
                 
                 if result.rc == mqtt.MQTT_ERR_SUCCESS:
-                    self.statusBar.showMessage(f'Navigation command sent for waypoint: {self.selected_waypoint}')
+                    self.status_bar.showMessage(f'Navigation command sent for waypoint: {self.selected_waypoint}')
                     print(f'Published coordinate-based navigation command to {full_topic}: {command_json}')
                 else:
-                    self.statusBar.showMessage(f'Failed to send navigation command for waypoint: {self.selected_waypoint}')
+                    self.status_bar.showMessage(f'Failed to send navigation command for waypoint: {self.selected_waypoint}')
                     QMessageBox.warning(self, 'Navigation Error', 
                                     'Failed to send navigation command. Check MQTT connection and robot status.')
             except Exception as e:
-                self.statusBar.showMessage(f'Error sending navigation command: {str(e)}')
+                self.status_bar.showMessage(f'Error sending navigation command: {str(e)}')
                 QMessageBox.warning(self, 'Navigation Error', 
                                 f'Error sending navigation command: {str(e)}')
                 import traceback
                 traceback.print_exc()
         else:
-            self.statusBar.showMessage('No waypoint selected for navigation')
+            self.status_bar.showMessage('No waypoint selected for navigation')
     
     def updateMqttStatus(self, connected):
         """Update the UI to reflect MQTT connection status"""
         if connected:
-            self.statusBar.showMessage('MQTT connected', 3000)  # Show for 3 seconds
+            self.status_bar.showMessage('MQTT connected', 3000)  # Show for 3 seconds
             if hasattr(self, 'selected_waypoint') and self.selected_waypoint:
                 self.navigate_waypoint_btn.setEnabled(True)
         else:
-            self.statusBar.showMessage('MQTT disconnected', 3000)  # Show for 3 seconds
+            self.status_bar.showMessage('MQTT disconnected', 3000)  # Show for 3 seconds
             self.navigate_waypoint_btn.setEnabled(False)
     
     def resetMapView(self):
         """Reset the map view to center and fit the map"""
         self.map_view.resetView()
-        self.statusBar.showMessage('Map view reset to center')
+        self.status_bar.showMessage('Map view reset to center')
+    
+    def setupParameterControls(self, layout):
+        """Setup the parameter adjustment controls"""
+        
+        # Load parameters button
+        load_params_btn = QPushButton('Reload Parameters from File')
+        load_params_btn.clicked.connect(self.loadParameters)
+        layout.addWidget(load_params_btn)
+        
+        # Parameter scroll area
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setMaximumHeight(400)
+        
+        self.params_widget = QWidget()
+        self.params_layout = QVBoxLayout(self.params_widget)
+        scroll_area.setWidget(self.params_widget)
+        
+        layout.addWidget(scroll_area)
+        
+        # Control buttons
+        buttons_layout = QHBoxLayout()
+        
+        apply_btn = QPushButton('Apply Parameters')
+        apply_btn.setStyleSheet('background-color: #4CAF50; color: white; font-weight: bold;')
+        apply_btn.clicked.connect(self.applyParameters)
+        
+        self.build_btn = QPushButton('Build Required')
+        self.build_btn.setStyleSheet('background-color: #FF9800; color: white; font-weight: bold;')
+        self.build_btn.clicked.connect(self.buildPackage)
+        self.build_btn.hide()  # Hidden until build is required
+        
+        reset_btn = QPushButton('Reset to Defaults')
+        reset_btn.clicked.connect(self.resetParameters)
+        
+        buttons_layout.addWidget(apply_btn)
+        buttons_layout.addWidget(self.build_btn)
+        buttons_layout.addWidget(reset_btn)
+        
+        layout.addLayout(buttons_layout)
+        
+        # Build progress bar
+        self.build_progress = QProgressBar()
+        self.build_progress.hide()
+        layout.addWidget(self.build_progress)
+        
+        # Load parameters on startup
+        self.loadParameters()
+    
+    def loadParameters(self):
+        """Load navigation parameters from YAML file"""
+        try:
+            params_file = "/home/yahboom/b4m_yahboom/yahboomcar_nav/params/dwb_nav_params.yaml"
+            
+            if not os.path.exists(params_file):
+                self.status_bar.showMessage(f"Parameters file not found: {params_file}")
+                return
+            
+            with open(params_file, 'r') as f:
+                self.parameters = yaml.safe_load(f)
+            
+            self.createParameterWidgets()
+            self.status_bar.showMessage('Parameters loaded successfully')
+            
+        except Exception as e:
+            self.status_bar.showMessage(f'Error loading parameters: {str(e)}')
+            self.ros_node.get_logger().error(f'Error loading parameters: {e}')
+    
+    def createParameterWidgets(self):
+        """Create UI widgets for parameter editing"""
+        # Clear existing widgets
+        for i in reversed(range(self.params_layout.count())):
+            self.params_layout.itemAt(i).widget().setParent(None)
+        
+        self.parameter_widgets.clear()
+        
+        if not self.parameters:
+            return
+        
+        # Define parameter categories based on B4M_nav_adjustments.md
+        param_categories = {
+            'AMCL Parameters': [
+                'alpha1', 'alpha2', 'alpha3', 'alpha4', 'alpha5',
+                'max_particles', 'do_beamskip', 'transform_tolerance',
+                'update_min_a', 'update_min_d', 'pf_err',
+                'recovery_alpha_fast', 'recovery_alpha_slow',
+                'z_hit', 'z_rand'
+            ],
+            'Navigation Controller': [
+                'required_movement_radius', 'movement_time_allowance',
+                'xy_goal_tolerance', 'yaw_goal_tolerance'
+            ],
+            'Other Parameters': []  # Will contain any parameters not in above categories
+        }
+        
+        # Process parameters by category
+        for category_name, param_names in param_categories.items():
+            category_group = QGroupBox(category_name)
+            category_group.setCheckable(True)
+            category_group.setChecked(False)  # Collapsed by default
+            category_layout = QVBoxLayout(category_group)
+            
+            category_has_params = False
+            
+            # Look for parameters in this category
+            for param_name in param_names:
+                widget = self.findAndCreateParameterWidget(param_name, self.parameters)
+                if widget:
+                    category_layout.addWidget(widget)
+                    category_has_params = True
+            
+            # Add category to layout if it has parameters
+            if category_has_params:
+                self.params_layout.addWidget(category_group)
+        
+        # Handle uncategorized parameters
+        other_params = self.findUncategorizedParameters(param_categories)
+        if other_params:
+            other_group = QGroupBox('Other Parameters')
+            other_group.setCheckable(True)
+            other_group.setChecked(False)
+            other_layout = QVBoxLayout(other_group)
+            
+            for param_path, value in other_params:
+                widget = self.createParameterWidget(param_path, value)
+                if widget:
+                    other_layout.addWidget(widget)
+            
+            self.params_layout.addWidget(other_group)
+    
+    def findAndCreateParameterWidget(self, param_name, params_dict, parent_path=""):
+        """Recursively find and create widget for a parameter"""
+        for key, value in params_dict.items():
+            current_path = f"{parent_path}.{key}" if parent_path else key
+            
+            if key == param_name:
+                return self.createParameterWidget(current_path, value)
+            elif isinstance(value, dict):
+                widget = self.findAndCreateParameterWidget(param_name, value, current_path)
+                if widget:
+                    return widget
+        return None
+    
+    def findUncategorizedParameters(self, categories):
+        """Find parameters not in any category"""
+        categorized_params = set()
+        for param_list in categories.values():
+            categorized_params.update(param_list)
+        
+        uncategorized = []
+        self.collectAllParameters(self.parameters, "", categorized_params, uncategorized)
+        return uncategorized
+    
+    def collectAllParameters(self, params_dict, parent_path, categorized_params, uncategorized):
+        """Recursively collect all parameters"""
+        for key, value in params_dict.items():
+            current_path = f"{parent_path}.{key}" if parent_path else key
+            
+            if isinstance(value, (int, float, bool, str)):
+                if key not in categorized_params:
+                    uncategorized.append((current_path, value))
+            elif isinstance(value, dict):
+                self.collectAllParameters(value, current_path, categorized_params, uncategorized)
+    
+    def createParameterWidget(self, param_path, value):
+        """Create appropriate widget for parameter value"""
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Parameter name label
+        name_label = QLabel(param_path.split('.')[-1])
+        name_label.setMinimumWidth(150)
+        layout.addWidget(name_label)
+        
+        # Value widget based on type
+        if isinstance(value, bool):
+            widget = QCheckBox()
+            widget.setChecked(value)
+            widget.stateChanged.connect(self.parameterChanged)
+        elif isinstance(value, int):
+            widget = QSpinBox()
+            widget.setRange(-999999, 999999)
+            widget.setValue(value)
+            widget.valueChanged.connect(self.parameterChanged)
+        elif isinstance(value, float):
+            widget = QDoubleSpinBox()
+            widget.setRange(-999999.0, 999999.0)
+            widget.setDecimals(4)
+            widget.setValue(value)
+            widget.valueChanged.connect(self.parameterChanged)
+        else:  # string
+            from PyQt5.QtWidgets import QLineEdit
+            widget = QLineEdit()
+            widget.setText(str(value))
+            widget.textChanged.connect(self.parameterChanged)
+        
+        layout.addWidget(widget)
+        
+        # Store widget reference
+        self.parameter_widgets[param_path] = widget
+        
+        return container
+    
+    def parameterChanged(self):
+        """Handle parameter value changes"""
+        self.parameters_modified = True
+        self.status_bar.showMessage('Parameters modified - click Apply to update')
+    
+    def applyParameters(self):
+        """Apply parameters to running system or mark for build"""
+        if not self.parameters_modified:
+            self.status_bar.showMessage('No parameters to apply')
+            return
+        
+        try:
+            # Collect changed parameters
+            changed_params = []
+            for param_path, widget in self.parameter_widgets.items():
+                if isinstance(widget, QCheckBox):
+                    value = widget.isChecked()
+                elif isinstance(widget, (QSpinBox, QDoubleSpinBox)):
+                    value = widget.value()
+                else:  # QLineEdit
+                    value = widget.text()
+                
+                changed_params.append((param_path, value))
+            
+            # Try to apply parameters at runtime first
+            runtime_success = self.applyParametersRuntime(changed_params)
+            
+            if runtime_success:
+                self.status_bar.showMessage('Parameters applied successfully')
+                self.parameters_modified = False
+            else:
+                # Mark for build if runtime application failed
+                self.build_required = True
+                self.build_btn.show()
+                self.status_bar.showMessage('Parameters changed - build required for full effect')
+        
+        except Exception as e:
+            self.status_bar.showMessage(f'Error applying parameters: {str(e)}')
+            self.ros_node.get_logger().error(f'Error applying parameters: {e}')
+    
+    def applyParametersRuntime(self, changed_params):
+        """Try to apply parameters to running nodes using ros2 param set"""
+        try:
+            # Check if navigation nodes are running
+            result = subprocess.run(['ros2', 'node', 'list'], 
+                                 capture_output=True, text=True, timeout=5)
+            
+            if result.returncode != 0:
+                return False
+            
+            running_nodes = result.stdout.strip().split('\n')
+            nav_nodes = [node for node in running_nodes if any(nav_name in node.lower() 
+                        for nav_name in ['amcl', 'controller', 'planner', 'nav'])]
+            
+            if not nav_nodes:
+                self.ros_node.get_logger().info('No navigation nodes running for runtime parameter updates')
+                return False
+            
+            # Apply parameters to relevant nodes
+            success_count = 0
+            for param_path, value in changed_params:
+                for node in nav_nodes:
+                    try:
+                        # Convert parameter path for ros2 param set
+                        param_name = param_path.split('.')[-1]
+                        
+                        cmd = ['ros2', 'param', 'set', node, param_name, str(value)]
+                        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                        
+                        if result.returncode == 0:
+                            success_count += 1
+                            self.ros_node.get_logger().info(f'Set {param_name}={value} on {node}')
+                        
+                    except subprocess.TimeoutExpired:
+                        continue
+                    except Exception as e:
+                        self.ros_node.get_logger().debug(f'Failed to set {param_name} on {node}: {e}')
+                        continue
+            
+            return success_count > 0
+            
+        except Exception as e:
+            self.ros_node.get_logger().error(f'Error in runtime parameter application: {e}')
+            return False
+    
+    def buildPackage(self):
+        """Build the navigation package with updated parameters"""
+        try:
+            self.build_btn.setEnabled(False)
+            self.build_progress.show()
+            self.build_progress.setRange(0, 0)  # Indeterminate progress
+            
+            # Update YAML file with current parameter values
+            self.saveParametersToFile()
+            
+            # Start build in separate thread
+            self.build_thread = threading.Thread(target=self.runBuildProcess)
+            self.build_thread.daemon = True
+            self.build_thread.start()
+            
+        except Exception as e:
+            self.status_bar.showMessage(f'Error starting build: {str(e)}')
+            self.build_btn.setEnabled(True)
+            self.build_progress.hide()
+    
+    def runBuildProcess(self):
+        """Run colcon build process in background thread"""
+        try:
+            # Change to workspace directory and run colcon build
+            workspace_dir = "/home/yahboom/b4m_yahboom"
+            cmd = ["colcon", "build", "--packages-select", "yahboomcar_nav"]
+            
+            process = subprocess.Popen(
+                cmd, 
+                cwd=workspace_dir,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            stdout, stderr = process.communicate()
+            
+            # Update UI from main thread
+            if process.returncode == 0:
+                self.status_bar.showMessage('Build completed successfully')
+                self.build_required = False
+                self.parameters_modified = False
+            else:
+                self.status_bar.showMessage(f'Build failed: {stderr}')
+                
+        except Exception as e:
+            self.status_bar.showMessage(f'Build error: {str(e)}')
+        
+        finally:
+            # Hide progress and re-enable button
+            self.build_progress.hide()
+            self.build_btn.setEnabled(True)
+            if not self.build_required:
+                self.build_btn.hide()
+    
+    def saveParametersToFile(self):
+        """Save current parameter values to YAML file"""
+        try:
+            # Update parameters dict with current widget values
+            for param_path, widget in self.parameter_widgets.items():
+                if isinstance(widget, QCheckBox):
+                    value = widget.isChecked()
+                elif isinstance(widget, (QSpinBox, QDoubleSpinBox)):
+                    value = widget.value()
+                else:  # QLineEdit
+                    value = widget.text()
+                    try:
+                        # Try to convert to appropriate type
+                        if '.' in value:
+                            value = float(value)
+                        else:
+                            value = int(value)
+                    except:
+                        pass  # Keep as string
+                
+                # Update nested dict structure
+                self.setNestedValue(self.parameters, param_path, value)
+            
+            # Write updated parameters to file
+            params_file = "/home/yahboom/b4m_yahboom/yahboomcar_nav/params/dwb_nav_params.yaml"
+            with open(params_file, 'w') as f:
+                yaml.dump(self.parameters, f, default_flow_style=False, indent=2)
+                
+            self.ros_node.get_logger().info('Parameters saved to YAML file')
+            
+        except Exception as e:
+            self.ros_node.get_logger().error(f'Error saving parameters: {e}')
+    
+    def setNestedValue(self, dictionary, path, value):
+        """Set value in nested dictionary using dot notation path"""
+        keys = path.split('.')
+        current = dictionary
+        
+        for key in keys[:-1]:
+            if key not in current:
+                current[key] = {}
+            current = current[key]
+        
+        current[keys[-1]] = value
+    
+    def resetParameters(self):
+        """Reset parameters to defaults"""
+        reply = QMessageBox.question(
+            self, 'Reset Parameters',
+            'Are you sure you want to reset all parameters to defaults?',
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            # Reload parameters from file
+            self.loadParameters()
+            self.parameters_modified = False
+            self.status_bar.showMessage('Parameters reset to defaults')
+    
+    def saveConfiguration(self):
+        """Save complete configuration (parameters + map + waypoints)"""
+        try:
+            # Get filename from user
+            filename, _ = QFileDialog.getSaveFileName(
+                self, 'Save Configuration', 
+                '/home/yahboom/b4m_yahboom/configs/',
+                'JSON files (*.json)'
+            )
+            
+            if not filename:
+                return
+            
+            # Automatically add .json extension if not present
+            if not filename.lower().endswith('.json'):
+                filename += '.json'
+            
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(filename), exist_ok=True)
+            
+            # Collect current parameter values
+            current_params = {}
+            for param_path, widget in self.parameter_widgets.items():
+                if isinstance(widget, QCheckBox):
+                    value = widget.isChecked()
+                elif isinstance(widget, (QSpinBox, QDoubleSpinBox)):
+                    value = widget.value()
+                else:  # QLineEdit
+                    value = widget.text()
+                current_params[param_path] = value
+            
+            # Create configuration data
+            config_data = {
+                'timestamp': datetime.now().isoformat(),
+                'description': f'Configuration saved from waypoint manager',
+                'map_name': self.ros_node.current_map,
+                'parameters': current_params,
+                'waypoints': self.ros_node.waypoints,
+                'version': '1.0'
+            }
+            
+            # Save configuration
+            with open(filename, 'w') as f:
+                json.dump(config_data, f, indent=2)
+            
+            self.status_bar.showMessage(f'Configuration saved: {filename}')
+            
+        except Exception as e:
+            self.status_bar.showMessage(f'Error saving configuration: {str(e)}')
+            self.ros_node.get_logger().error(f'Error saving configuration: {e}')
+    
+    def loadConfiguration(self):
+        """Load complete configuration (parameters + map + waypoints)"""
+        try:
+            # Get filename from user
+            filename, _ = QFileDialog.getOpenFileName(
+                self, 'Load Configuration',
+                '/home/yahboom/b4m_yahboom/configs/',
+                'JSON files (*.json)'
+            )
+            
+            if not filename:
+                return
+            
+            # Load configuration
+            with open(filename, 'r') as f:
+                config_data = json.load(f)
+            
+            # Confirm with user
+            reply = QMessageBox.question(
+                self, 'Load Configuration',
+                f'Load configuration from {os.path.basename(filename)}?\n'
+                f'Created: {config_data.get("timestamp", "unknown")}\n'
+                f'Description: {config_data.get("description", "No description")}\n\n'
+                f'This will replace current parameters, map, and waypoints.',
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+            )
+            
+            if reply != QMessageBox.Yes:
+                return
+            
+            # Load parameters
+            if 'parameters' in config_data:
+                for param_path, value in config_data['parameters'].items():
+                    if param_path in self.parameter_widgets:
+                        widget = self.parameter_widgets[param_path]
+                        if isinstance(widget, QCheckBox):
+                            widget.setChecked(value)
+                        elif isinstance(widget, (QSpinBox, QDoubleSpinBox)):
+                            widget.setValue(value)
+                        else:  # QLineEdit
+                            widget.setText(str(value))
+            
+            # Load waypoints
+            if 'waypoints' in config_data:
+                self.ros_node.waypoints = config_data['waypoints']
+                self.ros_node.save_waypoints()
+                self.updateWaypointList()
+            
+            # Load map
+            if 'map_name' in config_data:
+                map_name = config_data['map_name']
+                if map_name != self.ros_node.current_map:
+                    self.loadMap(map_name)
+            
+            self.parameters_modified = True
+            self.status_bar.showMessage(f'Configuration loaded: {os.path.basename(filename)}')
+            
+        except Exception as e:
+            self.status_bar.showMessage(f'Error loading configuration: {str(e)}')
+            self.ros_node.get_logger().error(f'Error loading configuration: {e}')
 
 class MapView(QWidget):
     def __init__(self, parent):
@@ -561,7 +1117,8 @@ class MapView(QWidget):
                             # Add the waypoint
                             self.parent.ros_node.add_waypoint(self.parent.ros_node.current_map, name, x, y)
                             self.parent.updateWaypointList()
-                            self.parent.statusBar.showMessage(f'Added waypoint: {name}')
+                            self.parent.status_bar.showMessage(f'Added waypoint: {name}')
+                            
                             self.update()  # Redraw the map view to show the new waypoint
                     
                     # Exit add waypoint mode
@@ -572,10 +1129,10 @@ class MapView(QWidget):
                     # Handle editing an existing waypoint
                     # Update the waypoint position
                     if self.parent.ros_node.edit_waypoint(self.parent.ros_node.current_map, self.edit_waypoint_name, x, y):
-                        self.parent.statusBar.showMessage(f'Updated waypoint: {self.edit_waypoint_name}')
+                        self.parent.status_bar.showMessage(f'Updated waypoint: {self.edit_waypoint_name}')
                         self.update()  # Redraw the map view
                     else:
-                        self.parent.statusBar.showMessage(f'Failed to update waypoint: {self.edit_waypoint_name}')
+                        self.parent.status_bar.showMessage(f'Failed to update waypoint: {self.edit_waypoint_name}')
                     
                     # Exit edit waypoint mode
                     self.edit_waypoint_mode = False
@@ -595,7 +1152,7 @@ class MapView(QWidget):
                     self.edit_waypoint_mode = False
                     self.edit_waypoint_name = None
                     self.setCursor(Qt.ArrowCursor)
-                    self.parent.statusBar.showMessage('Operation cancelled')
+                    self.parent.status_bar.showMessage('Operation cancelled')
     
     def mouseMoveEvent(self, event):
         if self.map_image and self.panning and event.buttons() & Qt.LeftButton:
@@ -747,8 +1304,19 @@ class MapView(QWidget):
         
         # Update the display
         self.update()
-        
-        print(f"Reset view: scale={self.scale_factor:.2f}, offset=({self.map_offset_x:.1f}, {self.map_offset_y:.1f})")
+    
+    def showEvent(self, event):
+        """Called when the widget is shown - ensure map is properly centered"""
+        super().showEvent(event)
+        if self.map_image:
+            # Small delay to ensure widget is properly sized
+            QTimer.singleShot(100, self.resetView)
+    
+    def resizeEvent(self, event):
+        """Called when the widget is resized - reset view to maintain centering"""
+        super().resizeEvent(event)
+        if self.map_image:
+            self.resetView()
     
     def keyPressEvent(self, event):
         """Handle keyboard events"""
@@ -756,12 +1324,12 @@ class MapView(QWidget):
             # R key to reset view
             self.resetView()
             if hasattr(self.parent, 'statusBar'):
-                self.parent.statusBar.showMessage('Map view reset (R key)')
+                self.parent.status_bar.showMessage('Map view reset (R key)')
         elif event.key() == Qt.Key_T:
             # T key to test coordinate conversion
             self.testCoordinateConversion()
             if hasattr(self.parent, 'statusBar'):
-                self.parent.statusBar.showMessage('Coordinate conversion test run (T key)')
+                self.parent.status_bar.showMessage('Coordinate conversion test run (T key)')
         else:
             super().keyPressEvent(event)
     
@@ -914,7 +1482,7 @@ class MapView(QWidget):
             if hasattr(self.parent, 'ros_node') and self.parent.ros_node:
                 self.parent.ros_node.get_logger().error(f'Error in wheel event: {e}')
             if hasattr(self.parent, 'statusBar'):
-                self.parent.statusBar.showMessage(f'Zoom error: {e}')
+                self.parent.status_bar.showMessage(f'Zoom error: {e}')
             import traceback
             traceback.print_exc()
             print("\nStack trace printed above. Please check for any error messages.")
