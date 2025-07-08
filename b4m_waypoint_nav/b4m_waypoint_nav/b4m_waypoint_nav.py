@@ -663,7 +663,7 @@ class B4MWaypointNav(Node):
     def on_mqtt_message(self, client, userdata, msg):
         """Callback when a message is received
         
-        The waypoint manager GUI must use coordinate-based navigation commands.
+        The robot manager GUI must use coordinate-based navigation commands.
         The only supported format is:
         
         {"command": "goto", "waypoint_id": "debug_name", 

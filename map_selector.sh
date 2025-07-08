@@ -125,16 +125,16 @@ process_selection() {
         echo -e "${YELLOW}Using existing yahboom_map files (no copying needed)${NC}"
     fi
     
-    # Also copy the map files to the install directory for the waypoint manager
+    # Also copy the map files to the install directory for the robot manager
     INSTALL_MAPS_DIR="/home/yahboom/b4m_yahboom/install/yahboomcar_nav/share/yahboomcar_nav/maps"
     if [ -d "$INSTALL_MAPS_DIR" ]; then
-        echo -e "${YELLOW}Copying map files to install directory for waypoint manager...${NC}"
+        echo -e "${YELLOW}Copying map files to install directory for robot manager...${NC}"
         cp "$MAPS_DIR/yahboom_map.pgm" "$INSTALL_MAPS_DIR/yahboom_map.pgm"
         cp "$MAPS_DIR/yahboom_map.yaml" "$INSTALL_MAPS_DIR/yahboom_map.yaml"
         
         if [[ $? -ne 0 ]]; then
             echo -e "${RED}Warning: Failed to copy maps to install directory.${NC}"
-            echo -e "${RED}The waypoint manager GUI may not show the correct map.${NC}"
+            echo -e "${RED}The robot manager GUI may not show the correct map.${NC}"
         else
             echo -e "${GREEN}Successfully copied maps to install directory.${NC}"
         fi
