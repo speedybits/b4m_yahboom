@@ -1456,7 +1456,7 @@ class B4MRobotManagerGUI(QMainWindow):
             command = [
                 'docker', 'run', '-it', '--rm', '--net=host',
                 'microros/micro-ros-agent:humble',
-                'udp4', '--port', '8888'
+                'udp4', '--port', '8090'
             ]
             
             # Launch in terminal for visibility
