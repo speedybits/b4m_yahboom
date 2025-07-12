@@ -33,6 +33,9 @@ from PyQt5.QtCore import Qt, QSettings, QTimer, QRectF, QRect, QThread, pyqtSign
 from PyQt5.QtGui import QPainter, QColor, QPen, QBrush, QPixmap, QFont, QImage
 
 class B4MRobotManagerGUI(QMainWindow):
+    # Signal to close dialog from background thread
+    closeDialogSignal = pyqtSignal()
+    
     def __init__(self, ros_node):
         print("*** B4MRobotManagerGUI CONSTRUCTOR CALLED ***")
         super().__init__()
@@ -57,6 +60,9 @@ class B4MRobotManagerGUI(QMainWindow):
         
         # Initialize UI
         self.initUI()
+        
+        # Connect signal to slot for dialog closing
+        self.closeDialogSignal.connect(self.closeDialog)
         
         # Load settings
         self.loadSettings()
@@ -1465,6 +1471,21 @@ class B4MRobotManagerGUI(QMainWindow):
 
     def stopAll(self):
         """Stop all processes including the Micro-ROS Agent"""
+        # Show popup dialog using custom QDialog (QMessageBox has closing issues)
+        self.shutdown_dialog = QDialog(self)
+        self.shutdown_dialog.setWindowTitle("Shutting Down")
+        self.shutdown_dialog.setModal(False)  # Non-modal to avoid blocking event loop
+        self.shutdown_dialog.setWindowFlags(self.shutdown_dialog.windowFlags() | Qt.WindowStaysOnTopHint)
+        self.shutdown_dialog.resize(250, 100)
+        
+        # Add label to dialog
+        layout = QVBoxLayout(self.shutdown_dialog)
+        label = QLabel("Shutting Down. Please Wait.")
+        label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(label)
+        
+        self.shutdown_dialog.show()
+        
         # Provide immediate feedback
         self.agent_status_display.setText('Stopping all processes...')
         self.stop_all_btn.setEnabled(False)  # Disable button during operation
@@ -1487,18 +1508,30 @@ class B4MRobotManagerGUI(QMainWindow):
                 
                 # Update UI on main thread
                 self.agent_state = 'stopped'
-                self.agent_status_display.setText('All processes stopped')
+                
+                # Schedule UI updates on main thread using QTimer
+                QTimer.singleShot(0, lambda: self.agent_status_display.setText('All processes stopped'))
                 
             except Exception as e:
-                self.agent_status_display.setText(f'Error stopping processes: {str(e)}')
+                QTimer.singleShot(0, lambda: self.agent_status_display.setText(f'Error stopping processes: {str(e)}'))
             finally:
-                # Update button states on main thread
-                self.updateControlButtonStates()
+                # Close the popup dialog using signal (works from background thread)
+                self.closeDialogSignal.emit()
         
         # Start the thread
         thread = threading.Thread(target=stopAllThread)
         thread.daemon = True
         thread.start()
+    
+    def closeDialog(self):
+        """Slot to close the shutdown dialog - runs on main thread"""
+        try:
+            if hasattr(self, 'shutdown_dialog') and self.shutdown_dialog:
+                self.shutdown_dialog.close()
+                self.shutdown_dialog = None
+            self.updateControlButtonStates()
+        except Exception as e:
+            print(f"Error closing dialog: {e}")
 
 class MapView(QWidget):
     def __init__(self, parent):

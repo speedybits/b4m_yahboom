@@ -2,7 +2,54 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Test-Driven Development
+Always create unit tests first for new features. These tests should fail because there is no code implemented at first
+Never create code that has mocked components or tests mocked components
+Keep iterating on the code implementation until the unit tests pass
+
+### Testing Best Practices
+- **Test Real Behavior**: Tests must use actual GUI components, not mocks, to detect real issues
+- **Integration Tests Required**: For GUI features, create tests that exercise the actual PyQt5 widgets and event loop
+- **Mock Only External Dependencies**: Mock ROS, MQTT, subprocess, etc. but never mock the core functionality being tested
+- **Test Failure Scenarios**: Write tests that expose bugs (like modal dialogs blocking event loops)
+- **Validate Against Real Usage**: If user reports a bug that tests don't catch, the tests are wrong, not the user
+
 ## Build Commands
+
+Please remember to re-run colcon build whenever necessary after making changes to code
+
+**CRITICAL: After rebuilding, you must restart any running ROS2 nodes/processes to load the new code. Python processes do not automatically reload changed modules.**
+
+## PyQt5 GUI Development Best Practices
+
+### Threading and Event Loop
+- **Never use QTimer from Python threading.Thread**: QTimer only works with QThread, not regular Python threads
+- **Use PyQt5 Signals for Cross-Thread Communication**: Signals are thread-safe and properly cross thread boundaries
+- **Avoid Modal Dialogs**: Modal dialogs block the event loop, preventing QTimer callbacks from executing
+- **Process Events in Tests**: Always call `QApplication.processEvents()` in GUI tests to process signals and events
+
+### Dialog Management
+- **Use QDialog instead of QMessageBox**: QMessageBox has special closing behavior that interferes with programmatic closing
+- **Make Dialogs Non-Modal**: Use `setModal(False)` and `WindowStaysOnTopHint` instead of modal dialogs
+- **Emit Signals from Background Threads**: Use `pyqtSignal` to communicate from worker threads to main GUI thread
+- **Clean Up Dialog References**: Set dialog to `None` after closing to ensure clean state
+
+### Common PyQt5 Threading Patterns
+```python
+# WRONG - QTimer from Python thread
+def background_task():
+    QTimer.singleShot(0, update_gui)  # Fails!
+
+# CORRECT - Signal from Python thread  
+class MyGUI(QMainWindow):
+    updateSignal = pyqtSignal()
+    
+    def __init__(self):
+        self.updateSignal.connect(self.update_gui)
+    
+    def background_task(self):
+        self.updateSignal.emit()  # Works!
+```
 
 ### ROS2 Workspace Build
 ```bash
