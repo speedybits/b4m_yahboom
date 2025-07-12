@@ -1124,6 +1124,10 @@ class B4MRobotManagerGUI(QMainWindow):
             self.rebuild_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
             self.start_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
             self.stop_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
+            
+            # Restore normal color for start_agent_btn when agent is stopped
+            self.start_agent_btn.setStyleSheet('background-color: #2196F3; color: white; font-weight: bold;')
+            # Gray out stop_all_btn when agent is stopped
             self.stop_all_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')
             
             self.status_display.setText('Agent required - Start Micro ROS Agent first')
@@ -1151,7 +1155,7 @@ class B4MRobotManagerGUI(QMainWindow):
             self.agent_status_display.setText('Micro ROS Agent running - System ready for robot operations')
             self.agent_status_display.setStyleSheet('font-size: 11px; color: #333333; padding: 5px; background-color: #e8f5e8; border-radius: 3px;')
             
-            # Restore normal colors for agent buttons
+            # Update agent button colors when agent is running
             self.start_agent_btn.setStyleSheet('background-color: #666666; color: #aaaaaa; font-weight: bold; border: 2px solid #555555;')  # Very gray when disabled
             self.stop_all_btn.setStyleSheet('background-color: #d32f2f; color: white; font-weight: bold;')  # Normal red when enabled
             
@@ -1461,27 +1465,40 @@ class B4MRobotManagerGUI(QMainWindow):
 
     def stopAll(self):
         """Stop all processes including the Micro-ROS Agent"""
-        # Stop system first
-        self.stopSystem()
+        # Provide immediate feedback
+        self.agent_status_display.setText('Stopping all processes...')
+        self.stop_all_btn.setEnabled(False)  # Disable button during operation
         
-        # Stop Micro-ROS agent
-        try:
-            result = subprocess.run(['docker', 'ps', '--filter', 'ancestor=microros/micro-ros-agent:humble', '--format', '{{.ID}}'], 
-                                  capture_output=True, text=True)
-            container_ids = result.stdout.strip().split('\n')
-            
-            for container_id in container_ids:
-                if container_id:
-                    subprocess.run(['docker', 'stop', container_id], check=False)
-                    subprocess.run(['docker', 'rm', container_id], check=False)
-            
-            self.agent_state = 'stopped'
-            self.agent_status_display.setText('All processes stopped')
-            
-        except Exception as e:
-            self.agent_status_display.setText(f'Error stopping processes: {str(e)}')
+        # Run the actual stop operation in a separate thread
+        def stopAllThread():
+            try:
+                # Stop system first
+                self.stopSystem()
+                
+                # Stop Micro-ROS agent
+                result = subprocess.run(['docker', 'ps', '--filter', 'ancestor=microros/micro-ros-agent:humble', '--format', '{{.ID}}'], 
+                                      capture_output=True, text=True)
+                container_ids = result.stdout.strip().split('\n')
+                
+                for container_id in container_ids:
+                    if container_id:
+                        subprocess.run(['docker', 'stop', container_id], check=False)
+                        subprocess.run(['docker', 'rm', container_id], check=False)
+                
+                # Update UI on main thread
+                self.agent_state = 'stopped'
+                self.agent_status_display.setText('All processes stopped')
+                
+            except Exception as e:
+                self.agent_status_display.setText(f'Error stopping processes: {str(e)}')
+            finally:
+                # Update button states on main thread
+                self.updateControlButtonStates()
         
-        self.updateControlButtonStates()
+        # Start the thread
+        thread = threading.Thread(target=stopAllThread)
+        thread.daemon = True
+        thread.start()
 
 class MapView(QWidget):
     def __init__(self, parent):
