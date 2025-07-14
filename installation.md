@@ -155,13 +155,31 @@ docker --version
 # Install PyQt5 for GUI applications
 sudo apt install python3-pyqt5 python3-pyqt5.qtsvg
 
+
 # Install Python packages
+sudo apt install python3-pip
 pip3 install pillow numpy
 ```
 
 ### Workspace Setup
 
 After cloning the B4M Yahboom repository, you'll need to build the workspaces. See the `WORKSPACE_README.md` for detailed instructions on workspace management.
+
+### microROS control board WIFI setup
+Edit the config_robot.py file:
+1) update the parameters of the set_wifi_config function according to your own WiFi network name and password
+2) update the parameters of the set_udp_config function according to the IP address of the virtual machine/computer
+3) Update the 'set_car_type' to CAR_TYPE_COMPUTER
+
+Example:
+robot.set_wifi_config("ssid123", "passwd123")
+robot.set_udp_config([192, 168, 2, 116], 8090)
+robot_set_car_type(robot.CAR_TYPE_COMPUTER)
+
+First, briefly press the reset button on the microROS control board. It will be in the configuration state within 5 seconds of booting (the MCU indicator light flashes once every 300 milliseconds). Then run the following command to configure the robot. At this time, check whether the returned data is consistent with your own settings. If it is consistent, the setting is successful.
+
+python3 config_robot.py
+
 
 ## 7. Uninstallation (Optional)
 
