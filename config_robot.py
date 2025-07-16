@@ -1,6 +1,10 @@
 import serial
 import struct
 import time
+import os
+import sys
+import argparse
+import glob
 
 '''
 Author  : Yahboom Team
@@ -491,13 +495,91 @@ class MicroROS_Robot():
 
 
 
+def find_serial_ports():
+    """Auto-detect available serial ports across different platforms"""
+    ports = []
+    
+    # Common USB serial device patterns
+    patterns = [
+        '/dev/ttyUSB*',   # Linux USB-Serial
+        '/dev/ttyACM*',   # Linux USB CDC-ACM
+        '/dev/cu.usb*',   # macOS USB
+        '/dev/cu.wch*',   # macOS CH340/CH341
+        '/dev/tty.usb*',  # macOS alternative
+    ]
+    
+    for pattern in patterns:
+        ports.extend(glob.glob(pattern))
+    
+    # Add some common WSL fallback ports
+    wsl_ports = ['/dev/ttyS0', '/dev/ttyS1', '/dev/ttyS2', '/dev/ttyS3']
+    ports.extend([p for p in wsl_ports if os.path.exists(p)])
+    
+    return sorted(set(ports))
+
+def get_serial_port():
+    """Get serial port from environment variable, command line, or auto-detect"""
+    
+    # Check environment variable first
+    if 'ROBOT_SERIAL_PORT' in os.environ:
+        return os.environ['ROBOT_SERIAL_PORT']
+    
+    # Check command line arguments
+    parser = argparse.ArgumentParser(description='Configure MicroROS Robot')
+    parser.add_argument('--port', '-p', help='Serial port (e.g., /dev/ttyUSB0, /dev/cu.usbserial-*)')
+    parser.add_argument('--list-ports', '-l', action='store_true', help='List available serial ports')
+    args = parser.parse_args()
+    
+    if args.list_ports:
+        ports = find_serial_ports()
+        print("Available serial ports:")
+        for port in ports:
+            print(f"  {port}")
+        sys.exit(0)
+    
+    if args.port:
+        return args.port
+    
+    # Auto-detect
+    ports = find_serial_ports()
+    if ports:
+        print(f"Auto-detected ports: {ports}")
+        return ports[0]  # Return first available
+    
+    return None
+
 if __name__ == '__main__':
-    robot = MicroROS_Robot(port='/dev/ttyUSB0', debug=False)
+    # Get the serial port
+    port = get_serial_port()
+    
+    if port is None:
+        print("No serial device found. Please try:")
+        print("1. python3 config_robot.py --list-ports  # List available ports")
+        print("2. python3 config_robot.py --port /dev/ttyUSB0  # Specify port")
+        print("3. export ROBOT_SERIAL_PORT=/dev/ttyUSB0  # Set environment variable")
+        print("\nPlatform-specific setup:")
+        print("WSL2: Use usbipd to attach USB devices")
+        print("UTM/macOS: USB passthrough should work automatically")
+        print("Native Linux: Device should appear as /dev/ttyUSB* or /dev/ttyACM*")
+        sys.exit(1)
+    
+    # Try to connect
+    try:
+        print(f"Connecting to {port}...")
+        robot = MicroROS_Robot(port=port, debug=False)
+        print(f"Successfully connected to {port}")
+    except Exception as e:
+        print(f"Failed to connect to {port}: {e}")
+        print("\nTroubleshooting:")
+        print("1. Check device is powered on and connected")
+        print("2. Verify port permissions: sudo usermod -a -G dialout $USER")
+        print("3. Try different port: python3 config_robot.py --list-ports")
+        sys.exit(1)
     print("Rebooting Device, Please wait.")
     robot.reboot_device()
 
-    robot.set_wifi_config("ssid123", "passwd123")
-    robot.set_udp_config([192, 168, 2, 116], 8090)
+    robot.set_wifi_config("shwashwa", "b0nb0nd0g")
+    robot.set_udp_config([192, 168, 68, 105], 8090)
     robot.set_car_type(robot.CAR_TYPE_COMPUTER)
     # robot.set_car_type(robot.CAR_TYPE_RPI5)
     robot.set_ros_domain_id(20)
