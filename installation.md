@@ -1,6 +1,58 @@
 # ROS2 Humble Installation Guide
 
-This guide provides step-by-step instructions to install ROS2 Humble on Ubuntu systems to support the B4M Yahboom robot project.
+This guide provides step-by-step instructions to install ROS2 Humble on various platforms to support the B4M Yahboom robot project.
+
+## Platform-Specific Installation Guides
+
+Choose the appropriate guide for your platform:
+
+- **[Native Linux Installation](installation_linux.md)** - For Ubuntu/Debian systems running directly on hardware
+- **[Windows WSL2 Installation](installation_windows_wsl.md)** - For Windows users running Ubuntu through WSL2
+- **[macOS Installation](installation_mac.md)** - For macOS users running Ubuntu through UTM virtual machine
+
+## General Overview
+
+The installation process includes:
+1. Setting up the base ROS2 Humble environment
+2. Installing additional dependencies (Docker, Python packages)
+3. Configuring serial device access
+4. Setting up network configuration for robot communication
+5. Installing troubleshooting tools
+
+## Platform-Specific Considerations
+
+### Native Linux
+- Direct hardware access to USB devices
+- Standard network configuration
+- Best performance for robotics applications
+
+### Windows WSL2
+- Requires USB passthrough setup (usbipd)
+- Special network configuration due to WSL2 virtual networking
+- May need port forwarding between Windows and WSL2
+
+### macOS (UTM)
+- Requires virtual machine setup
+- USB passthrough through UTM
+- Network configuration depends on VM settings
+
+## Common Issues Across Platforms
+
+- **Serial Device Access**: Each platform handles USB devices differently
+- **Network Configuration**: Robot must connect to correct IP address
+- **Micro-ROS Agent**: Docker setup varies by platform
+- **Performance**: Native Linux > macOS VM > WSL2 for robotics
+
+## Quick Start
+
+1. Follow your platform-specific installation guide
+2. Build the workspaces using `WORKSPACE_README.md`
+3. Configure robot with `config_robot.py`
+4. Run launch sequence with `b4m_HA_launch.sh`
+
+---
+
+*The sections below contain the original unified installation guide for reference. Please use the platform-specific guides above for new installations.*
 
 ## Prerequisites
 
@@ -165,20 +217,232 @@ pip3 install pillow numpy
 
 After cloning the B4M Yahboom repository, you'll need to build the workspaces. See the `WORKSPACE_README.md` for detailed instructions on workspace management.
 
-### microROS control board WIFI setup
-Edit the config_robot.py file:
-1) update the parameters of the set_wifi_config function according to your own WiFi network name and password
-2) update the parameters of the set_udp_config function according to the IP address of the virtual machine/computer
+### Serial Device Access
+
+The config_robot.py script requires serial communication with the robot. Setup varies by platform:
+
+#### WSL2 on Windows
+
+WSL2 requires USB passthrough to access serial devices. **Note:** The `/dev/ttyS*` ports in WSL2 are emulated and will give "Input/output error" when trying to connect to real hardware.
+
+1. **Install usbipd on Windows** (run in PowerShell as Administrator):
+   ```powershell
+   winget install --interactive --exact dorssel.usbipd-win
+   ```
+
+   **Important:** After installation, close PowerShell completely and open a new PowerShell window as Administrator for the PATH changes to take effect.
+
+2. **Connect your robot via USB** and list connected USB devices:
+   ```powershell
+   usbipd list
+   ```
+   
+   Look for your robot device (might appear as "USB Serial Device", "CH340", "CP210x", or similar).
+
+3. **Bind and attach your robot device** (replace `<BUSID>` with actual bus ID from step 2):
+   ```powershell
+   usbipd bind --busid <BUSID>
+   usbipd attach --wsl --busid <BUSID>
+   ```
+
+4. **Add user to dialout group in WSL**:
+   ```bash
+   sudo usermod -a -G dialout $USER
+   newgrp dialout
+   ```
+
+5. **Verify device appears** (should now show `/dev/ttyUSB0` or `/dev/ttyACM0`):
+   ```bash
+   ls -la /dev/ttyUSB* /dev/ttyACM*
+   ```
+
+**Troubleshooting WSL2 USB Issues:**
+- If you get "Input/output error" with `/dev/ttyS*` ports, these are not real USB devices
+- Ensure the robot is powered on and connected via USB before running `usbipd list`
+- If device doesn't appear after attach, try detaching and reattaching:
+  ```powershell
+  usbipd detach --busid <BUSID>
+  usbipd attach --wsl --busid <BUSID>
+  ```
+- The robot device should appear as `/dev/ttyUSB0` or `/dev/ttyACM0` after successful USB passthrough
+
+#### UTM on macOS
+
+USB passthrough should work automatically. Devices typically appear as:
+- `/dev/cu.usbserial-*`
+- `/dev/cu.wch*` (CH340/CH341 chips)
+- `/dev/tty.usb*`
+
+#### Native Linux
+
+Devices should appear automatically as `/dev/ttyUSB0` or `/dev/ttyACM0`. Add user to dialout group:
+```bash
+sudo usermod -a -G dialout $USER
+```
+
+### microROS Control Board Configuration
+
+The config_robot.py script now supports cross-platform serial port detection:
+
+**List available ports:**
+```bash
+python3 config_robot.py --list-ports
+```
+
+**Specify port manually:**
+```bash
+python3 config_robot.py --port /dev/ttyUSB0
+```
+
+**Set via environment variable:**
+```bash
+export ROBOT_SERIAL_PORT=/dev/ttyUSB0
+python3 config_robot.py
+```
+
+### Finding Your Computer's IP Address
+
+The robot needs to connect to your computer's IP address on the local network. The method to find this varies by platform:
+
+#### WSL2 on Windows
+
+WSL2 uses a virtual network bridge. Use the WSL2 IP address:
+
+```bash
+# In WSL2 terminal, find the WSL2 IP address
+ip addr show eth0 | grep 'inet ' | awk '{print $2}' | cut -d/ -f1
+```
+
+Alternatively, you can use the Windows host IP that WSL2 can reach:
+
+```bash
+# Find Windows host IP from WSL2
+cat /etc/resolv.conf | grep nameserver | awk '{print $2}'
+```
+
+**Note:** The WSL2 internal IP (usually 172.x.x.x) is preferred for robot communication.
+
+**WSL2 Networking Troubleshooting:**
+
+WSL2 uses a virtual network that can cause connectivity issues with the robot. Common problems and solutions:
+
+1. **Robot can't connect to Micro-ROS agent in WSL2:**
+   - The robot (ESP32) connects to your Windows host's WiFi IP
+   - The Micro-ROS agent runs in WSL2 with a different IP (172.x.x.x)
+   - This creates a network mismatch
+
+2. **Solution Options:**
+
+   **Option A: Configure robot to use WSL2 IP (Recommended)**
+   ```bash
+   # Find your WSL2 IP address
+   ip addr show eth0 | grep 'inet ' | awk '{print $2}' | cut -d/ -f1
+   
+   # Configure robot with this IP in config_robot.py
+   robot.set_udp_config([172, 26, 165, 104], 8090)  # Use your WSL2 IP
+   ```
+
+   **Option B: Run Micro-ROS agent on Windows**
+   ```powershell
+   # In Windows PowerShell (install Docker Desktop first)
+   docker run -it --rm -p 8090:8090/udp microros/micro-ros-agent:humble udp4 --port 8090
+   ```
+
+   **Option C: WSL2 Port Forwarding**
+   ```powershell
+   # In Windows PowerShell as Administrator
+   # Forward port 8090 from Windows to WSL2
+   netsh interface portproxy add v4tov4 listenport=8090 listenaddress=0.0.0.0 connectport=8090 connectaddress=172.26.165.104
+   ```
+
+3. **Verify WSL2 Network Configuration:**
+   ```bash
+   # Check if WSL2 can reach Windows host
+   ping $(cat /etc/resolv.conf | grep nameserver | awk '{print $2}')
+   
+   # Check WSL2 network interfaces
+   ip addr show
+   
+   # Test port availability
+   sudo netstat -tulpn | grep 8090
+   ```
+
+4. **Testing Robot Connectivity:**
+   ```bash
+   # Start agent with verbose output to see connection attempts
+   docker run --rm --net=host microros/micro-ros-agent:humble udp4 --port 8090 -v6
+   
+   # In another terminal, monitor network traffic
+   sudo tcpdump -i any -n port 8090
+   ```
+
+**Important:** The robot must be configured with the IP address where the Micro-ROS agent is actually running, not just your Windows WiFi IP.
+
+#### UTM on macOS
+
+UTM typically uses bridged networking. Find your Mac's IP address:
+
+```bash
+# Find active network interface IP
+ifconfig | grep 'inet ' | grep -v 127.0.0.1 | awk '{print $2}' | head -1
+```
+
+Or check specific interfaces:
+```bash
+# WiFi interface (common)
+ifconfig en0 | grep 'inet ' | awk '{print $2}'
+
+# Ethernet interface
+ifconfig en1 | grep 'inet ' | awk '{print $2}'
+```
+
+#### Native Linux
+
+Find your Linux machine's IP address:
+
+```bash
+# Find active network interface IP
+hostname -I | awk '{print $1}'
+
+# Or use ip command
+ip route get 1.1.1.1 | grep -oP 'src \K\S+'
+
+# Or check specific interface
+ip addr show wlan0 | grep 'inet ' | awk '{print $2}' | cut -d/ -f1  # WiFi
+ip addr show eth0 | grep 'inet ' | awk '{print $2}' | cut -d/ -f1   # Ethernet
+```
+
+### Network Configuration
+
+Edit the config_robot.py file to configure your network settings:
+
+1) Update the parameters of the set_wifi_config function according to your WiFi network name and password
+2) Update the parameters of the set_udp_config function according to your computer's IP address (found above)
 3) Update the 'set_car_type' to CAR_TYPE_COMPUTER
 
-Example:
-robot.set_wifi_config("ssid123", "passwd123")
-robot.set_udp_config([192, 168, 2, 116], 8090)
-robot_set_car_type(robot.CAR_TYPE_COMPUTER)
+Example configuration:
+```python
+robot.set_wifi_config("your_wifi_name", "your_wifi_password")
+robot.set_udp_config([192, 168, 1, 100], 8090)  # Replace with your IP
+robot.set_car_type(robot.CAR_TYPE_COMPUTER)
+```
 
-First, briefly press the reset button on the microROS control board. It will be in the configuration state within 5 seconds of booting (the MCU indicator light flashes once every 300 milliseconds). Then run the following command to configure the robot. At this time, check whether the returned data is consistent with your own settings. If it is consistent, the setting is successful.
+**IP Address Examples by Platform:**
+- WSL2: `[172, 20, 10, 2]` or similar 172.x.x.x address
+- UTM/macOS: `[192, 168, 1, 100]` or your local network range
+- Native Linux: `[192, 168, 1, 150]` or your local network range
 
-python3 config_robot.py
+**Important:** Ensure your computer and robot are on the same WiFi network for proper communication.
+
+**Configuration Steps:**
+1. Connect the robot via USB
+2. Briefly press the reset button on the microROS control board
+3. The robot enters configuration mode within 5 seconds of booting (MCU indicator flashes every 300ms)
+4. Run the configuration script:
+   ```bash
+   python3 config_robot.py
+   ```
+5. Verify the returned data matches your settings
 
 
 ## 7. Uninstallation (Optional)

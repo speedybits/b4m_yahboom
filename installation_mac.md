@@ -231,31 +231,84 @@ sudo usermod -a -G dialout $USER
 
 ## 9. Network Configuration (UTM-Specific)
 
-### Finding Your Mac's IP Address
+### Static IP Configuration (REQUIRED)
 
-UTM typically uses bridged networking. Find your Mac's IP address:
+**CRITICAL:** DHCP networks assign different IP addresses after sleep/restart, breaking robot connectivity. Static IP configuration is REQUIRED for reliable operation.
+
+**Solution:** Configure macOS to use a static IP address within your network range.
+
+**Step 1: Determine your network range and choose a static IP**
+
+1. **Get your current network information:**
+   ```bash
+   # Get current IP, gateway, and subnet
+   route -n get default
+   
+   # Get DNS servers
+   scutil --dns | grep nameserver
+   
+   # Get current WiFi IP
+   ifconfig en0 | grep 'inet ' | awk '{print $2}'
+   ```
+
+2. **Note down these values:**
+   - Current IP address (e.g., `192.168.1.105`)
+   - Router/Gateway (e.g., `192.168.1.1`)
+   - Subnet mask (usually `255.255.255.0`)
+   - DNS servers (e.g., `192.168.1.1` or `8.8.8.8`)
+
+3. **Choose your static IP address** (this is the IP you'll use everywhere):
+   - Pick an address in the same network range as your current IP
+   - Choose something easy to remember and unlikely to be used by other devices
+   - **Example:** If your current IP is `192.168.1.105`, choose `192.168.1.100`
+   - **Your chosen static IP will be used for:**
+     - macOS network configuration
+     - UTM VM (via bridged networking)
+     - Robot configuration in `config_robot.py`
+     - All future connections
+
+**📝 Write down your chosen static IP:** `192.168.1.100` (example - use your chosen IP)
+
+**Step 2: Configure macOS with your chosen static IP**
+
+1. **Open Network Preferences:**
+   - Apple Menu → System Preferences → Network
+   - Or System Settings → Network (macOS Ventura+)
+
+2. **Select WiFi and configure:**
+   - Select "Wi-Fi" from the left sidebar
+   - Click "Advanced..." button
+   - Go to "TCP/IP" tab
+
+3. **Set your chosen static IP:**
+   - Change "Configure IPv4" from "Using DHCP" to "Manually"
+   - **IPv4 Address:** `192.168.1.100` (use YOUR chosen static IP)
+   - **Subnet Mask:** `255.255.255.0` (from step 1)
+   - **Router:** `192.168.1.1` (from step 1)
+
+4. **Configure DNS:**
+   - Go to "DNS" tab
+   - Add DNS servers: `192.168.1.1`, `8.8.8.8`
+   - Click "OK" and "Apply"
+
+**Step 3: Verify your static IP is working**
 
 ```bash
-# Find active network interface IP
-ifconfig | grep 'inet ' | grep -v 127.0.0.1 | awk '{print $2}' | head -1
-```
-
-Or check specific interfaces:
-```bash
-# WiFi interface (common)
+# Verify your new static IP is active
 ifconfig en0 | grep 'inet ' | awk '{print $2}'
+# Should show your chosen static IP (e.g., 192.168.1.100)
 
-# Ethernet interface
-ifconfig en1 | grep 'inet ' | awk '{print $2}'
+# Test internet connectivity
+ping -c 3 google.com
 ```
 
-### UTM Networking Configuration (CRITICAL)
+**✅ Static IP Configuration Complete!**
 
-UTM virtual machines use separate networking that creates connectivity issues with the ESP32 robot. The ESP32 robot connects to your Mac's WiFi IP address, but the Micro-ROS agent runs inside the UTM VM with a different IP address. This network mismatch prevents the robot from connecting.
+Your Mac now has a fixed IP address that will never change after sleep/restart.
 
-**SOLUTION OPTIONS:**
+**Step 4: Configure UTM for Bridged Networking**
 
-**Option A: Use Bridged Networking (Recommended)**
+Configure UTM so the VM shares the same network as your Mac, allowing the robot to connect directly.
 
 1. **Configure UTM for bridged networking:**
    - Power off your Ubuntu VM
@@ -266,96 +319,51 @@ UTM virtual machines use separate networking that creates connectivity issues wi
 
 2. **Verify VM gets IP on same network as Mac:**
    ```bash
-   # Check VM IP address
+   # In VM terminal, check VM gets an IP in same range as Mac
    ip addr show | grep 'inet ' | grep -v 127.0.0.1
-   ```
-   The VM should now get an IP in the same range as your Mac (e.g., 192.168.1.x)
-
-3. **Configure robot with VM's bridged IP:**
-   ```python
-   # Use the VM's bridged network IP, not the Mac's IP
-   robot.set_udp_config([192, 168, 1, 105], 8090)  # VM's bridged IP
+   # Should show an IP like 192.168.1.x (same range as your Mac)
    ```
 
-**Option B: Port Forwarding (if bridged doesn't work)**
+**Step 5: Configure Robot with Your Static IP**
 
-1. **Find network addresses:**
-   ```bash
-   # In UTM VM, find VM IP
-   ip addr show | grep 'inet ' | grep -v 127.0.0.1 | awk '{print $2}' | cut -d/ -f1
-   # Example: 192.168.64.15
-   
-   # On Mac, find Mac IP
-   ifconfig en0 | grep 'inet ' | awk '{print $2}'
-   # Example: 192.168.1.100
-   ```
+Now configure the robot to connect to your chosen static IP address.
 
-2. **Set up port forwarding (Mac Terminal):**
-   ```bash
-   # Forward port 8090 from Mac IP to VM IP
-   # Replace IPs with your actual addresses
-   sudo pfctl -e
-   echo "rdr pass on en0 inet proto udp from any to 192.168.1.100 port 8090 -> 192.168.64.15 port 8090" | sudo pfctl -f -
-   ```
+Edit the `config_robot.py` file with your network settings:
 
-**Option C: Run Micro-ROS Agent on macOS**
+```python
+# Use YOUR chosen static IP from Step 1
+robot.set_wifi_config("your_wifi_name", "your_wifi_password")  
+robot.set_udp_config([192, 168, 1, 100], 8090)  # YOUR static IP here
+robot.set_car_type(robot.CAR_TYPE_COMPUTER)
+```
 
-1. **Install Docker Desktop on macOS**
-2. **Run agent on Mac instead of VM:**
-   ```bash
-   # On macOS (not in UTM VM)
-   docker run -it --rm -p 8090:8090/udp microros/micro-ros-agent:humble udp4 --port 8090
-   ```
+**⚠️ IMPORTANT:** Use the exact same static IP you configured in macOS (from Step 1).
 
-3. **Configure robot with Mac IP:**
-   ```python
-   robot.set_udp_config([192, 168, 1, 100], 8090)  # Mac's actual IP
-   ```
+**Step 6: Verify Everything Works**
 
-**Verify Network Configuration:**
+After configuring UTM bridged networking:
+
 ```bash
-# Test connectivity between VM and Mac
-ping <mac_ip_address>
+# In UTM VM, verify network configuration
+ip addr show | grep 'inet ' | grep -v 127.0.0.1
 
-# Check if port 8090 is listening
+# Start the Micro-ROS agent (it will be accessible on your static IP via bridged network)
+docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host microros/micro-ros-agent:humble udp4 --port 8090
+
+# In another VM terminal, verify agent is listening
 netstat -tulpn | grep 8090
 
-# Monitor network traffic
-sudo tcpdump -i any -n port 8090
+# Test connectivity between VM and Mac
+ping 192.168.1.100  # Your Mac's static IP
 ```
 
-### Robot Configuration
+**✅ Network Configuration Complete!**
 
-Edit the config_robot.py file to configure your network settings:
-
-1) Update the parameters of the set_wifi_config function according to your WiFi network name and password
-2) Update the parameters of the set_udp_config function according to your chosen networking solution above
-3) Update the 'set_car_type' to CAR_TYPE_COMPUTER
-
-**IP Configuration depends on your networking solution:**
-
-**For Bridged Networking (Option A):**
-```python
-robot.set_wifi_config("your_wifi_name", "your_wifi_password")
-robot.set_udp_config([192, 168, 1, 105], 8090)  # Use VM's bridged IP
-robot.set_car_type(robot.CAR_TYPE_COMPUTER)
-```
-
-**For Port Forwarding (Option B):**
-```python
-robot.set_wifi_config("your_wifi_name", "your_wifi_password")
-robot.set_udp_config([192, 168, 1, 100], 8090)  # Use Mac's IP (forwarded to VM)
-robot.set_car_type(robot.CAR_TYPE_COMPUTER)
-```
-
-**For Agent on macOS (Option C):**
-```python
-robot.set_wifi_config("your_wifi_name", "your_wifi_password")
-robot.set_udp_config([192, 168, 1, 100], 8090)  # Use Mac's IP directly
-robot.set_car_type(robot.CAR_TYPE_COMPUTER)
-```
-
-**Important:** Ensure your Mac and robot are on the same WiFi network for proper communication.
+Your setup now has:
+- Mac with fixed static IP address
+- UTM VM using bridged networking (same network as Mac)
+- Robot configured to connect to your static IP
+- Micro-ROS agent accessible on your static IP via bridged network
 
 ## 10. microROS Control Board Configuration
 
@@ -402,12 +410,13 @@ python3 config_robot.py
 - Check: Device is powered on and recognized by macOS first
 
 **Issue: Robot can't connect to Micro-ROS agent**
-- **Cause:** Network mismatch between robot (uses Mac WiFi IP) and Micro-ROS agent (runs in UTM VM)
-- **Solution:** Use one of the three networking solutions in section 9 above:
-  - Bridged networking (recommended)
-  - Port forwarding from Mac to VM
-  - Run agent on macOS instead of VM
-- **Check:** Verify robot IP configuration matches your chosen networking solution
+- **Cause:** Either static IP not configured, UTM bridged networking not set up, or robot configured with wrong IP
+- **Solution:** Follow section 9 Network Configuration steps in order:
+  1. Configure Mac with static IP
+  2. Set up UTM bridged networking
+  3. Configure robot with the same static IP
+- **Check:** Verify robot IP matches Mac static IP exactly
+- **Verify:** Confirm UTM is using bridged networking and VM gets IP in same range as Mac
 
 **Issue: GUI applications don't work properly**
 - Solution: Install additional graphics drivers in Ubuntu VM
