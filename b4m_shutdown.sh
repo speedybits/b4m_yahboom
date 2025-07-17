@@ -35,12 +35,21 @@ if is_running "b4m_robot_manager_node.py"; then
     pkill -9 -f "b4m_robot_manager_node.py"
 fi
 
-# Note: Micro-ROS agent is left running intentionally
-echo "Leaving Micro-ROS agent running..."
+# Stop Micro-ROS agent Docker containers
+echo "Stopping Micro-ROS agent Docker containers..."
+MICROROS_CONTAINERS=$(docker ps -q --filter "ancestor=microros/micro-ros-agent:humble")
+if [ ! -z "$MICROROS_CONTAINERS" ]; then
+    echo "Found running micro-ros agent containers, stopping them..."
+    docker stop $MICROROS_CONTAINERS
+else
+    echo "No micro-ros agent containers running"
+fi
 
 # Kill any remaining Python processes related to the B4M system
 echo "Checking for remaining Python processes..."
-pkill -f "python3 /home/yahboom/b4m_yahboom"
+# Get the workspace root directory (where this script is located)
+WORKSPACE_ROOT=$(cd "$(dirname "$0")" && pwd)
+pkill -f "python3 \"$WORKSPACE_ROOT"
 
 # Kill RViz if it's still running
 if is_running "rviz"; then
