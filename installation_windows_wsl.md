@@ -313,15 +313,14 @@ You need to find your Windows computer's WiFi IP address to configure both the r
 
 **Your Windows WiFi IP address** (e.g., `192.168.68.105`) is what you'll use for:
 - Robot configuration in `config_robot.py`
-- Port forwarding setup below
 
 ### WSL2 Networking Configuration (CRITICAL)
 
 WSL2 uses a virtual network that creates connectivity issues with the ESP32 robot. The ESP32 robot connects to your Windows WiFi IP address, but the Micro-ROS agent runs inside WSL2 with a different IP address (172.x.x.x). This network mismatch prevents the robot from connecting.
 
-**SOLUTION: WSL2 Mirrored Networking (Recommended)**
+**SOLUTION: WSL2 Mirrored Networking**
 
-The simplest and most reliable solution is to use WSL2 mirrored networking, which makes WSL2 share the same network interface as Windows.
+Use WSL2 mirrored networking, which makes WSL2 share the same network interface as Windows. This is the only reliable solution for UDP connectivity.
 
 **Step 1: Create WSL2 configuration file**
 
@@ -369,46 +368,6 @@ netstat -tulpn | grep 8090
 - The Micro-ROS agent becomes directly accessible at your Windows WiFi IP (e.g., `192.168.68.105:8090`)
 - No port forwarding or firewall configuration needed
 - Robot can connect directly to Windows IP address
-
-**Alternative Solution (if mirrored networking doesn't work):**
-
-**Port Forwarding Method** - Only use if mirrored networking fails:
-
-```powershell
-# In Windows PowerShell as Administrator
-# Get WSL2 IP and set up port forwarding
-$wslIP = (wsl hostname -I).Trim()
-netsh interface portproxy add v4tov4 listenport=8090 listenaddress=192.168.68.105 connectport=8090 connectaddress=$wslIP
-
-# Create firewall rule
-netsh advfirewall firewall add rule name="WSL2 Micro-ROS Agent" dir=in action=allow protocol=UDP localport=8090
-
-# Verify port forwarding
-netsh interface portproxy show all
-```
-
-**Note:** Windows port forwarding has UDP limitations, so mirrored networking is strongly recommended.
-
-3. **Verify WSL2 Network Configuration:**
-   ```bash
-   # Check if WSL2 can reach Windows host
-   ping $(cat /etc/resolv.conf | grep nameserver | awk '{print $2}')
-   
-   # Check WSL2 network interfaces
-   ip addr show
-   
-   # Test port availability
-   sudo netstat -tulpn | grep 8090
-   ```
-
-4. **Testing Robot Connectivity:**
-   ```bash
-   # Start agent with verbose output to see connection attempts
-   docker run --rm --net=host microros/micro-ros-agent:humble udp4 --port 8090 -v6
-   
-   # In another terminal, monitor network traffic
-   sudo tcpdump -i any -n port 8090
-   ```
 
 ### Robot Configuration
 
@@ -483,9 +442,9 @@ python3 config_robot.py
 
 **Issue: Robot can't connect to Micro-ROS agent**
 - **Cause:** Network mismatch between robot (uses Windows WiFi IP) and Micro-ROS agent (runs in WSL2)
-- **Solution:** Use WSL2 mirrored networking (see section 9 above) - most reliable approach
+- **Solution:** Use WSL2 mirrored networking (see section 9 above) - this is required for UDP connectivity
 - **Check:** Verify `.wslconfig` has `networkingMode=mirrored` and restart WSL2 with `wsl --shutdown`
-- **Alternative:** Use port forwarding if mirrored networking doesn't work
+- **Alternative:** Run Micro-ROS agent on Windows using Docker Desktop if mirrored networking fails
 
 **Issue: Docker permission denied**
 - Solution: Add user to docker group and restart WSL2
