@@ -179,16 +179,6 @@ sudo apt install python3-pip
 pip3 install pillow numpy
 ```
 
-### Network Analysis Tools (for troubleshooting)
-
-```bash
-# Install network diagnostic tools
-sudo apt install nmap netstat-nat tcpdump wireshark
-
-# Install system monitoring tools
-sudo apt install htop
-```
-
 ## 8. Serial Device Access (WSL2-Specific)
 
 WSL2 requires USB passthrough to access serial devices. **Note:** The `/dev/ttyS*` ports in WSL2 are emulated and will give "Input/output error" when trying to connect to real hardware.
@@ -226,55 +216,6 @@ WSL2 requires USB passthrough to access serial devices. **Note:** The `/dev/ttyS
    ls -la /dev/ttyUSB* /dev/ttyACM*
    ```
 
-### USB Device Persistence (IMPORTANT)
-
-**Critical:** USB devices attached via usbipd do NOT automatically reconnect in these situations:
-- When you restart WSL2 or start a new WSL2 session
-- When your PC hibernates, sleeps, or goes to standby
-- When you unplug and replug the USB device
-- After Windows updates that restart the system
-
-**Every time ANY of the above happens, you must reattach the USB device:**
-
-1. **Check if device is still attached** (in WSL2):
-   ```bash
-   ls -la /dev/ttyUSB* /dev/ttyACM*
-   ```
-
-2. **If no devices appear, reattach in Windows PowerShell as Administrator:**
-   ```powershell
-   # List devices to find your robot's BUSID
-   usbipd list
-   
-   # Reattach the robot device
-   usbipd attach --wsl --busid <BUSID>
-   ```
-
-3. **Verify device appears in WSL2:**
-   ```bash
-   ls -la /dev/ttyUSB* /dev/ttyACM*
-   ```
-
-### USB Workflow Tips
-
-**Recommended daily workflow:**
-1. Start your PC and open WSL2
-2. **First thing:** Check if USB device is attached with `ls -la /dev/ttyUSB*`
-3. If not found, immediately reattach via PowerShell before starting work
-4. Consider keeping a PowerShell window open as Administrator for quick reattachment
-
-**Quick reattachment script for PowerShell:**
-Create a file `attach-robot.ps1` with your robot's BUSID:
-```powershell
-# Replace 1-1 with your actual BUSID
-usbipd attach --wsl --busid 1-1
-Write-Host "Robot attached to WSL2. Check with: ls -la /dev/ttyUSB*"
-```
-
-**Preventing sleep/hibernate during robot work:**
-- Use Windows Power Settings to prevent sleep during active work
-- Or create a PowerShell script to keep system awake during robot sessions
-
 ### Troubleshooting WSL2 USB Issues
 
 - If you get "Input/output error" with `/dev/ttyS*` ports, these are not real USB devices
@@ -289,42 +230,77 @@ Write-Host "Robot attached to WSL2. Check with: ls -la /dev/ttyUSB*"
 
 ## 9. Network Configuration (WSL2-Specific)
 
-### Finding Your Windows WiFi IP Address
+### Static IP Configuration (REQUIRED)
 
-You need to find your Windows computer's WiFi IP address to configure both the robot and port forwarding.
+**CRITICAL:** DHCP networks assign different IP addresses after hibernation/restart, breaking robot connectivity. Static IP configuration is REQUIRED for reliable operation.
 
-**Find Windows WiFi IP using Windows Command Prompt (cmd):**
+**Solution:** Configure Windows to use a static IP address within your network range.
 
-1. **Open Windows Command Prompt:**
-   - Press `Windows + R`, type `cmd`, press Enter
-   - Or search for "Command Prompt" in Start menu
+**Step 1: Determine your network range and choose a static IP**
 
-2. **Get your WiFi IP address:**
+1. **Get your current network information** (Windows Command Prompt):
    ```cmd
-   ipconfig | findstr "IPv4.*192.168"
+   ipconfig /all
    ```
-   Example output: `IPv4 Address. . . . . . . . . . . : 192.168.68.105`
+   
+2. **Look for "Wireless LAN adapter Wi-Fi" section and note:**
+   - Current IPv4 Address (e.g., `192.168.68.105`) 
+   - Subnet Mask (e.g., `255.255.255.0`)
+   - Default Gateway (e.g., `192.168.68.1`)
+   - DNS Servers (e.g., `192.168.68.1`)
 
-3. **Alternative command (shows all network adapters):**
-   ```cmd
-   ipconfig
-   ```
-   Look for "Wireless LAN adapter Wi-Fi" section and note the IPv4 Address.
+3. **Choose your static IP address** (this is the IP you'll use everywhere):
+   - Pick an address in the same network range as your current IP
+   - Choose something easy to remember and unlikely to be used by other devices
+   - **Example:** If your current IP is `192.168.68.105`, choose `192.168.68.100`
+   - **Your chosen static IP will be used for:**
+     - Windows network configuration
+     - Robot configuration in `config_robot.py`
+     - All future connections
 
-**Your Windows WiFi IP address** (e.g., `192.168.68.105`) is what you'll use for:
-- Robot configuration in `config_robot.py`
+**📝 Write down your chosen static IP:** `192.168.68.100` (example - use your chosen IP)
 
-### WSL2 Networking Configuration (CRITICAL)
+**Step 2: Configure Windows with your chosen static IP**
 
-WSL2 uses a virtual network that creates connectivity issues with the ESP32 robot. The ESP32 robot connects to your Windows WiFi IP address, but the Micro-ROS agent runs inside WSL2 with a different IP address (172.x.x.x). This network mismatch prevents the robot from connecting.
+1. **Open Network Settings:**
+   - Right-click network icon in system tray
+   - Select "Open Network & Internet settings"
+   - Click "Change adapter options"
 
-**SOLUTION: WSL2 Mirrored Networking**
+2. **Configure WiFi adapter:**
+   - Right-click your WiFi adapter
+   - Select "Properties"
+   - Double-click "Internet Protocol Version 4 (TCP/IPv4)"
 
-Use WSL2 mirrored networking, which makes WSL2 share the same network interface as Windows. This is the only reliable solution for UDP connectivity.
+3. **Set your chosen static IP:**
+   - Select "Use the following IP address"
+   - **IP address:** `192.168.68.100` (use YOUR chosen static IP)
+   - **Subnet mask:** `255.255.255.0` (from step 1)
+   - **Default gateway:** `192.168.68.1` (from step 1)
+   - **Preferred DNS server:** `192.168.68.1` (from step 1)
+   - **Alternate DNS server:** `8.8.8.8` (Google DNS as backup)
+   - Click "OK" and "OK"
 
-**Step 1: Create WSL2 configuration file**
+**Step 3: Verify your static IP is working**
 
-1. **Open Windows Command Prompt or PowerShell:**
+```cmd
+# Verify your new static IP is active
+ipconfig | findstr "IPv4.*192.168"
+# Should show your chosen static IP (e.g., 192.168.68.100)
+
+# Test internet connectivity
+ping google.com
+```
+
+**✅ Static IP Configuration Complete!**
+
+Your Windows machine now has a fixed IP address that will never change after hibernation/restart.
+
+**Step 4: Configure WSL2 Mirrored Networking**
+
+WSL2 normally uses a separate virtual network, which prevents the robot from connecting to the Micro-ROS agent. We need to configure WSL2 to share the same network as Windows.
+
+1. **Create WSL2 configuration file:**
    ```powershell
    # Create or edit the .wslconfig file in your user directory
    notepad $env:USERPROFILE\.wslconfig
@@ -336,60 +312,55 @@ Use WSL2 mirrored networking, which makes WSL2 share the same network interface 
    networkingMode=mirrored
    ```
 
-**Step 2: Restart WSL2**
-```powershell
-# Shutdown WSL2 completely
-wsl --shutdown
+3. **Restart WSL2 to apply the changes:**
+   ```powershell
+   # Shutdown WSL2 completely
+   wsl --shutdown
+   
+   # Wait about 10 seconds for complete shutdown
+   Start-Sleep -Seconds 10
+   
+   # Start WSL2 again
+   wsl
+   ```
 
-# Wait about 10 seconds for complete shutdown
-Start-Sleep -Seconds 10
+**Step 5: Configure Robot with Your Static IP**
 
-# Start WSL2 again
-wsl
+Now configure the robot to connect to your chosen static IP address.
+
+Edit the `config_robot.py` file with your network settings:
+
+```python
+# Use YOUR chosen static IP from Step 1
+robot.set_wifi_config("your_wifi_name", "your_wifi_password")  
+robot.set_udp_config([192, 168, 68, 100], 8090)  # YOUR static IP here
+robot.set_car_type(robot.CAR_TYPE_COMPUTER)
 ```
 
-**Step 3: Verify mirrored networking is working**
+**⚠️ IMPORTANT:** Use the exact same static IP you configured in Windows (from Step 1).
 
-After WSL2 restarts, the Micro-ROS agent will be directly accessible on your Windows WiFi IP address without any port forwarding.
+**Step 6: Verify Everything Works**
+
+After WSL2 restarts with mirrored networking:
 
 ```bash
-# In WSL2, verify your IP configuration
+# In WSL2, verify network configuration
 ip addr show eth0
 
-# Start the Micro-ROS agent
+# Start the Micro-ROS agent (it will be accessible on your static IP)
 docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host microros/micro-ros-agent:humble udp4 --port 8090
 
 # In another WSL2 terminal, verify agent is listening
 netstat -tulpn | grep 8090
 ```
 
-**What mirrored networking does:**
-- WSL2 shares the same network interface as Windows
-- The Micro-ROS agent becomes directly accessible at your Windows WiFi IP (e.g., `192.168.68.105:8090`)
-- No port forwarding or firewall configuration needed
-- Robot can connect directly to Windows IP address
+**✅ Network Configuration Complete!**
 
-### Robot Configuration
-
-Edit the config_robot.py file to configure your network settings:
-
-1) Update the parameters of the set_wifi_config function according to your WiFi network name and password
-2) Update the parameters of the set_udp_config function with your **Windows WiFi IP address**
-3) Update the 'set_car_type' to CAR_TYPE_COMPUTER
-
-**With mirrored networking:** The robot connects directly to your Windows WiFi IP address, and WSL2 shares the same network interface.
-
-Example configuration:
-```python
-robot.set_wifi_config("your_wifi_name", "your_wifi_password")
-robot.set_udp_config([192, 168, 68, 105], 8090)  # Use your Windows WiFi IP
-robot.set_car_type(robot.CAR_TYPE_COMPUTER)
-```
-
-**IP Address Configuration for WSL2 Mirrored Networking:**
-- Robot configuration: Use Windows WiFi IP (e.g., `192.168.68.105`)
-- Micro-ROS agent: Directly accessible on Windows IP (no forwarding needed)
-- Simple and reliable connection
+Your setup now has:
+- Windows with fixed static IP address
+- WSL2 sharing the same network as Windows  
+- Robot configured to connect to your static IP
+- Micro-ROS agent accessible on your static IP
 
 ## 10. microROS Control Board Configuration
 
@@ -441,10 +412,13 @@ python3 config_robot.py
 - Check: `/dev/ttyS*` ports are emulated, need real `/dev/ttyUSB*` or `/dev/ttyACM*`
 
 **Issue: Robot can't connect to Micro-ROS agent**
-- **Cause:** Network mismatch between robot (uses Windows WiFi IP) and Micro-ROS agent (runs in WSL2)
-- **Solution:** Use WSL2 mirrored networking (see section 9 above) - this is required for UDP connectivity
-- **Check:** Verify `.wslconfig` has `networkingMode=mirrored` and restart WSL2 with `wsl --shutdown`
-- **Alternative:** Run Micro-ROS agent on Windows using Docker Desktop if mirrored networking fails
+- **Cause:** Either static IP not configured, WSL2 mirrored networking not set up, or robot configured with wrong IP
+- **Solution:** Follow section 9 Network Configuration steps in order:
+  1. Configure Windows with static IP
+  2. Set up WSL2 mirrored networking  
+  3. Configure robot with the same static IP
+- **Check:** Verify robot IP matches Windows static IP exactly
+- **Verify:** Confirm `.wslconfig` has `networkingMode=mirrored` and restart WSL2
 
 **Issue: Docker permission denied**
 - Solution: Add user to docker group and restart WSL2
