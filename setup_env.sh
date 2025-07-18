@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Get the workspace root directory (where this script is located)
+WORKSPACE_ROOT=$(cd "$(dirname "$0")" && pwd)
+
 # Clear any existing ROS environment variables
 unset ROS_DISTRO
 unset ROS_DOMAIN_ID
@@ -13,9 +16,9 @@ unset PYTHONPATH
 source /opt/ros/humble/setup.bash
 
 # Source only our workspace
-source /home/yahboom/b4m_yahboom/install/setup.bash
+source "$WORKSPACE_ROOT/install/setup.bash"
 
 # Print confirmation
-echo "Environment set up for /home/yahboom/b4m_yahboom workspace only"
+echo "Environment set up for workspace: $WORKSPACE_ROOT"
 echo "ROS_DISTRO: $ROS_DISTRO"
 echo "AMENT_PREFIX_PATH: $AMENT_PREFIX_PATH"

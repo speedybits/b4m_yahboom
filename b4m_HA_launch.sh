@@ -4,6 +4,9 @@
 # This script automates the launch process for the B4M Robot with Home Assistant integration
 # Each step will be launched in a separate terminal with user confirmation
 
+# Get the workspace root directory (where this script is located)
+WORKSPACE_ROOT=$(cd "$(dirname "$0")" && pwd)
+
 # Function to ask for user confirmation
 confirm() {
     echo ""
@@ -24,8 +27,8 @@ launch_in_terminal() {
     
     confirm
     
-    # Launch the command in a new terminal using gnome-terminal
-    gnome-terminal -- bash -c "$command; echo 'Process completed. Press Enter to close this terminal...'; read"
+    # Launch the command in a new terminal using xterm with a basic font
+    xterm -fn fixed -e bash -c "$command; echo 'Process completed. Press Enter to close this terminal...'; read" &
     
     # Give some time for the terminal to start
     sleep 2
@@ -52,15 +55,15 @@ confirm
 
 # Step 3: Launch the Car's Underlying Data Processing
 launch_in_terminal "Starting the car's underlying data processing for sensor integration" \
-    "cd /home/yahboom/b4m_yahboom && . install/setup.bash && ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py"
+    "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py"
 
 # Step 4: Start RViz for Visualization
 launch_in_terminal "Starting RViz for visualization of robot state and environment" \
-    "cd /home/yahboom/b4m_yahboom && . install/setup.bash && ros2 launch yahboomcar_nav display_launch.py"
+    "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_nav display_launch.py"
 
 # Step 5: Launch the Navigation System
 launch_in_terminal "Launching the navigation system with pre-built map" \
-    "cd /home/yahboom/b4m_yahboom && . install/setup.bash && ros2 launch yahboomcar_nav waypoint_navigation_launch.py maps:=/home/yahboom/b4m_yahboom/yahboomcar_nav/maps/yahboom_map.yaml"
+    "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_nav waypoint_navigation_launch.py maps:\"$WORKSPACE_ROOT/yahboomcar_nav/maps/yahboom_map.yaml\""
 
 # Step 6: Initial Robot Positioning
 echo "====================================================="
@@ -75,7 +78,7 @@ confirm
 
 # Step 7: Start the B4M Waypoint Navigation Node with MQTT Parameters
 launch_in_terminal "Starting the B4M Waypoint Navigation Node with MQTT integration" \
-    "cd /home/yahboom/b4m_yahboom && . install/setup.bash && python3 /home/yahboom/b4m_yahboom/b4m_waypoint_nav/b4m_waypoint_nav/b4m_waypoint_nav.py --ros-args -p mqtt_broker:=192.168.68.111 -p mqtt_port:=1883 -p mqtt_username:=robot -p mqtt_password:=robot123"
+    "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && python3 \"$WORKSPACE_ROOT/b4m_waypoint_nav/b4m_waypoint_nav/b4m_waypoint_nav.py\" --ros-args -p mqtt_broker:=192.168.68.111 -p mqtt_port:=1883 -p mqtt_username:=robot -p mqtt_password:=robot123"
 
 # Step 8: Start the Robot Manager GUI
 echo "===================================================="
@@ -86,7 +89,7 @@ echo ""
 confirm
 
 launch_in_terminal "Starting the B4M Robot Manager GUI for visual control of waypoints" \
-    "cd /home/yahboom/b4m_yahboom && . install/setup.bash && ros2 run b4m_waypoint_nav b4m_robot_manager_node.py"
+    "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 run b4m_waypoint_nav b4m_robot_manager_node.py"
 
 
 exit 0
