@@ -114,6 +114,14 @@ Install colcon build tools required for building ROS2 packages:
 sudo apt install python3-colcon-common-extensions
 ```
 
+### Install Robot Packages
+
+Install additional ROS2 packages required for the robot's functionality:
+
+```bash
+sudo apt install ros-humble-imu-complementary-filter ros-humble-imu-filter-madgwick ros-humble-imu-tools ros-humble-robot-localization ros-humble-joint-state-publisher ros-humble-joint-state-publisher-gui ros-humble-xacro
+```
+
 ## 5. Configure Environment
 
 ### Manual Sourcing
@@ -347,9 +355,6 @@ After WSL2 restarts with mirrored networking:
 # In WSL2, verify network configuration
 ip addr show eth0
 
-# Start the Micro-ROS agent (it will be accessible on your static IP)
-docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host microros/micro-ros-agent:humble udp4 --port 8090
-
 # In another WSL2 terminal, verify agent is listening
 netstat -tulpn | grep 8090
 ```
@@ -392,6 +397,11 @@ python3 config_robot.py
    python3 config_robot.py
    ```
 5. Verify the returned data matches your settings
+
+
+# Test: Start the Micro-ROS agent
+docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host microros/micro-ros-agent:humble udp4 --port 8090
+
 
 ## 11. Troubleshooting
 

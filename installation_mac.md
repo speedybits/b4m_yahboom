@@ -120,6 +120,14 @@ Install colcon build tools required for building ROS2 packages:
 sudo apt install python3-colcon-common-extensions
 ```
 
+### Install Robot Packages
+
+Install additional ROS2 packages required for the robot's functionality:
+
+```bash
+sudo apt install ros-humble-imu-complementary-filter ros-humble-imu-filter-madgwick ros-humble-imu-tools ros-humble-robot-localization ros-humble-joint-state-publisher ros-humble-joint-state-publisher-gui ros-humble-xacro
+```
+
 ## 5. Configure Environment
 
 ### Manual Sourcing
