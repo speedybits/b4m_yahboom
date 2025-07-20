@@ -96,7 +96,7 @@ sudo apt install python3-colcon-common-extensions
 Install additional ROS2 packages required for the robot's functionality:
 
 ```bash
-sudo apt install ros-humble-imu-complementary-filter ros-humble-imu-filter-madgwick ros-humble-imu-tools ros-humble-robot-localization ros-humble-joint-state-publisher ros-humble-joint-state-publisher-gui ros-humble-xacro
+sudo apt install ros-humble-imu-complementary-filter ros-humble-imu-filter-madgwick ros-humble-imu-tools ros-humble-robot-localization ros-humble-joint-state-publisher ros-humble-joint-state-publisher-gui ros-humble-xacro ros-humble-nav2-bringup
 ```
 
 ## 4. Configure Environment
@@ -115,9 +115,10 @@ To automatically source ROS2 in every new terminal, add it to your `.bashrc`:
 
 ```bash
 echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
+echo "export ROS_DOMAIN_ID=20" >> ~/.bashrc
 ```
 
-This eliminates the need to manually configure the environment each time you open a new terminal.
+This eliminates the need to manually configure the environment each time you open a new terminal and sets the correct domain ID for the robot.
 
 ## 5. Verification
 
@@ -390,6 +391,21 @@ python3 config_robot.py
 - Solution: Add user to docker group and log out/in
 - Command: `sudo usermod -aG docker $USER`
 
+**Issue: "No such file or directory" - /dev/ttyUSB0 not found**
+- **Cause:** USB device disconnected or not recognized by system
+- **Solution:** Check USB connection and device permissions
+- **Commands:**
+  ```bash
+  # List USB devices
+  lsusb
+  
+  # Check for serial devices
+  ls -la /dev/ttyUSB* /dev/ttyACM*
+  
+  # Check system messages for USB events
+  dmesg | grep -i usb
+  ```
+
 **Issue: Robot not connecting to Micro-ROS agent**
 - **Cause:** Either static IP not configured or robot configured with wrong IP
 - **Solution:** Follow section 8 Network Configuration steps in order:
@@ -407,13 +423,60 @@ docker run --rm --net=host microros/micro-ros-agent:humble udp4 --port 8090 -v6
 # Check port availability
 sudo netstat -tulpn | grep 8090
 
+# Check network interface configuration
+ip addr show $(ip route get 1.1.1.1 | grep -oP 'dev \K\S+')
+
+# Test connectivity to gateway
+ping -c 3 $(ip route | grep default | awk '{print $3}')
+
 # Monitor network traffic
 sudo tcpdump -i any -n port 8090
 ```
 
 ## 11. Workspace Setup
 
-After completing the installation, you'll need to build the workspaces. See the `WORKSPACE_README.md` for detailed instructions on workspace management.
+After completing the installation, you'll need to build the workspaces and configure environment sourcing.
+
+### Critical Workspace Requirements
+
+**IMPORTANT:** After cloning the B4M Yahboom repository, you MUST build the workspace and configure automatic sourcing:
+
+```bash
+# Navigate to the project directory
+cd ~/projects/b4m_yahboom
+
+# Build the workspace (required before first use)
+colcon build --symlink-install
+
+# Add workspace sourcing to .bashrc for automatic setup
+echo "source ~/projects/b4m_yahboom/source_workspaces.sh" >> ~/.bashrc
+
+# Apply to current terminal (or open a new terminal)
+source ~/.bashrc
+```
+
+**Automatic Sourcing:** This eliminates the need to manually source workspaces in every new terminal session.
+
+**Common Error:** If you see `Package 'yahboomcar_bringup' not found`, it means the workspace isn't sourced. Check that the sourcing command is in your .bashrc:
+
+```bash
+# Verify workspace sourcing is in .bashrc
+grep "source_workspaces.sh" ~/.bashrc
+
+# If missing, add it manually
+echo "source ~/projects/b4m_yahboom/source_workspaces.sh" >> ~/.bashrc
+```
+
+**After Code Changes:** When you modify ROS2 package code, rebuild and restart nodes:
+
+```bash
+# Rebuild after code changes
+colcon build --symlink-install
+
+# Restart any running ROS2 nodes/processes to load new code
+```
+
+See the `WORKSPACE_README.md` for detailed instructions on workspace management.
 
 ## 12. Uninstallation (Optional)
 
