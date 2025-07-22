@@ -1,36 +1,44 @@
-# ROS2 Humble Installation Guide - Native Linux
+# ROS2 Humble Installation Checklist - Native Linux
 
-This guide provides step-by-step instructions to install ROS2 Humble on native Linux systems to support the B4M Yahboom robot project.
+This checklist provides step-by-step instructions to install ROS2 Humble on native Linux systems to support the B4M Yahboom robot project. Check off each step as you complete it.
 
 ## Prerequisites
 
-- Ubuntu 22.04 LTS (Jammy Jellyfish) recommended
-- Internet connection for downloading packages
-- Terminal access with sudo privileges
+- [ ] Ubuntu 22.04 LTS (Jammy Jellyfish) recommended
+- [ ] Internet connection for downloading packages
+- [ ] Terminal access with sudo privileges
 
 ## 1. Set Language Environment
 
-First, ensure your system supports UTF-8 encoding:
+- [ ] Check current locale settings:
+  ```bash
+  locale
+  ```
 
-```bash
-# Check current locale settings
-locale
+- [ ] Install locale packages:
+  ```bash
+  sudo apt update && sudo apt install locales
+  ```
 
-# Install locale packages
-sudo apt update && sudo apt install locales
+- [ ] Generate UTF-8 locales:
+  ```bash
+  sudo locale-gen en_US en_US.UTF-8
+  ```
 
-# Generate UTF-8 locales
-sudo locale-gen en_US en_US.UTF-8
+- [ ] Update system locale:
+  ```bash
+  sudo update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
+  ```
 
-# Update system locale
-sudo update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
+- [ ] Export language variable for current session:
+  ```bash
+  export LANG=en_US.UTF-8
+  ```
 
-# Export language variable for current session
-export LANG=en_US.UTF-8
-
-# Verify settings
-locale
-```
+- [ ] Verify settings:
+  ```bash
+  locale
+  ```
 
 **Note:** The locale can be different, but must support UTF-8 encoding.
 
@@ -38,108 +46,110 @@ locale
 
 ### Enable Ubuntu Universe Repository
 
-```bash
-# Install software-properties-common
-sudo apt install software-properties-common
+- [ ] Install software-properties-common:
+  ```bash
+  sudo apt install software-properties-common
+  ```
 
-# Add universe repository
-sudo add-apt-repository universe
-```
+- [ ] Add universe repository:
+  ```bash
+  sudo add-apt-repository universe
+  ```
 
 ### Add ROS2 APT Repository
 
-```bash
-# Update package list and install curl
-sudo apt update && sudo apt install curl -y
+- [ ] Update package list and install curl:
+  ```bash
+  sudo apt update && sudo apt install curl -y
+  ```
 
-# Download and add ROS GPG key
-sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
+- [ ] Download and add ROS GPG key:
+  ```bash
+  sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
+  ```
 
-# Add ROS2 repository to sources list
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
-```
+- [ ] Add ROS2 repository to sources list:
+  ```bash
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
+  ```
 
 ## 3. Install ROS2 Humble
 
 ### Update Package Cache
 
-```bash
-sudo apt update
-```
+- [ ] Update package cache:
+  ```bash
+  sudo apt update
+  ```
 
 ### Upgrade System Packages
 
-```bash
-sudo apt upgrade
-```
+- [ ] Upgrade system packages:
+  ```bash
+  sudo apt upgrade
+  ```
 
 **Important:** ROS2 packages are built on frequently updated Ubuntu systems. Ensure your system is up to date before installing new packages.
 
 ### Install ROS2 Desktop
 
-Install the desktop version (recommended) which includes ROS, RViz, examples, and tutorials:
-
-```bash
-sudo apt install ros-humble-desktop python3-argcomplete
-```
+- [ ] Install the desktop version (recommended) which includes ROS, RViz, examples, and tutorials:
+  ```bash
+  sudo apt install ros-humble-desktop python3-argcomplete
+  ```
 
 ### Install Build Tools
 
-Install colcon build tools required for building ROS2 packages:
-
-```bash
-sudo apt install python3-colcon-common-extensions
-```
+- [ ] Install colcon build tools required for building ROS2 packages:
+  ```bash
+  sudo apt install python3-colcon-common-extensions
+  ```
 
 ### Install Robot Packages
 
-Install additional ROS2 packages required for the robot's functionality:
-
-```bash
-sudo apt install ros-humble-imu-complementary-filter ros-humble-imu-filter-madgwick ros-humble-imu-tools ros-humble-robot-localization ros-humble-joint-state-publisher ros-humble-joint-state-publisher-gui ros-humble-xacro ros-humble-nav2-bringup
-```
+- [ ] Install additional ROS2 packages required for the robot's functionality:
+  ```bash
+  sudo apt install ros-humble-imu-complementary-filter ros-humble-imu-filter-madgwick ros-humble-imu-tools ros-humble-robot-localization ros-humble-joint-state-publisher ros-humble-joint-state-publisher-gui ros-humble-xacro ros-humble-nav2-bringup
+  ```
 
 ## 4. Configure Environment
 
 ### Manual Sourcing
 
-For each terminal session, you need to source the ROS2 environment:
-
-```bash
-source /opt/ros/humble/setup.bash
-```
+- [ ] Source the ROS2 environment for current terminal session:
+  ```bash
+  source /opt/ros/humble/setup.bash
+  ```
 
 ### Automatic Sourcing (Recommended)
 
-To automatically source ROS2 in every new terminal, add it to your `.bashrc`:
-
-```bash
-echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
-echo "export ROS_DOMAIN_ID=20" >> ~/.bashrc
-```
+- [ ] Add automatic sourcing to your `.bashrc`:
+  ```bash
+  echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
+  echo "export ROS_DOMAIN_ID=20" >> ~/.bashrc
+  ```
 
 This eliminates the need to manually configure the environment each time you open a new terminal and sets the correct domain ID for the robot.
 
 ## 5. Verification
 
-Test your ROS2 installation by running:
+- [ ] Source the environment (if not added to .bashrc):
+  ```bash
+  source /opt/ros/humble/setup.bash
+  ```
 
-```bash
-# Source the environment (if not added to .bashrc)
-source /opt/ros/humble/setup.bash
+- [ ] Run a simple test in first terminal:
+  ```bash
+  ros2 run demo_nodes_cpp talker
+  ```
 
-# Run a simple test
-ros2 run demo_nodes_cpp talker
-```
+- [ ] In another terminal, run the listener:
+  ```bash
+  source /opt/ros/humble/setup.bash
+  ros2 run demo_nodes_py listener
+  ```
 
-In another terminal:
-
-```bash
-source /opt/ros/humble/setup.bash
-ros2 run demo_nodes_py listener
-```
-
-You should see the talker publishing messages and the listener receiving them.
+- [ ] Verify that you see the talker publishing messages and the listener receiving them
 
 ## 6. Additional Requirements for B4M Yahboom Project
 
@@ -147,254 +157,284 @@ After installing ROS2 Humble, you'll need additional packages for the Yahboom ro
 
 ### Docker (for Micro-ROS Agent)
 
-```bash
-# Install Docker
-sudo apt install docker.io
+- [ ] Install Docker:
+  ```bash
+  sudo apt install docker.io
+  ```
 
-# Add user to docker group
-sudo usermod -aG docker $USER
+- [ ] Add user to docker group:
+  ```bash
+  sudo usermod -aG docker $USER
+  ```
 
-# Log out and log back in, then test
-docker --version
-```
+- [ ] Log out and log back in, then test:
+  ```bash
+  docker --version
+  ```
+
+**Note**: If docker commands still show "permission denied" after logout/login, you may need to reboot your system for group membership to take effect properly.
 
 ### Python Dependencies
 
-```bash
-# Install PyQt5 for GUI applications
-sudo apt install python3-pyqt5 python3-pyqt5.qtsvg
+- [ ] Install PyQt5 for GUI applications:
+  ```bash
+  sudo apt install python3-pyqt5 python3-pyqt5.qtsvg
+  ```
 
-# Install Python packages
-sudo apt install python3-pip
-pip3 install pillow numpy
-```
+- [ ] Install Python packages:
+  ```bash
+  sudo apt install python3-pip python3-serial
+  pip3 install pillow numpy pyserial
+  ```
 
 ### Network Analysis Tools (for troubleshooting)
 
-```bash
-# Install network diagnostic tools
-sudo apt install nmap netstat-nat tcpdump wireshark
+- [ ] Install network diagnostic tools:
+  ```bash
+  sudo apt install nmap netstat-nat tcpdump wireshark
+  ```
 
-# Install system monitoring tools
-sudo apt install htop
-```
+- [ ] Install system monitoring tools:
+  ```bash
+  sudo apt install htop
+  ```
 
 ## 7. Serial Device Access
 
 ### USB Device Permissions
 
-Devices should appear automatically as `/dev/ttyUSB0` or `/dev/ttyACM0`. Add user to dialout group:
+- [ ] Add user to dialout group for serial device access:
+  ```bash
+  sudo usermod -a -G dialout $USER
+  ```
 
-```bash
-sudo usermod -a -G dialout $USER
-```
-
-**Note:** Log out and log back in for group changes to take effect.
+- [ ] Log out and log back in for group changes to take effect
 
 ### Verify Serial Devices
 
-```bash
-# List available serial devices
-ls -la /dev/ttyUSB* /dev/ttyACM*
+- [ ] List available serial devices:
+  ```bash
+  ls -la /dev/ttyUSB* /dev/ttyACM*
+  ```
 
-# Check USB devices
-lsusb
-```
+- [ ] Check USB devices:
+  ```bash
+  lsusb
+  ```
 
 ## 8. Network Configuration
 
-### Static IP Configuration (REQUIRED)
+### Fixed IP Address Configuration (REQUIRED)
 
-**CRITICAL:** DHCP networks assign different IP addresses after restart/hibernation, breaking robot connectivity. Static IP configuration is REQUIRED for reliable operation.
+**CRITICAL:** DHCP networks assign different IP addresses after restart/hibernation, breaking robot connectivity. A fixed IP address is REQUIRED for reliable operation.
 
-**Solution:** Configure Linux to use a static IP address within your network range.
+**Solution:** Configure your router to assign a fixed IP address to your Linux machine using DHCP reservation (recommended) or use NetworkManager to request a specific IP.
 
-**Step 1: Determine your network range and choose a static IP**
+#### Step 1: Get your network information and choose a fixed IP
 
-1. **Get your current network information:**
-   ```bash
-   # Find current IP and network info
-   ip route get 1.1.1.1 | grep -oP 'src \K\S+'  # Current IP
-   ip route | grep default | awk '{print $3}'    # Gateway
-   
-   # Check current network interface (WiFi or Ethernet)
-   ip route get 1.1.1.1 | grep -oP 'dev \K\S+'  # Network interface
-   
-   # Get detailed network info
-   ip addr show $(ip route get 1.1.1.1 | grep -oP 'dev \K\S+')
-   ```
+- [ ] Get your current network information:
+  ```bash
+  # Find current IP and network info
+  ip route get 1.1.1.1 | grep -oP 'src \K\S+'  # Current IP
+  ip route | grep default | awk '{print $3}'    # Gateway
+  
+  # Get your MAC address for DHCP reservation
+  ip link show $(ip route get 1.1.1.1 | grep -oP 'dev \K\S+') | grep ether
+  ```
 
-2. **Note down these values:**
-   - Current IP address (e.g., `192.168.1.150`)
-   - Gateway/Router (e.g., `192.168.1.1`)
-   - Network interface (e.g., `wlan0` for WiFi, `eth0` for Ethernet)
-   - Subnet (usually `/24` or `255.255.255.0`)
+- [ ] Note down these values:
+  - Current IP address (e.g., `192.168.68.105`)
+  - Gateway/Router (e.g., `192.168.68.1`)
+  - MAC address (e.g., `28:d0:43:f7:74:ac`)
+  - Network interface name (e.g., `wlo1` for WiFi)
 
-3. **Choose your static IP address** (this is the IP you'll use everywhere):
-   - Pick an address in the same network range as your current IP
-   - Choose something easy to remember and unlikely to be used by other devices
-   - **Example:** If your current IP is `192.168.1.150`, choose `192.168.1.100`
-   - **Your chosen static IP will be used for:**
-     - Linux network configuration
-     - Robot configuration in `config_robot.py`
-     - All future connections
+- [ ] Choose your fixed IP address (this is the IP you'll use everywhere):
+  - Pick an address in the same network range as your current IP
+  - Choose something easy to remember and unlikely to be used by other devices
+  - **Example:** If your current IP is `192.168.68.105`, choose `192.168.68.100`
+  - **Your chosen fixed IP will be used for:**
+    - Router DHCP reservation
+    - Robot configuration in `config_robot.py`
+    - All future connections
 
-**📝 Write down your chosen static IP:** `192.168.1.100` (example - use your chosen IP)
+- [ ] **📝 Write down your chosen fixed IP:** `192.168.68.100` (example - use your chosen IP in YOUR network range)
 
-**Step 2: Configure Linux with your chosen static IP**
+#### Step 2: Configure fixed IP address
 
-**Method A: Using NetworkManager (Ubuntu Desktop with GUI):**
+**Method A: DHCP Reservation (Recommended - Router Configuration):**
 
-1. **Open Network Settings:**
-   - Click on network icon in system tray
-   - Select "Settings" or "Network Settings"
-   - Or open Settings → Network
+- [ ] Access your router's admin interface:
+  - Open web browser and go to your gateway IP (e.g., `http://192.168.68.1`)
+  - Login with admin credentials (often on router label)
 
-2. **Configure WiFi/Ethernet:**
-   - Click the gear icon next to your connection
-   - Go to "IPv4" tab
-   - Change from "Automatic (DHCP)" to "Manual"
+- [ ] Find DHCP Reservation settings:
+  - Look for "DHCP Reservations", "Static DHCP", "Address Reservation", or "Reserved IPs"
+  - Usually under "Network", "LAN", or "DHCP" sections
 
-3. **Set your chosen static IP:**
-   - **Address:** `192.168.1.100` (use YOUR chosen static IP)
-   - **Netmask:** `255.255.255.0`
-   - **Gateway:** `192.168.1.1` (from step 1)
-   - **DNS:** `192.168.1.1, 8.8.8.8`
-   - Click "Apply"
+- [ ] Add DHCP reservation:
+  - **MAC Address:** Your MAC address from Step 1 (e.g., `28:d0:43:f7:74:ac`)
+  - **IP Address:** Your chosen fixed IP (e.g., `192.168.68.100`)
+  - **Device Name:** "Linux-Robot-PC" (optional description)
+  - Save/Apply settings
 
-**Method B: Using Netplan (Ubuntu Server or if GUI method doesn't work):**
+- [ ] Restart router's DHCP service (or reboot router if needed)
 
-1. **Edit netplan configuration:**
-   ```bash
-   # Find your netplan config file
-   sudo find /etc/netplan -name "*.yaml"
-   
-   # Edit the configuration (replace filename with your actual file)
-   sudo nano /etc/netplan/00-installer-config.yaml
-   ```
+- [ ] Restart your network connection:
+  ```bash
+  sudo nmcli con down $(nmcli -t -f NAME,DEVICE con show --active | grep $(ip route get 1.1.1.1 | grep -oP 'dev \K\S+') | cut -d: -f1)
+  sudo nmcli con up $(nmcli -t -f NAME,DEVICE con show --active | grep $(ip route get 1.1.1.1 | grep -oP 'dev \K\S+') | cut -d: -f1)
+  ```
 
-2. **Update configuration** (replace `wlan0` with your interface from Step 1):
-   ```yaml
-   network:
-     version: 2
-     wifis:
-       wlan0:  # Use your actual interface name
-         dhcp4: no
-         addresses:
-           - 192.168.1.100/24  # YOUR chosen static IP
-         gateway4: 192.168.1.1  # Your gateway
-         nameservers:
-           addresses: [192.168.1.1, 8.8.8.8]
-         access-points:
-           "your_wifi_name":  # Your WiFi network name
-             password: "your_wifi_password"
-   ```
+**Method B: NetworkManager DHCP with Preferred IP (Fallback):**
 
-3. **Apply the configuration:**
-   ```bash
-   sudo netplan apply
-   ```
+If router configuration isn't possible, request specific IP through DHCP:
 
-**Step 3: Verify your static IP is working**
+- [ ] Configure NetworkManager to request your chosen IP:
+  ```bash
+  # Replace 'connection_name' with your actual connection name
+  CONNECTION_NAME=$(nmcli -t -f NAME,DEVICE con show --active | grep $(ip route get 1.1.1.1 | grep -oP 'dev \K\S+') | cut -d: -f1)
+  
+  # Request specific IP via DHCP
+  sudo nmcli con modify "$CONNECTION_NAME" ipv4.dhcp-client-id "192.168.68.100"
+  sudo nmcli con down "$CONNECTION_NAME" && sudo nmcli con up "$CONNECTION_NAME"
+  ```
 
-```bash
-# Verify your new static IP is active
-ip addr show $(ip route get 1.1.1.1 | grep -oP 'dev \K\S+') | grep 'inet '
-# Should show your chosen static IP (e.g., 192.168.1.100)
+**Note:** Method B requests the IP but doesn't guarantee it. Method A (router configuration) is more reliable.
 
-# Test internet connectivity
-ping -c 3 google.com
+#### Step 3: Verify your fixed IP is working
 
-# Verify gateway connectivity
-ping -c 3 192.168.1.1  # Your gateway IP
-```
+- [ ] Verify your new fixed IP is active:
+  ```bash
+  ip addr show $(ip route get 1.1.1.1 | grep -oP 'dev \K\S+') | grep 'inet '
+  # Should show your chosen fixed IP (e.g., 192.168.68.100)
+  ```
 
-**✅ Static IP Configuration Complete!**
+- [ ] Test internet connectivity:
+  ```bash
+  ping -c 3 google.com
+  ```
 
-Your Linux machine now has a fixed IP address that will never change after restart/hibernation.
+- [ ] Verify gateway connectivity:
+  ```bash
+  ping -c 3 $(ip route | grep default | awk '{print $3}')  # Your gateway IP
+  ```
 
-**Step 4: Configure Robot with Your Static IP**
+- [ ] Check DNS is working automatically:
+  ```bash
+  nslookup google.com
+  ```
 
-Now configure the robot to connect to your chosen static IP address.
+**✅ Fixed IP Configuration Complete!**
 
-Edit the `config_robot.py` file with your network settings:
+Your Linux machine now has a fixed IP address with automatic DNS and network settings.
 
-```python
-# Use YOUR chosen static IP from Step 1
-robot.set_wifi_config("your_wifi_name", "your_wifi_password")  
-robot.set_udp_config([192, 168, 1, 100], 8090)  # YOUR static IP here
-robot.set_car_type(robot.CAR_TYPE_COMPUTER)
-```
+#### Step 4: Configure Robot with Your Fixed IP
 
-**⚠️ IMPORTANT:** Use the exact same static IP you configured in Linux (from Step 1).
+- [ ] Edit the `config_robot.py` file with your network settings:
+  ```python
+  # Use YOUR chosen fixed IP from Step 1
+  robot.set_wifi_config("your_wifi_name", "your_wifi_password")  
+  robot.set_udp_config([192, 168, 68, 100], 8090)  # YOUR fixed IP here (match your network)
+  robot.set_car_type(robot.CAR_TYPE_COMPUTER)
+  ```
 
-**Step 5: Verify Everything Works**
+**⚠️ IMPORTANT:** Use the exact same fixed IP you configured via DHCP reservation (from Step 1).
 
-```bash
-# Start the Micro-ROS agent (it will be accessible on your static IP)
-docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host microros/micro-ros-agent:humble udp4 --port 8090
+#### Step 5: Verify Everything Works
 
-# In another terminal, verify agent is listening
-sudo netstat -tulpn | grep 8090
+- [ ] Start the Micro-ROS agent (it will be accessible on your fixed IP):
+  ```bash
+  docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host microros/micro-ros-agent:humble udp4 --port 8090
+  ```
 
-# Check network connectivity
-ping -c 3 192.168.1.100  # Your static IP
-```
+- [ ] In another terminal, verify agent is listening:
+  ```bash
+  ss -tulpn | grep 8090
+  ```
+
+- [ ] Check network connectivity:
+  ```bash
+  ping -c 3 192.168.68.100  # Your fixed IP (use YOUR chosen IP)
+  ```
 
 **✅ Network Configuration Complete!**
 
 Your setup now has:
-- Linux with fixed static IP address
-- Robot configured to connect to your static IP
-- Micro-ROS agent accessible on your static IP
+- Linux with fixed IP address via DHCP reservation
+- Automatic DNS and network configuration
+- Robot configured to connect to your fixed IP
+- Micro-ROS agent accessible on your fixed IP
 
 ## 9. microROS Control Board Configuration
 
 The config_robot.py script supports cross-platform serial port detection:
 
-**List available ports:**
-```bash
-python3 config_robot.py --list-ports
-```
+- [ ] List available ports:
+  ```bash
+  python3 config_robot.py --list-ports
+  ```
 
-**Specify port manually:**
-```bash
-python3 config_robot.py --port /dev/ttyUSB0
-```
+- [ ] Specify port manually (if needed):
+  ```bash
+  python3 config_robot.py --port /dev/ttyUSB0
+  ```
 
-**Set via environment variable:**
-```bash
-export ROBOT_SERIAL_PORT=/dev/ttyUSB0
-python3 config_robot.py
-```
+- [ ] Set via environment variable (alternative method):
+  ```bash
+  export ROBOT_SERIAL_PORT=/dev/ttyUSB0
+  python3 config_robot.py
+  ```
 
 ### Configuration Steps
 
-1. Connect the robot via USB
-2. Briefly press the reset button on the microROS control board
-3. The robot enters configuration mode within 5 seconds of booting (MCU indicator flashes every 300ms)
-4. Run the configuration script:
-   ```bash
-   python3 config_robot.py
-   ```
-5. Verify the returned data matches your settings
+- [ ] Connect the robot via USB
+- [ ] Briefly press the reset button on the microROS control board
+- [ ] Wait for configuration mode (robot enters configuration mode within 5 seconds of booting - MCU indicator flashes every 300ms)
+- [ ] Run the configuration script:
+  ```bash
+  python3 config_robot.py
+  ```
+- [ ] Verify the returned data matches your settings
+
+**⚠️ IMPORTANT:** The robot configuration script automatically applies changes AND shows current settings. The output will display what's stored in the robot's memory including WiFi SSID, IP address, and other parameters.
+
+### Verify Robot Configuration (Recommended)
+
+If you experience connection issues, verify the robot's stored configuration:
+
+- [ ] Connect robot via USB and check stored settings:
+  ```bash
+  python3 config_robot.py --port /dev/ttyUSB0
+  ```
+
+- [ ] Verify the output shows:
+  - **WiFi SSID**: Your network name
+  - **IP Address**: Your Linux machine's static IP
+  - **Port**: 8090
+  - **Car Type**: CAR_TYPE_COMPUTER
+
+- [ ] If settings are incorrect, the script will have updated them - power cycle the robot to apply changes
 
 ## 10. Troubleshooting
 
 ### Common Issues
 
 **Issue: Permission denied for serial device**
-- Solution: Add user to dialout group and log out/in
-- Command: `sudo usermod -a -G dialout $USER`
+- [ ] Solution: Add user to dialout group and log out/in
+  ```bash
+  sudo usermod -a -G dialout $USER
+  ```
 
 **Issue: Docker permission denied**
-- Solution: Add user to docker group and log out/in
-- Command: `sudo usermod -aG docker $USER`
+- [ ] Solution: Add user to docker group and log out/in
+  ```bash
+  sudo usermod -aG docker $USER
+  ```
 
 **Issue: "No such file or directory" - /dev/ttyUSB0 not found**
 - **Cause:** USB device disconnected or not recognized by system
 - **Solution:** Check USB connection and device permissions
-- **Commands:**
+- [ ] Run diagnostic commands:
   ```bash
   # List USB devices
   lsusb
@@ -407,31 +447,75 @@ python3 config_robot.py
   ```
 
 **Issue: Robot not connecting to Micro-ROS agent**
-- **Cause:** Either static IP not configured or robot configured with wrong IP
+- **Cause:** Either fixed IP not configured or robot configured with wrong IP
 - **Solution:** Follow section 8 Network Configuration steps in order:
-  1. Configure Linux with static IP
-  2. Configure robot with the same static IP
-- **Check:** Verify robot IP matches Linux static IP exactly
-- **Verify:** Confirm static IP is active with `ip addr show`
+  - [ ] Configure DHCP reservation on router OR use NetworkManager to request specific IP
+  - [ ] Configure robot with the same fixed IP
+- [ ] **Check:** Verify robot IP matches Linux fixed IP exactly
+- [ ] **Verify:** Confirm fixed IP is active with `ip addr show`
+
+**Issue: DHCP reservation not working**
+- **Cause:** Router not assigning reserved IP or DHCP cache issues
+- **Solution:** Troubleshoot DHCP reservation:
+  - [ ] Verify reservation is saved in router: Check router admin interface
+  - [ ] Clear DHCP lease: `sudo nmcli con down <connection> && sudo nmcli con up <connection>`
+  - [ ] Restart router if needed to clear DHCP lease table
+  - [ ] Verify MAC address matches exactly in router settings
+- [ ] **Fallback:** Use NetworkManager method from section 8 if router method fails
+
+**Issue: Intermittent internet connectivity (less common with DHCP reservation)**
+- **Cause:** DHCP providing different DNS servers or network configuration issues  
+- **Solution:** DHCP reservation should automatically provide correct DNS:
+  - [ ] Check current DNS: `nslookup google.com`
+  - [ ] If DNS fails, verify router's DNS settings
+  - [ ] Router should automatically provide correct gateway IP as DNS
+- [ ] **Test:** Verify connectivity: `ping -c 3 google.com`
+
+### Advanced Troubleshooting: Network Traffic Analysis
+
+If the robot still doesn't connect, check if it's actually sending connection attempts:
+
+- [ ] Monitor network traffic for robot connection attempts:
+  ```bash
+  sudo tcpdump -i any -n port 8090
+  ```
+
+- [ ] Power cycle the robot while monitoring. You should see:
+  - **Connection attempts**: `IP <robot_ip>.8090 > <your_ip>.8090: UDP, length 24`
+  - **If no packets appear**: Robot isn't connecting to WiFi or has wrong IP
+  - **If packets appear**: Robot is connecting but agent might not be running
+
+- [ ] If you see connection packets, ensure micro-ros agent is running:
+  ```bash
+  docker run --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host microros/micro-ros-agent:humble udp4 --port 8090 -v6
+  ```
 
 ### Network Diagnostics
 
-```bash
-# Test Micro-ROS agent connectivity
-docker run --rm --net=host microros/micro-ros-agent:humble udp4 --port 8090 -v6
+- [ ] Test Micro-ROS agent connectivity:
+  ```bash
+  docker run --rm --net=host microros/micro-ros-agent:humble udp4 --port 8090 -v6
+  ```
 
-# Check port availability
-sudo netstat -tulpn | grep 8090
+- [ ] Check port availability:
+  ```bash
+  ss -tulpn | grep 8090
+  ```
 
-# Check network interface configuration
-ip addr show $(ip route get 1.1.1.1 | grep -oP 'dev \K\S+')
+- [ ] Check network interface configuration:
+  ```bash
+  ip addr show $(ip route get 1.1.1.1 | grep -oP 'dev \K\S+')
+  ```
 
-# Test connectivity to gateway
-ping -c 3 $(ip route | grep default | awk '{print $3}')
+- [ ] Test connectivity to gateway:
+  ```bash
+  ping -c 3 $(ip route | grep default | awk '{print $3}')
+  ```
 
-# Monitor network traffic
-sudo tcpdump -i any -n port 8090
-```
+- [ ] Monitor network traffic (if needed):
+  ```bash
+  sudo tcpdump -i any -n port 8090
+  ```
 
 ## 11. Workspace Setup
 
@@ -441,67 +525,152 @@ After completing the installation, you'll need to build the workspaces and confi
 
 **IMPORTANT:** After cloning the B4M Yahboom repository, you MUST build the workspace and configure automatic sourcing:
 
-```bash
-# Navigate to the project directory
-cd ~/projects/b4m_yahboom
+- [ ] Navigate to the project directory:
+  ```bash
+  cd ~/projects/b4m_yahboom
+  ```
 
-# Build the workspace (required before first use)
-colcon build --symlink-install
+- [ ] Build the workspace (required before first use):
+  ```bash
+  colcon build --symlink-install
+  ```
 
-# Add workspace sourcing to .bashrc for automatic setup
-echo "source ~/projects/b4m_yahboom/source_workspaces.sh" >> ~/.bashrc
+- [ ] Add workspace sourcing to .bashrc for automatic setup:
+  ```bash
+  echo "source ~/projects/b4m_yahboom/source_workspaces.sh" >> ~/.bashrc
+  ```
 
-# Apply to current terminal (or open a new terminal)
-source ~/.bashrc
-```
+- [ ] Apply to current terminal (or open a new terminal):
+  ```bash
+  source ~/.bashrc
+  ```
 
 **Automatic Sourcing:** This eliminates the need to manually source workspaces in every new terminal session.
 
 **Common Error:** If you see `Package 'yahboomcar_bringup' not found`, it means the workspace isn't sourced. Check that the sourcing command is in your .bashrc:
 
-```bash
-# Verify workspace sourcing is in .bashrc
-grep "source_workspaces.sh" ~/.bashrc
+- [ ] Verify workspace sourcing is in .bashrc:
+  ```bash
+  grep "source_workspaces.sh" ~/.bashrc
+  ```
 
-# If missing, add it manually
-echo "source ~/projects/b4m_yahboom/source_workspaces.sh" >> ~/.bashrc
-```
+- [ ] If missing, add it manually:
+  ```bash
+  echo "source ~/projects/b4m_yahboom/source_workspaces.sh" >> ~/.bashrc
+  ```
 
 **After Code Changes:** When you modify ROS2 package code, rebuild and restart nodes:
 
-```bash
-# Rebuild after code changes
-colcon build --symlink-install
+- [ ] Rebuild after code changes:
+  ```bash
+  colcon build --symlink-install
+  ```
 
-# Restart any running ROS2 nodes/processes to load new code
-```
+- [ ] Restart any running ROS2 nodes/processes to load new code
 
 See the `WORKSPACE_README.md` for detailed instructions on workspace management.
 
-## 12. Uninstallation (Optional)
+## 12. Troubleshooting Launch Issues
+
+### Debug Tools
+
+The project includes enhanced debugging tools to help identify launch issues:
+
+- [ ] **Debug Script:** Run the bringup debug script to identify common issues:
+  ```bash
+  cd ~/projects/b4m_yahboom
+  ./debug_bringup.sh
+  ```
+
+- [ ] **Enhanced Launch Script:** The main launch script now includes comprehensive logging:
+  ```bash
+  ./b4m_HA_launch.sh
+  ```
+
+### Log Files
+
+All launch activities are now logged for troubleshooting:
+
+- [ ] **Main log location:** `~/projects/b4m_yahboom/logs/`
+- [ ] **Step-specific logs:** Each launch step creates its own detailed log file
+- [ ] **Debug logs:** The debug script creates timestamped logs
+
+**Example log files:**
+```
+logs/
+├── b4m_launch_YYYYMMDD_HHMMSS.log           # Main launch log
+├── step1_starting_the_micro-ros_agent_*.log  # MicroROS agent log
+├── step3_starting_the_car's_underlying_*.log # Bringup log
+├── bringup_debug_YYYYMMDD_HHMMSS.log        # Debug script output
+└── ...other step logs
+```
+
+### Common Issues and Solutions
+
+- [ ] **"Package not found" errors:** Usually indicates workspace not built or sourced
+  ```bash
+  cd ~/projects/b4m_yahboom
+  colcon build --symlink-install
+  source install/setup.bash
+  ```
+
+- [ ] **Missing install directory:** Run colcon build first:
+  ```bash
+  colcon build --symlink-install
+  ```
+
+- [ ] **Launch failures:** Check step-specific log files in `logs/` directory for detailed error messages
+
+- [ ] **Node restart required:** After code changes, restart ROS2 nodes to load new code:
+  ```bash
+  # Stop running nodes, then rebuild and restart
+  colcon build --symlink-install
+  ```
+
+### Verification Commands
+
+- [ ] **Test package availability:**
+  ```bash
+  source install/setup.bash
+  ros2 pkg list | grep yahboomcar_bringup
+  ```
+
+- [ ] **Test launch file:**
+  ```bash
+  source install/setup.bash
+  ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py --show-args
+  ```
+
+## 13. Uninstallation (Optional)
 
 If you need to uninstall ROS2 Humble:
 
-```bash
-# Remove ROS2 packages
-sudo apt remove ~nros-humble-* && sudo apt autoremove
+- [ ] Remove ROS2 packages:
+  ```bash
+  sudo apt remove ~nros-humble-* && sudo apt autoremove
+  ```
 
-# Remove ROS2 repository
-sudo rm /etc/apt/sources.list.d/ros2.list
+- [ ] Remove ROS2 repository:
+  ```bash
+  sudo rm /etc/apt/sources.list.d/ros2.list
+  ```
 
-# Update package cache and clean up
-sudo apt update
-sudo apt autoremove
+- [ ] Update package cache and clean up:
+  ```bash
+  sudo apt update
+  sudo apt autoremove
+  ```
 
-# Consider upgrading packages previously shadowed
-sudo apt upgrade
-```
+- [ ] Consider upgrading packages previously shadowed:
+  ```bash
+  sudo apt upgrade
+  ```
 
 ## Next Steps
 
-1. Clone the B4M Yahboom repository
-2. Follow the `WORKSPACE_README.md` for workspace setup
-3. Review the `CLAUDE.md` for development guidelines
-4. Execute the launch sequence as described in the project documentation
+- [ ] Clone the B4M Yahboom repository
+- [ ] Follow the `WORKSPACE_README.md` for workspace setup
+- [ ] Review the `CLAUDE.md` for development guidelines
+- [ ] Execute the launch sequence as described in the project documentation
 
 For project-specific setup and usage instructions, refer to the other documentation files in this repository.
