@@ -184,7 +184,7 @@ After installing ROS2 Humble, you'll need additional packages for the Yahboom ro
 - [ ] Install Python packages:
   ```bash
   sudo apt install python3-pip python3-serial
-  pip3 install pillow numpy pyserial
+  pip3 install pillow numpy pyserial paho-mqtt
   ```
 
 ### Network Analysis Tools (for troubleshooting)

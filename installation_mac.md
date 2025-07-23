@@ -193,7 +193,7 @@ sudo apt install python3-pyqt5 python3-pyqt5.qtsvg
 
 # Install Python packages
 sudo apt install python3-pip
-pip3 install pillow numpy
+pip3 install pillow numpy paho-mqtt
 ```
 
 ### Network Analysis Tools (for troubleshooting)
