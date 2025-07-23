@@ -85,6 +85,9 @@ launch_in_terminal() {
     cat > "$temp_script" << EOF
 #!/bin/bash
 
+# Store the command to execute
+COMMAND='$command'
+
 # Terminal title
 echo -e "\033]0;B4M Step $step_num: $description\007"
 
@@ -99,12 +102,12 @@ echo ""
 
 # Log the start
 echo "Starting: $description" | tee "$step_log"
-echo "Command: $command" | tee -a "$step_log"
+echo "Command: \$COMMAND" | tee -a "$step_log"
 echo "Started at: \$(date)" | tee -a "$step_log"
 echo "=====================================" | tee -a "$step_log"
 
 # Source workspace before running command
-cd '$WORKSPACE_ROOT'
+cd "$WORKSPACE_ROOT"
 if [ -f 'install/setup.bash' ]; then
     source install/setup.bash
     echo "✅ Workspace sourced successfully" | tee -a "$step_log"
@@ -118,7 +121,7 @@ echo ""
 
 # Execute the command with better error handling
 set +e  # Don't exit on error
-$command 2>&1 | tee -a "$step_log"
+eval "\$COMMAND" 2>&1 | tee -a "$step_log"
 COMMAND_EXIT_CODE=\$?
 set -e
 
