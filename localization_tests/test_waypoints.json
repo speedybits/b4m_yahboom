@@ -1,0 +1,34 @@
+{
+  "description": "Localization test waypoint sequence for yahboom_map.yaml",
+  "map_name": "yahboom_map",
+  "test_sequence": [
+    {
+      "name": "start_position",
+      "position": {"x": 0.0, "y": 0.0},
+      "orientation": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0},
+      "tolerance": {"position": 0.2, "orientation": 0.1},
+      "timeout": 120
+    },
+    {
+      "name": "test_point_1", 
+      "position": {"x": 1.0, "y": 0.0},
+      "orientation": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0},
+      "tolerance": {"position": 0.2, "orientation": 0.1},
+      "timeout": 120
+    },
+    {
+      "name": "test_point_2",
+      "position": {"x": 0.5, "y": 0.5},
+      "orientation": {"x": 0.0, "y": 0.0, "z": 0.707, "w": 0.707},
+      "tolerance": {"position": 0.2, "orientation": 0.1},
+      "timeout": 120
+    },
+    {
+      "name": "return_start",
+      "position": {"x": 0.0, "y": 0.0},
+      "orientation": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0},
+      "tolerance": {"position": 0.3, "orientation": 0.2},
+      "timeout": 240
+    }
+  ]
+}
