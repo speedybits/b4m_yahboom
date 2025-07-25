@@ -192,8 +192,8 @@ docker --version
 sudo apt install python3-pyqt5 python3-pyqt5.qtsvg
 
 # Install Python packages
-sudo apt install python3-pip
-pip3 install pillow numpy paho-mqtt
+sudo apt install python3-pip python3-serial
+pip3 install pillow numpy pyserial paho-mqtt
 ```
 
 ### Network Analysis Tools (for troubleshooting)
@@ -433,11 +433,37 @@ python3 config_robot.py
 - Solution: Install additional graphics drivers in Ubuntu VM
 - Command: `sudo apt install ubuntu-desktop-minimal`
 
+### Advanced Troubleshooting: Network Traffic Analysis
+
+If the robot still doesn't connect, check if it's actually sending connection attempts:
+
+```bash
+# Monitor network traffic for robot connection attempts
+sudo tcpdump -i any -n port 8090
+
+# Power cycle the robot while monitoring. You should see:
+# - Connection attempts: IP <robot_ip>.8090 > <your_ip>.8090: UDP, length 24
+# - If no packets appear: Robot isn't connecting to WiFi or has wrong IP
+# - If packets appear: Robot is connecting but agent might not be running
+
+# If you see connection packets, ensure micro-ros agent is running:
+docker run --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host microros/micro-ros-agent:humble udp4 --port 8090 -v6
+```
+
 ### Network Diagnostics
 
 ```bash
 # Test Micro-ROS agent connectivity
 docker run --rm --net=host microros/micro-ros-agent:humble udp4 --port 8090 -v6
+
+# Check port availability
+ss -tulpn | grep 8090
+
+# Check network interface configuration
+ip addr show $(ip route get 1.1.1.1 | grep -oP 'dev \K\S+')
+
+# Test connectivity to gateway
+ping -c 3 $(ip route | grep default | awk '{print $3}')
 
 # Check network configuration
 ip addr show
@@ -445,7 +471,7 @@ ip addr show
 # Test Mac connectivity
 ping <mac_ip_address>
 
-# Monitor network traffic
+# Monitor network traffic (if needed)
 sudo tcpdump -i any -n port 8090
 ```
 
@@ -516,7 +542,74 @@ colcon build --symlink-install
 
 See the `WORKSPACE_README.md` for detailed instructions on workspace management.
 
-## 13. Uninstallation (Optional)
+## 13. Troubleshooting Launch Issues
+
+### Debug Tools
+
+The project includes enhanced debugging tools to help identify launch issues:
+
+```bash
+# Debug Script: Run the bringup debug script to identify common issues
+cd ~/projects/b4m_yahboom
+./debug_bringup.sh
+
+# Enhanced Launch Script: The main launch script now includes comprehensive logging
+./b4m_HA_launch.sh
+```
+
+### Log Files
+
+All launch activities are now logged for troubleshooting:
+
+- **Main log location:** `~/projects/b4m_yahboom/logs/`
+- **Step-specific logs:** Each launch step creates its own detailed log file
+- **Debug logs:** The debug script creates timestamped logs
+
+**Example log files:**
+```
+logs/
+├── b4m_launch_YYYYMMDD_HHMMSS.log           # Main launch log
+├── step1_starting_the_micro-ros_agent_*.log  # MicroROS agent log
+├── step3_starting_the_car's_underlying_*.log # Bringup log
+├── bringup_debug_YYYYMMDD_HHMMSS.log        # Debug script output
+└── ...other step logs
+```
+
+### Common Issues and Solutions
+
+- **"Package not found" errors:** Usually indicates workspace not built or sourced
+  ```bash
+  cd ~/projects/b4m_yahboom
+  colcon build --symlink-install
+  source install/setup.bash
+  ```
+
+- **Missing install directory:** Run colcon build first:
+  ```bash
+  colcon build --symlink-install
+  ```
+
+- **Launch failures:** Check step-specific log files in `logs/` directory for detailed error messages
+
+- **Node restart required:** After code changes, restart ROS2 nodes to load new code:
+  ```bash
+  # Stop running nodes, then rebuild and restart
+  colcon build --symlink-install
+  ```
+
+### Verification Commands
+
+```bash
+# Test package availability
+source install/setup.bash
+ros2 pkg list | grep yahboomcar_bringup
+
+# Test launch file
+source install/setup.bash
+ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py --show-args
+```
+
+## 14. Uninstallation (Optional)
 
 If you need to uninstall ROS2 Humble:
 
