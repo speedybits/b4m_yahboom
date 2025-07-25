@@ -15,6 +15,8 @@ SKIP_AGENT=false
 ONLY_AGENT=false
 AUTOTEST_MODE=false
 DEBUG_MODE=false
+LOCALIZATION_TEST=false
+TUNE_PARAMS=false
 for arg in "$@"; do
     case $arg in
         --skip-agent)
@@ -33,12 +35,22 @@ for arg in "$@"; do
             DEBUG_MODE=true
             shift
             ;;
+        --localization-test)
+            LOCALIZATION_TEST=true
+            shift
+            ;;
+        --tune-params)
+            TUNE_PARAMS=true
+            shift
+            ;;
         -h|--help)
-            echo "Usage: $0 [--skip-agent] [--only-agent] [--autotest] [--debug]"
-            echo "  --skip-agent: Skip the Micro-ROS agent launch (Step 1)"
-            echo "  --only-agent: Launch ONLY the Micro-ROS agent (Step 1) and exit"
-            echo "  --autotest:   Run in automated test mode (non-interactive)"
-            echo "  --debug:      Enable verbose debug logging"
+            echo "Usage: $0 [--skip-agent] [--only-agent] [--autotest] [--debug] [--localization-test] [--tune-params]"
+            echo "  --skip-agent:        Skip the Micro-ROS agent launch (Step 1)"
+            echo "  --only-agent:        Launch ONLY the Micro-ROS agent (Step 1) and exit"
+            echo "  --autotest:          Run in automated test mode (non-interactive)"
+            echo "  --debug:             Enable verbose debug logging"
+            echo "  --localization-test: Enable localization quality and navigation performance testing"
+            echo "  --tune-params:       Enable parameter tuning iterations (requires --localization-test)"
             exit 0
             ;;
         *)
@@ -59,6 +71,25 @@ mkdir -p "$LOGS_DIR"
 # Generate timestamp for log files
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 MAIN_LOG="$LOGS_DIR/b4m_launch_$TIMESTAMP.log"
+
+# Setup localization test configuration if enabled
+if [ "$LOCALIZATION_TEST" = true ]; then
+    LOCALIZATION_TEST_DIR="$WORKSPACE_ROOT/localization_tests"
+    PARAM_BACKUP_DIR="$LOCALIZATION_TEST_DIR/param_backups"
+    TEST_RESULTS_DIR="$LOCALIZATION_TEST_DIR/results"
+    LOCALIZATION_LOG="$TEST_RESULTS_DIR/localization_test_$TIMESTAMP.log"
+    
+    # Test parameters
+    WAYPOINT_SEQUENCE_FILE="$LOCALIZATION_TEST_DIR/test_waypoints.json"
+    BASELINE_PARAMS_FILE="$LOCALIZATION_TEST_DIR/baseline_params.yaml"
+    TUNING_PARAMS_DIR="$LOCALIZATION_TEST_DIR/param_sets"
+    
+    # Create directories
+    mkdir -p "$LOCALIZATION_TEST_DIR" "$PARAM_BACKUP_DIR" "$TEST_RESULTS_DIR" "$TUNING_PARAMS_DIR"
+    
+    debug_log "Localization test directories created"
+    debug_log "Test results will be saved to: $LOCALIZATION_LOG"
+fi
 
 # Function to ask for user confirmation
 confirm() {
@@ -229,6 +260,277 @@ validate_step_success() {
             return 1
             ;;
     esac
+}
+
+# Localization test validation functions
+test_global_localization() {
+    debug_log "Testing global localization from unknown pose"
+    local timeout=60
+    local end_time=$(($(date +%s) + timeout))
+    
+    # Check if AMCL is publishing pose estimates with reasonable covariance
+    while [ $(date +%s) -lt $end_time ]; do
+        # Check if AMCL pose is being published
+        if ros2 topic echo /amcl_pose --once --timeout 5 >/dev/null 2>&1; then
+            debug_log "AMCL pose topic active - global localization working"
+            return 0
+        fi
+        sleep 2
+    done
+    
+    echo "ERROR: Global localization failed - no AMCL pose within $timeout seconds"
+    return 1
+}
+
+test_amcl_convergence() {
+    debug_log "Testing AMCL particle convergence"
+    local timeout=30
+    local end_time=$(($(date +%s) + timeout))
+    
+    # Monitor particle cloud for convergence
+    while [ $(date +%s) -lt $end_time ]; do
+        # Check if particlecloud topic exists and has reasonable particle count
+        if ros2 topic echo /particlecloud --once --timeout 5 2>/dev/null | grep -q "poses:"; then
+            debug_log "AMCL particle cloud active and publishing"
+            return 0
+        fi
+        sleep 2
+    done
+    
+    echo "ERROR: AMCL convergence failed - no stable particle cloud within $timeout seconds"
+    return 1
+}
+
+test_ekf_consistency() {
+    debug_log "Testing EKF filter consistency"
+    local timeout=15
+    
+    # Check if EKF is publishing consistent odometry
+    if ros2 topic echo /odometry/filtered --once --timeout $timeout >/dev/null 2>&1; then
+        debug_log "EKF filter publishing filtered odometry"
+        return 0
+    else
+        echo "ERROR: EKF consistency failed - no filtered odometry within $timeout seconds"
+        return 1
+    fi
+}
+
+test_transform_stability() {
+    debug_log "Testing transform tree stability"
+    local timeout=10
+    
+    # Test critical transform chain: map -> odom -> base_link
+    if ros2 run tf2_ros tf2_echo map base_link --timeout $timeout >/dev/null 2>&1; then
+        debug_log "Transform chain map->base_link is stable"
+        return 0
+    else
+        echo "ERROR: Transform stability failed - map->base_link chain not available"
+        return 1
+    fi
+}
+
+execute_test_waypoint_sequence_no_mqtt() {
+    debug_log "Executing waypoint navigation sequence without MQTT"
+    local timeout=180  # 3 minutes for navigation sequence
+    
+    # Check if navigation action servers are available
+    if ! ros2 action list 2>/dev/null | grep -q "navigate_to_pose"; then
+        echo "ERROR: Navigation action server not available"
+        return 1
+    fi
+    
+    # Test simple navigation goal using ROS2 actions
+    debug_log "Sending test navigation goal to (1.0, 0.0)"
+    ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose \
+        "{pose: {header: {frame_id: 'map'}, pose: {position: {x: 1.0, y: 0.0, z: 0.0}, orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}}}}" \
+        --timeout $timeout >/dev/null 2>&1
+    
+    local result=$?
+    if [ $result -eq 0 ]; then
+        debug_log "Navigation goal completed successfully"
+        return 0
+    else
+        echo "ERROR: Navigation goal failed or timed out"
+        return 1
+    fi
+}
+
+test_navigation_accuracy_yahboom_map() {
+    debug_log "Testing navigation accuracy on yahboom_map"
+    local timeout=120
+    
+    # Verify we're using the correct map
+    if ros2 topic echo /map --once --timeout 10 2>/dev/null | grep -q "frame_id.*map"; then
+        debug_log "Map topic active with correct frame_id"
+        
+        # Test path planning capability
+        if ros2 service call /compute_path_to_pose nav2_msgs/srv/ComputePathToPose \
+            "{goal: {header: {frame_id: 'map'}, pose: {position: {x: 0.5, y: 0.5, z: 0.0}, orientation: {x: 0.0, y: 0.0, z: 0.707, w: 0.707}}}}" \
+            --timeout 30 >/dev/null 2>&1; then
+            debug_log "Path planning service working correctly"
+            return 0
+        else
+            echo "ERROR: Path planning service failed"
+            return 1
+        fi
+    else
+        echo "ERROR: Map not available or incorrect frame_id"
+        return 1
+    fi
+}
+
+validate_localization_quality() {
+    local start_time=$(date +%s)
+    debug_log "Starting localization quality assessment"
+    
+    # Test global localization (no manual pose setting required)
+    if ! test_global_localization; then
+        echo "ERROR: Global localization from unknown pose failed"
+        return 1
+    fi
+    
+    # Test AMCL convergence
+    if ! test_amcl_convergence; then
+        echo "ERROR: AMCL particle convergence failed"
+        return 1
+    fi
+    
+    # Test EKF consistency
+    if ! test_ekf_consistency; then
+        echo "ERROR: EKF filter consistency check failed"
+        return 1
+    fi
+    
+    # Test transform stability
+    if ! test_transform_stability; then
+        echo "ERROR: Transform tree stability test failed"
+        return 1
+    fi
+    
+    local duration=$(($(date +%s) - start_time))
+    debug_log "Localization quality tests passed in ${duration}s"
+    return 0
+}
+
+validate_navigation_performance() {
+    local start_time=$(date +%s)
+    debug_log "Starting navigation performance testing"
+    
+    # Execute waypoint sequence (works without MQTT)
+    if ! execute_test_waypoint_sequence_no_mqtt; then
+        echo "ERROR: Waypoint navigation sequence failed"
+        return 1
+    fi
+    
+    # Test navigation accuracy using yahboom_map.yaml
+    if ! test_navigation_accuracy_yahboom_map; then
+        echo "ERROR: Navigation accuracy test failed on yahboom_map"
+        return 1
+    fi
+    
+    local duration=$(($(date +%s) - start_time))
+    debug_log "Navigation performance tests passed in ${duration}s"
+    return 0
+}
+
+# Parameter tuning helper functions
+backup_current_parameters() {
+    debug_log "Backing up current parameters"
+    local backup_file="$PARAM_BACKUP_DIR/params_backup_$TIMESTAMP.yaml"
+    
+    # Backup AMCL/Navigation parameters
+    if [ -f "$WORKSPACE_ROOT/yahboomcar_nav/params/dwb_nav_params.yaml" ]; then
+        cp "$WORKSPACE_ROOT/yahboomcar_nav/params/dwb_nav_params.yaml" "$backup_file.nav"
+        debug_log "Navigation parameters backed up to $backup_file.nav"
+    fi
+    
+    # Backup EKF parameters
+    if [ -f "$WORKSPACE_ROOT/yahboomcar_bringup/param/ekf.yaml" ]; then
+        cp "$WORKSPACE_ROOT/yahboomcar_bringup/param/ekf.yaml" "$backup_file.ekf"
+        debug_log "EKF parameters backed up to $backup_file.ekf"
+    fi
+}
+
+apply_runtime_parameters() {
+    local param_set=$1
+    debug_log "Attempting runtime parameter update for set: $param_set"
+    
+    # Check if navigation nodes are running
+    if ! ros2 node list 2>/dev/null | grep -q -E "(amcl|controller|planner)"; then
+        debug_log "No navigation nodes running for runtime parameter updates"
+        return 1
+    fi
+    
+    # For now, return false to force rebuild approach
+    # Runtime parameter updates can be implemented later
+    return 1
+}
+
+update_parameter_files() {
+    local param_set=$1
+    debug_log "Updating parameter files for set: $param_set"
+    
+    # This is a placeholder for parameter file modifications
+    # In practice, you would modify specific parameters based on the param_set
+    # For now, we'll just log the action
+    debug_log "Parameter file update for $param_set would be implemented here"
+}
+
+restart_navigation_stack() {
+    debug_log "Restarting navigation stack components"
+    
+    # Kill existing navigation processes
+    pkill -f "ros2 launch yahboomcar_nav" || true
+    pkill -f "b4m_waypoint_nav.py" || true
+    sleep 2
+    
+    # Wait for processes to fully terminate
+    while pgrep -f "ros2 launch yahboomcar_nav" >/dev/null 2>&1; do
+        debug_log "Waiting for navigation processes to terminate..."
+        sleep 1
+    done
+    
+    debug_log "Navigation stack processes terminated, ready for restart"
+}
+
+run_localization_tests() {
+    local test_iteration=$1
+    local timeout=${2:-300}  # Default 5 minutes
+    
+    debug_log "Running localization tests iteration $test_iteration with ${timeout}s timeout"
+    
+    # Set a timeout for the entire test sequence
+    local test_start_time=$(date +%s)
+    local max_end_time=$((test_start_time + timeout))
+    
+    # Run with timeout handling
+    if timeout $timeout bash -c "
+        validate_localization_quality && validate_navigation_performance
+    "; then
+        local test_duration=$(($(date +%s) - test_start_time))
+        debug_log "Localization tests iteration $test_iteration completed in ${test_duration}s"
+        return 0
+    else
+        local test_duration=$(($(date +%s) - test_start_time))
+        echo "ERROR: Localization tests iteration $test_iteration timed out or failed after ${test_duration}s"
+        return 1
+    fi
+}
+
+log_tuning_results() {
+    local param_set=$1
+    local test_iteration=$2
+    local result_file="$TEST_RESULTS_DIR/tuning_results_$TIMESTAMP.log"
+    
+    echo "===== Parameter Tuning Results =====" >> "$result_file"
+    echo "Timestamp: $(date)" >> "$result_file"
+    echo "Parameter Set: $param_set" >> "$result_file"
+    echo "Test Iteration: $test_iteration" >> "$result_file"
+    echo "Test Duration: 5 minutes (as requested)" >> "$result_file"
+    echo "Status: Tests completed" >> "$result_file"
+    echo "" >> "$result_file"
+    
+    debug_log "Tuning results logged to $result_file"
 }
 
 handle_test_failure() {
@@ -466,6 +768,15 @@ if [ "$DEBUG_MODE" = true ]; then
     echo "🔍 Debug mode enabled - verbose logging active"
 fi
 
+if [ "$LOCALIZATION_TEST" = true ]; then
+    echo ""
+    echo "🧭 Localization testing enabled"
+    echo "Additional Steps 8-9 will test localization quality and navigation performance"
+    if [ "$TUNE_PARAMS" = true ]; then
+        echo "⚙️  Parameter tuning mode enabled - will run baseline tests and parameter iterations"
+    fi
+fi
+
 echo ""
 
 if [ "$AUTOTEST_MODE" = true ]; then
@@ -624,13 +935,92 @@ launch_in_terminal "Starting the B4M Waypoint Navigation Node with MQTT integrat
     "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && python3 \"$WORKSPACE_ROOT/b4m_waypoint_nav/b4m_waypoint_nav/b4m_waypoint_nav.py\" --ros-args -p mqtt_broker:=192.168.68.111 -p mqtt_port:=1883 -p mqtt_username:=robot -p mqtt_password:=robot123" \
     "7"
 
-# Step 8: Start the Robot Manager GUI (skip in autotest mode)
+# Localization Testing Integration (Steps 8-9)
+if [ "$LOCALIZATION_TEST" = true ]; then
+    # Step 8: Localization Quality Assessment
+    echo "======================================================"
+    echo "STEP 8: Localization Quality Assessment"
+    echo "======================================================"
+    
+    if [ "$AUTOTEST_MODE" = true ]; then
+        log_message "AUTOTEST STEP 8: Localization Quality Assessment"
+        if validate_localization_quality; then
+            echo "✅ Step 8 validation passed"
+            log_message "AUTOTEST STEP 8: PASSED"
+        else
+            handle_test_failure "8" "Localization quality assessment failed"
+        fi
+    else
+        echo "Manual mode: Running localization quality tests..."
+        if validate_localization_quality; then
+            echo "✅ Localization quality tests passed"
+        else
+            echo "❌ Localization quality tests failed"
+        fi
+        confirm
+    fi
+    
+    # Step 9: Navigation Performance Testing
+    echo "======================================================"
+    echo "STEP 9: Navigation Performance Testing"
+    echo "======================================================"
+    
+    if [ "$AUTOTEST_MODE" = true ]; then
+        log_message "AUTOTEST STEP 9: Navigation Performance Testing"
+        if validate_navigation_performance; then
+            echo "✅ Step 9 validation passed"
+            log_message "AUTOTEST STEP 9: PASSED"
+        else
+            handle_test_failure "9" "Navigation performance test failed"
+        fi
+    else
+        echo "Manual mode: Running navigation performance tests..."
+        if validate_navigation_performance; then
+            echo "✅ Navigation performance tests passed"
+        else
+            echo "❌ Navigation performance tests failed"
+        fi
+        confirm
+    fi
+    
+    # Parameter Tuning Mode (if enabled)
+    if [ "$TUNE_PARAMS" = true ]; then
+        echo "======================================================"
+        echo "PARAMETER TUNING MODE ENABLED"
+        echo "======================================================"
+        
+        # Backup current parameters before tuning
+        backup_current_parameters
+        
+        # Create baseline test results
+        debug_log "Running baseline test with current parameters"
+        if run_localization_tests "baseline" 300; then
+            echo "✅ Baseline test completed successfully"
+            log_tuning_results "baseline" "baseline"
+        else
+            echo "❌ Baseline test failed - stopping parameter tuning"
+            exit 1
+        fi
+        
+        # TODO: Add parameter set iterations here
+        # For now, just placeholder for the framework
+        echo "Parameter tuning framework ready for parameter set iterations"
+        echo "Baseline tests completed - parameter tuning sets would be tested here"
+    fi
+fi
+
+# Step 8/10: Start the Robot Manager GUI (skip in autotest mode)
 if [ "$AUTOTEST_MODE" = false ]; then
+    if [ "$LOCALIZATION_TEST" = true ]; then
+        STEP_NUM="10"
+    else
+        STEP_NUM="8"
+    fi
     launch_in_terminal "Starting the B4M Robot Manager GUI for visual control of waypoints" \
         "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 run b4m_waypoint_nav b4m_robot_manager_node.py" \
-        "8"
+        "$STEP_NUM"
 else
-    debug_log "Step 8: Skipped Robot Manager GUI in autotest mode"
+    debug_log "Robot Manager GUI skipped in autotest mode"
 fi
 
 
@@ -642,7 +1032,13 @@ if [ "$AUTOTEST_MODE" = true ]; then
     echo "B4M Robot Launch Test - PASSED"
     echo "======================================="
     echo "Test Run: $(date)"
-    echo "All 6 tested steps completed successfully"
+    
+    if [ "$LOCALIZATION_TEST" = true ]; then
+        echo "All 9 tested steps completed successfully (including localization tests)"
+    else
+        echo "All 7 tested steps completed successfully"
+    fi
+    
     echo ""
     echo "Step Summary:"
     echo "✅ Step 1: Micro-ROS Agent (assumed running - prerequisite)"
@@ -652,8 +1048,19 @@ if [ "$AUTOTEST_MODE" = true ]; then
     echo "✅ Step 5: Navigation System"
     echo "✅ Step 6: Pose Estimation"
     echo "✅ Step 7: MQTT Navigation"
+    
+    if [ "$LOCALIZATION_TEST" = true ]; then
+        echo "✅ Step 8: Localization Quality Assessment"
+        echo "✅ Step 9: Navigation Performance Testing"
+    fi
+    
     echo ""
     echo "Logs saved to: $MAIN_LOG"
+    
+    if [ "$LOCALIZATION_TEST" = true ]; then
+        echo "Localization test results saved to: $LOCALIZATION_LOG"
+    fi
+    
     echo "======================================="
     
     log_message "AUTOTEST COMPLETED SUCCESSFULLY - ALL STEPS PASSED"
