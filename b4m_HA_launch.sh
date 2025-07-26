@@ -949,6 +949,44 @@ else
     log_message "B4M Robot launch script started"
 fi
 
+# Special handling for --only-agent mode: clean up existing connections
+if [ "$ONLY_AGENT" = true ]; then
+    echo "🎯 Only agent mode: Cleaning up existing connections..."
+    
+    # Check if YB_Car_Node is running (indicates existing robot connection)
+    if ros2 node list 2>/dev/null | grep -q "YB_Car_Node"; then
+        echo "🔌 Existing robot connection detected (YB_Car_Node)"
+        echo "   Disconnecting to start fresh agent connection..."
+        
+        # Stop YB_Car_Node by killing the agent that maintains the connection
+        docker_containers=$(docker ps --filter 'ancestor=microros/micro-ros-agent:humble' --format '{{.ID}}' 2>/dev/null || true)
+        if [ ! -z "$docker_containers" ]; then
+            echo "   Stopping existing Micro-ROS agent containers..."
+            echo "$docker_containers" | while read -r container_id; do
+                if [ ! -z "$container_id" ]; then
+                    docker stop "$container_id" 2>/dev/null || true
+                    docker rm "$container_id" 2>/dev/null || true
+                fi
+            done
+            # Wait for YB_Car_Node to disconnect
+            sleep 3
+        fi
+        
+        # Verify YB_Car_Node is gone
+        if ros2 node list 2>/dev/null | grep -q "YB_Car_Node"; then
+            echo "⚠️  WARNING: YB_Car_Node still present after agent shutdown"
+            echo "   This may indicate the robot is using a different connection method"
+        else
+            echo "✅ Robot disconnected successfully"
+        fi
+    fi
+    
+    # Also clean up any other processes that might interfere
+    echo "🧹 Cleaning up any remaining robot processes..."
+    ./b4m_shutdown.sh > /dev/null 2>&1 || true
+    sleep 2
+fi
+
 # Pre-launch system check to prevent duplicate processes
 check_existing_processes
 
