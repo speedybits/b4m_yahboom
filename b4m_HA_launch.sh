@@ -86,9 +86,6 @@ if [ "$LOCALIZATION_TEST" = true ]; then
     
     # Create directories
     mkdir -p "$LOCALIZATION_TEST_DIR" "$PARAM_BACKUP_DIR" "$TEST_RESULTS_DIR" "$TUNING_PARAMS_DIR"
-    
-    debug_log "Localization test directories created"
-    debug_log "Test results will be saved to: $LOCALIZATION_LOG"
 fi
 
 # Function to ask for user confirmation
@@ -110,6 +107,111 @@ debug_log() {
     if [ "$DEBUG_MODE" = true ]; then
         echo "$(date '+%Y-%m-%d %H:%M:%S') [DEBUG] - $message" | tee -a "$MAIN_LOG"
     fi
+}
+
+# Function to check for existing ROS2 processes and prevent duplicates
+check_existing_processes() {
+    local node_count=$(ros2 node list | wc -l 2>/dev/null || echo "0") 
+    local critical_nodes=$(ros2 node list | grep -E "(amcl|nav2_container|YB_Car_Node)" | wc -l 2>/dev/null || echo "0")
+    
+    echo "🔍 Pre-launch System Check"
+    echo "=========================="
+    echo "Total ROS2 nodes detected: $node_count"
+    echo "Critical robot nodes detected: $critical_nodes"
+    
+    if [ "$node_count" -gt 30 ]; then
+        echo ""
+        echo "⚠️  WARNING: High node count detected ($node_count nodes)!"
+        echo "This suggests previous launch sessions are still running."
+        echo ""
+        echo "Duplicate nodes can cause:"
+        echo "  - Resource conflicts and poor performance"
+        echo "  - Unreliable localization and navigation"
+        echo "  - Test failures and unpredictable behavior"
+        echo ""
+        
+        if [ "$AUTOTEST_MODE" = true ]; then
+            echo "🤖 AUTOTEST MODE: Automatically cleaning up..."
+            cleanup_existing_processes
+        else
+            echo "Options:"
+            echo "  c) Clean up automatically (recommended)"
+            echo "  f) Force continue anyway (not recommended)" 
+            echo "  q) Quit and clean up manually"
+            echo ""
+            read -p "Choose [c/f/q]: " choice
+            
+            case $choice in
+                c|C)
+                    echo "🧹 Cleaning up existing processes..."
+                    cleanup_existing_processes
+                    ;;
+                f|F)
+                    echo "⚠️  Forcing launch with existing processes - this may cause issues!"
+                    ;;
+                q|Q)
+                    echo "Exiting. Run './b4m_shutdown.sh' to clean up manually."
+                    exit 0
+                    ;;
+                *)
+                    echo "Invalid choice. Exiting for safety."
+                    exit 1
+                    ;;
+            esac
+        fi
+        
+    elif [ "$critical_nodes" -gt 0 ]; then
+        echo ""
+        echo "⚠️  WARNING: Critical robot nodes already running!"
+        echo "Detected nodes: $(ros2 node list 2>/dev/null | grep -E '(amcl|nav2_container|YB_Car_Node)' | tr '\n' ' ')"
+        echo ""
+        
+        if [ "$AUTOTEST_MODE" = true ]; then
+            echo "🤖 AUTOTEST MODE: Automatically cleaning up critical nodes..."
+            cleanup_existing_processes
+        else
+            echo "This usually means another robot session is active."
+            echo "Continue anyway? (y/N): "
+            read continue_choice
+            if [[ ! "$continue_choice" =~ ^[Yy]$ ]]; then
+                echo "Exiting. Use './b4m_shutdown.sh' to clean up first."
+                exit 0
+            fi
+        fi
+    else
+        echo "✅ System clean - ready for launch"
+    fi
+    echo ""
+}
+
+# Function to clean up existing processes safely
+cleanup_existing_processes() {
+    echo "🧹 Running automatic cleanup..."
+    
+    # Run the shutdown script
+    if [ -f "./b4m_shutdown.sh" ]; then
+        echo "Using b4m_shutdown.sh for safe cleanup..."
+        ./b4m_shutdown.sh > /dev/null 2>&1
+        sleep 3
+    else
+        echo "Shutdown script not found, using manual cleanup..."
+        # Kill common ROS2 processes
+        pkill -f "ros2 launch" 2>/dev/null || true
+        pkill -f "yahboomcar" 2>/dev/null || true  
+        pkill -f "nav2" 2>/dev/null || true
+        pkill -f "rviz" 2>/dev/null || true
+        sleep 3
+    fi
+    
+    # Verify cleanup
+    local remaining_nodes=$(ros2 node list 2>/dev/null | wc -l || echo "0")
+    if [ "$remaining_nodes" -lt 5 ]; then
+        echo "✅ Cleanup successful - $remaining_nodes nodes remaining"
+    else
+        echo "⚠️  Partial cleanup - $remaining_nodes nodes still running"
+        echo "You may need to run './b4m_shutdown.sh' manually"
+    fi
+    echo ""
 }
 
 # Autotest mode timeout (seconds)
@@ -271,7 +373,7 @@ test_global_localization() {
     # Check if AMCL is publishing pose estimates with reasonable covariance
     while [ $(date +%s) -lt $end_time ]; do
         # Check if AMCL pose is being published
-        if ros2 topic echo /amcl_pose --once --timeout 5 >/dev/null 2>&1; then
+        if timeout 5 ros2 topic echo /amcl_pose --once >/dev/null 2>&1; then
             debug_log "AMCL pose topic active - global localization working"
             return 0
         fi
@@ -287,12 +389,22 @@ test_amcl_convergence() {
     local timeout=30
     local end_time=$(($(date +%s) + timeout))
     
-    # Monitor particle cloud for convergence
+    # Check if AMCL is publishing stable poses (indicates convergence)
+    local pose_count=0
     while [ $(date +%s) -lt $end_time ]; do
-        # Check if particlecloud topic exists and has reasonable particle count
-        if ros2 topic echo /particlecloud --once --timeout 5 2>/dev/null | grep -q "poses:"; then
-            debug_log "AMCL particle cloud active and publishing"
-            return 0
+        # Check if AMCL pose is being published consistently
+        if timeout 3 ros2 topic echo /amcl_pose --once >/dev/null 2>&1; then
+            pose_count=$((pose_count + 1))
+            debug_log "AMCL pose available (check $pose_count)"
+            
+            # If we get 3 consecutive poses, consider it converged
+            if [ $pose_count -ge 3 ]; then
+                debug_log "AMCL particle convergence confirmed - multiple stable poses"
+                return 0
+            fi
+        else
+            # Reset counter if pose not available
+            pose_count=0
         fi
         sleep 2
     done
@@ -733,6 +845,18 @@ EOF
     sleep 2
     
     log_message "STEP $step_num terminal launched"
+    
+    # Monitor node count for duplicate detection
+    if [ "$step_num" -ge 3 ]; then  # Start monitoring after robot bringup
+        local current_nodes=$(ros2 node list 2>/dev/null | wc -l || echo "0")
+        debug_log "Node count after Step $step_num: $current_nodes nodes"
+        
+        # Warn if node count is growing too quickly (indicates duplicates)
+        if [ "$current_nodes" -gt $((step_num * 8)) ]; then
+            echo "⚠️  Node count warning: $current_nodes nodes detected after Step $step_num"
+            echo "   This may indicate duplicate processes are running"
+        fi
+    fi
 }
 
 echo "B4M Robot - Home Assistant MQTT Integration Launch Script"
@@ -784,6 +908,9 @@ if [ "$AUTOTEST_MODE" = true ]; then
 else
     log_message "B4M Robot launch script started"
 fi
+
+# Pre-launch system check to prevent duplicate processes
+check_existing_processes
 
 # Step 1: Start the Micro-ROS Agent (unless skipped)
 if [ "$SKIP_AGENT" = false ]; then
@@ -857,77 +984,7 @@ launch_in_terminal "Launching the navigation system with pre-built map" \
 
 # Step 6: Automatic Robot Positioning
 launch_in_terminal "Setting automatic pose estimate at map center for testing" \
-    "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && python3 -c \"
-import rclpy
-from geometry_msgs.msg import PoseWithCovarianceStamped
-from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
-import time
-
-print('🤖 Automatic Pose Estimate - Testing Mode')
-print('=========================================')
-print('Setting robot pose at map center (0.0, 0.0)')
-print('This replaces manual 2D pose estimation for testing')
-print('')
-
-# Initialize ROS2  
-rclpy.init()
-node = rclpy.create_node('bash_script_pose_setter')
-
-# Create QoS profile matching AMCL subscription (BEST_EFFORT)
-qos_profile = QoSProfile(
-    reliability=ReliabilityPolicy.BEST_EFFORT,
-    durability=DurabilityPolicy.VOLATILE,
-    depth=1
-)
-
-publisher = node.create_publisher(PoseWithCovarianceStamped, '/initialpose', qos_profile)
-
-# Wait for publisher to be ready and for subscription
-print('⏳ Waiting for AMCL subscription...')
-time.sleep(3)
-
-# Create pose message at map center
-pose_msg = PoseWithCovarianceStamped()
-pose_msg.header.stamp = node.get_clock().now().to_msg()
-pose_msg.header.frame_id = 'map'
-
-# Set position at map center (0.0, 0.0)
-pose_msg.pose.pose.position.x = 0.0
-pose_msg.pose.pose.position.y = 0.0  
-pose_msg.pose.pose.position.z = 0.0
-
-# Set orientation (facing forward)
-pose_msg.pose.pose.orientation.x = 0.0
-pose_msg.pose.pose.orientation.y = 0.0
-pose_msg.pose.pose.orientation.z = 0.0
-pose_msg.pose.pose.orientation.w = 1.0
-
-# Set covariance (match RViz defaults)
-pose_msg.pose.covariance = [0.0] * 36
-pose_msg.pose.covariance[0] = 0.25   # x variance
-pose_msg.pose.covariance[7] = 0.25   # y variance  
-pose_msg.pose.covariance[35] = 0.068 # yaw variance
-
-# Publish pose multiple times to ensure delivery
-for i in range(3):
-    publisher.publish(pose_msg)
-    print(f'📤 Published initial pose (attempt {i+1}/3)')
-    rclpy.spin_once(node, timeout_sec=0.1)
-    time.sleep(1)
-
-print('✅ Published initial pose at (0.0, 0.0) with frame_id=map')
-print('⏱️  Waiting 5 seconds for AMCL to process...')
-time.sleep(5)
-
-print('📋 Check navigation logs for:')
-print('   - initialPoseReceived messages')  
-print('   - Setting pose messages')
-print('   - Transform chain establishment')
-print('')
-print('✅ Automatic pose estimate completed')
-
-rclpy.shutdown()
-\"" \
+    "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && python3 \"$WORKSPACE_ROOT/scripts/set_initial_pose.py\"" \
     "6"
 
 # Step 7: Start the B4M Waypoint Navigation Node with MQTT Parameters
@@ -956,6 +1013,11 @@ if [ "$LOCALIZATION_TEST" = true ]; then
             echo "✅ Localization quality tests passed"
         else
             echo "❌ Localization quality tests failed"
+            echo ""
+            echo "Localization tests must pass before continuing."
+            echo "Check robot connection, sensors, and navigation system."
+            echo "Exiting..."
+            exit 1
         fi
         confirm
     fi
@@ -979,6 +1041,11 @@ if [ "$LOCALIZATION_TEST" = true ]; then
             echo "✅ Navigation performance tests passed"
         else
             echo "❌ Navigation performance tests failed"
+            echo ""
+            echo "Navigation performance tests must pass before continuing."
+            echo "Check navigation system, waypoint data, and robot mobility."
+            echo "Exiting..."
+            exit 1
         fi
         confirm
     fi
@@ -1069,6 +1136,9 @@ else
     echo "Launch script completed successfully!"
     echo "All logs are saved in: $LOGS_DIR"
     echo "Main log file: $MAIN_LOG"
+    echo ""
+    echo "🧹 CLEANUP REMINDER:"
+    echo "Run './b4m_shutdown.sh' when finished to clean up all processes"
     echo "====================================================="
 fi
 
