@@ -64,6 +64,15 @@ pkill -9 -f "yahboom" 2>/dev/null
 pkill -9 -f "nav2" 2>/dev/null
 pkill -9 -f "rviz" 2>/dev/null
 
+# Force kill common background ROS nodes that persist
+pkill -9 -f "complementary_filter_node" 2>/dev/null
+pkill -9 -f "static_transform_publisher" 2>/dev/null
+pkill -9 -f "joint_state_publisher" 2>/dev/null
+pkill -9 -f "robot_state_publisher" 2>/dev/null
+pkill -9 -f "base_link_to_base_imu" 2>/dev/null
+pkill -9 -f "base_link_to_base_laser" 2>/dev/null
+pkill -9 -f "tf2_ros" 2>/dev/null
+
 # Step 3: Stop waypoint navigation and robot manager processes
 shutdown_log "Step 3: Stopping waypoint navigation and robot manager processes"
 pkill -f "b4m_waypoint_nav" 2>/dev/null
