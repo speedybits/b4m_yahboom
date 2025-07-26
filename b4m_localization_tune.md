@@ -495,43 +495,225 @@ localization_tests/
 ## Implementation Checklist
 
 ### Phase 1: Extend b4m_HA_launch.sh Arguments
-- [ ] Add `--localization-test` argument parsing
-- [ ] Add `--tune-params` argument parsing  
-- [ ] Update help text to include new arguments
-- [ ] Add localization test configuration variables
+- [x] Add `--localization-test` argument parsing
+- [x] Add `--tune-params` argument parsing  
+- [x] Update help text to include new arguments
+- [x] Add localization test configuration variables
 
 ### Phase 2: Add Localization Test Functions
-- [ ] Add `validate_localization_quality()` function
-- [ ] Add `validate_navigation_performance()` function
-- [ ] Add `test_amcl_convergence()` helper function
-- [ ] Add `test_ekf_consistency()` helper function
-- [ ] Add `test_transform_stability()` helper function
-- [ ] Add `execute_test_waypoint_sequence()` function
-- [ ] Add `test_closed_loop_accuracy()` function
+- [x] Add `validate_localization_quality()` function
+- [x] Add `validate_navigation_performance()` function
+- [x] Add `test_global_localization()` helper function
+- [x] Add `test_amcl_convergence()` helper function
+- [x] Add `test_ekf_consistency()` helper function
+- [x] Add `test_transform_stability()` helper function
+- [x] Add `execute_test_waypoint_sequence_no_mqtt()` function
+- [x] Add `test_navigation_accuracy_yahboom_map()` function
+- [x] Add `test_localization_drift()` helper function
 
 ### Phase 3: Integrate Test Steps
-- [ ] Add Step 8 (Localization Quality) after existing Step 7
-- [ ] Add Step 9 (Navigation Performance) after Step 8
-- [ ] Update success reporting to include localization steps
-- [ ] Ensure cleanup handles localization test processes
+- [x] Add Step 8 (Localization Quality) after existing Step 7
+- [x] Add Step 9 (Navigation Performance) after Step 8
+- [x] Update success reporting to include localization steps
+- [x] Ensure cleanup handles localization test processes
 
 ### Phase 4: Parameter Tuning Infrastructure
-- [ ] Create `localization_tests/` directory structure
-- [ ] Create test waypoint sequence JSON file for yahboom_map.yaml
-- [ ] Create baseline parameter backup system (from earliest Git commit)
-- [ ] Add parameter tuning iteration logic (5 minutes per set)
-- [ ] Add minimal rebuild logic: `yahboomcar_nav` for AMCL/nav, `yahboomcar_bringup` for EKF
-- [ ] Add restart mechanism for Steps 5-7 after parameter changes
-- [ ] Add runtime parameter update support (ros2 param set) before rebuilding
-- [ ] Add global localization support (no manual pose setting required)
-- [ ] Add MQTT-independent navigation testing
-- [ ] Add 2x timeout handling (10 minutes max) for unresponsive tests
+- [x] Create `localization_tests/` directory structure
+- [x] Create test waypoint sequence JSON file for yahboom_map.yaml
+- [x] Create parameter tuning sets (aggressive_tuning.yaml, conservative_tuning.yaml)
+- [x] Add parameter tuning iteration logic with 5-minute test cycles
+- [x] Add minimal rebuild logic: `yahboomcar_nav` for AMCL/nav, `yahboomcar_bringup` for EKF
+- [x] Add restart mechanism for Steps 5-7 after parameter changes
+- [x] Add runtime parameter update support (ros2 param set) before rebuilding
+- [x] Add global localization support (no manual pose setting required)
+- [x] Add MQTT-independent navigation testing using ROS2 actions
+- [x] Add 2x timeout handling (10 minutes max) for unresponsive tests
+- [x] Add parameter backup and restoration system
+- [x] Add results logging and directory structure
 
-### Phase 5: Testing and Validation
-- [ ] Test `--localization-test` argument functionality
+### Phase 5: Testing and Validation  
+- [x] Test `--localization-test` argument functionality (framework works, needs Step 6 pose estimate fix)
+- [x] Verify error handling stops script appropriately when tests fail
+- [ ] Fix Step 6 automatic pose estimate for reliable testing  
 - [ ] Test integration with `--autotest` mode
 - [ ] Test parameter tuning iterations
 - [ ] Validate logging and results analysis
 - [ ] Test cleanup and restoration of parameters
 
 This localization tuning test plan leverages the existing robust `b4m_HA_launch.sh` infrastructure to provide comprehensive assessment tools for improving navigation reliability without requiring additional scripts.
+
+## Implementation Lessons Learned & Troubleshooting
+
+### Critical Issues Discovered During Implementation
+
+#### 1. Step 6 Automatic Pose Estimate Reliability Issue
+**Problem**: The automatic 2D pose estimate in Step 6 doesn't work reliably, causing localization tests to fail even with a connected robot.
+
+**Root Cause**: The Python script in Step 6 that publishes to `/initialpose` topic may not be executing properly or AMCL may not be processing the pose estimate.
+
+**Symptoms**:
+- Localization tests fail with "ERROR: Global localization failed - no AMCL pose within 60 seconds"
+- AMCL node is active but `/amcl_pose` topic publishes no data
+- Manual 2D pose estimate in RViz works immediately
+
+**Debug Commands**:
+```bash
+# Check if AMCL is running and active
+ros2 node list | grep amcl
+ros2 lifecycle get /amcl
+
+# Check if AMCL pose topic is publishing
+timeout 5 ros2 topic echo /amcl_pose --once
+
+# Check if initialpose topic exists and has subscribers
+ros2 topic info /initialpose
+```
+
+**Temporary Workaround**: Manually set 2D pose estimate in RViz before running localization tests.
+
+**Proper Fix Needed**: Investigate and fix Step 6 automatic pose initialization to work reliably without manual intervention.
+
+#### 2. Function Definition Order Issues
+**Problem**: Early implementation had `debug_log` function calls before the function was defined, causing "command not found" errors.
+
+**Solution**: Removed early debug_log calls from initialization section since function wasn't defined yet.
+
+**Lesson**: Ensure all function calls come after function definitions in bash scripts.
+
+#### 3. Error Handling Implementation Issues
+**Problem**: Initial implementation continued to launch Robot Manager GUI even after localization tests failed.
+
+**Root Cause**: Manual mode didn't have proper error handling to exit on test failures.
+
+**Solution**: Added explicit `exit 1` calls in manual mode when tests fail:
+```bash
+if validate_localization_quality; then
+    echo "✅ Localization quality tests passed"
+else
+    echo "❌ Localization quality tests failed"
+    echo ""
+    echo "Localization tests must pass before continuing."
+    echo "Check robot connection, sensors, and navigation system."
+    echo "Exiting..."
+    exit 1
+fi
+```
+
+#### 4. ROS2 Command Syntax Issues
+**Problem**: Initial test function used incorrect `ros2 topic echo` syntax with `--timeout` flag.
+
+**Incorrect**: `ros2 topic echo /amcl_pose --once --timeout 5`
+**Correct**: `timeout 5 ros2 topic echo /amcl_pose --once`
+
+**Lesson**: Use system `timeout` command instead of ROS2-specific timeout options.
+
+### Testing Environment Requirements
+
+#### Hardware Prerequisites
+- **Physical Robot**: Must be powered on and connected via Micro-ROS
+- **Sensor Data**: LIDAR and IMU must be publishing data for localization
+- **Network**: Robot must be on same network as development machine
+- **Map**: `yahboom_map.yaml` must exist and be valid
+
+#### Software Prerequisites
+- **ROS2 Humble**: Full installation with Nav2 stack
+- **Navigation Stack**: All navigation nodes must be running and active
+- **AMCL**: Must be in active lifecycle state
+- **Transform Tree**: Complete `map→odom→base_link` transform chain
+
+#### Testing Sequence Dependencies
+1. **Step 3**: Robot bringup must complete successfully (sensor data available)
+2. **Step 4**: RViz must be running for visualization 
+3. **Step 5**: Navigation stack must be fully launched and active
+4. **Step 6**: **CRITICAL** - Automatic pose estimate must work for tests to pass
+5. **Step 7**: Waypoint navigation node must be running for navigation tests
+
+### Debugging Workflow
+
+#### When Localization Tests Fail
+1. **Check Robot Connection**:
+   ```bash
+   ros2 node list | grep -E "(amcl|nav|ekf)"
+   ros2 topic list | grep -E "(scan|odom|imu)"
+   ```
+
+2. **Verify AMCL State**:
+   ```bash
+   ros2 lifecycle get /amcl
+   timeout 5 ros2 topic echo /amcl_pose --once
+   ```
+
+3. **Check Transform Tree**:
+   ```bash
+   ros2 run tf2_tools view_frames.py
+   ros2 run tf2_ros tf2_echo map base_link
+   ```
+
+4. **Verify Sensor Data**:
+   ```bash
+   ros2 topic hz /scan
+   ros2 topic hz /odom
+   ros2 topic hz /imu/data
+   ```
+
+5. **Test Manual Pose Estimate**:
+   - Open RViz
+   - Click "2D Pose Estimate" tool
+   - Set pose on map
+   - Verify AMCL starts publishing poses
+
+#### When Navigation Tests Fail
+1. **Check Navigation Stack**:
+   ```bash
+   ros2 lifecycle get /bt_navigator
+   ros2 lifecycle get /planner_server
+   ros2 lifecycle get /controller_server
+   ```
+
+2. **Test Manual Navigation**:
+   - Open RViz
+   - Use "Nav2 Goal" tool to set navigation goal
+   - Verify robot attempts to navigate
+
+3. **Check Action Servers**:
+   ```bash
+   ros2 action list | grep navigate
+   ros2 action info /navigate_to_pose
+   ```
+
+### Implementation Architecture Notes
+
+#### Function Structure
+- **9 Validation Functions**: Each tests specific localization/navigation aspect
+- **Modular Design**: Functions can be called independently for debugging
+- **Timeout Handling**: All tests have appropriate timeouts to prevent hanging
+- **Error Propagation**: Failed tests return non-zero exit codes
+
+#### Integration Points
+- **Steps 8-9**: Added after existing Step 7 in launch sequence
+- **Autotest Mode**: Full integration with existing automated testing
+- **Parameter Tuning**: Supports iterative parameter testing with rebuilds
+- **Cleanup**: Proper cleanup on failures to prevent resource leaks
+
+#### File Locations
+- **Test Directory**: `/home/mike/projects/b4m_yahboom/localization_tests/`
+- **Parameter Sets**: `localization_tests/param_sets/*.yaml`
+- **Test Waypoints**: `localization_tests/test_waypoints.json`
+- **Results**: `localization_tests/results/` (auto-created, in .gitignore)
+
+### Recommendations for Re-implementation
+
+#### If Starting From Scratch
+1. **Fix Step 6 First**: Ensure automatic pose estimation works reliably before implementing tests
+2. **Test Incrementally**: Implement and test each validation function individually
+3. **Use Debug Mode**: Always test with `--debug` flag initially to see detailed logging
+4. **Verify Prerequisites**: Ensure all hardware and software dependencies are met
+5. **Test Manual Mode First**: Get manual mode working before implementing autotest integration
+
+#### Critical Success Factors
+- **Automatic Pose Initialization**: Must work without manual intervention
+- **Proper Error Handling**: Tests must fail fast and exit cleanly
+- **Transform Tree Validation**: Verify complete localization pipeline
+- **Sensor Data Validation**: Ensure all required sensors are publishing
+
+This documentation captures the key implementation challenges and solutions discovered during the development process, providing a roadmap for future implementation or debugging efforts.
