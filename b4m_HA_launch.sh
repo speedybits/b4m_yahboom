@@ -444,26 +444,36 @@ test_ekf_consistency() {
     debug_log "Testing odometry consistency"
     local timeout=15
     
-    # Check for filtered odometry first (robot_localization EKF)
-    if ros2 topic echo /odometry/filtered --once --timeout 3 >/dev/null 2>&1; then
-        debug_log "EKF filter publishing filtered odometry"
-        return 0
-    fi
+    # Add initial settle time to allow system to stabilize after Step 7
+    debug_log "Allowing 5 seconds for system to settle after MQTT navigation startup"
+    sleep 5
     
-    # Fallback to raw odometry (direct from hardware)
+    # Check what nodes are available for debugging
+    debug_log "Available nodes: $(ros2 node list 2>/dev/null | grep -E '(ekf|filter)' | tr '\n' ' ')"
+    debug_log "Available odometry topics: $(ros2 topic list 2>/dev/null | grep -i odom | tr '\n' ' ')"
+    
+    # Check for filtered odometry first (robot_localization EKF publishes to /odom)
     if ros2 topic echo /odom --once --timeout $timeout >/dev/null 2>&1; then
-        debug_log "Raw odometry available from hardware (no EKF filtering)"
+        debug_log "EKF filter publishing to /odom topic (filtered odometry)"
         return 0
     fi
     
-    # Check alternative raw odometry topic
+    # Fallback to alternative filtered topic name
+    if ros2 topic echo /odometry/filtered --once --timeout 3 >/dev/null 2>&1; then
+        debug_log "EKF filter publishing to /odometry/filtered topic"
+        return 0
+    fi
+    
+    # Check raw odometry as last resort
     if ros2 topic echo /odom_raw --once --timeout 3 >/dev/null 2>&1; then
-        debug_log "Raw odometry available on /odom_raw topic"
+        debug_log "Raw odometry available on /odom_raw topic (no filtering)"
         return 0
     fi
     
     echo "ERROR: Odometry consistency failed - no odometry data within $timeout seconds"
-    echo "       Checked: /odometry/filtered, /odom, /odom_raw"
+    echo "       Checked: /odom, /odometry/filtered, /odom_raw"
+    echo "       Available nodes: $(ros2 node list 2>/dev/null | wc -l) total"
+    echo "       Available topics: $(ros2 topic list 2>/dev/null | wc -l) total"
     return 1
 }
 
