@@ -279,9 +279,16 @@ def main(args=None):
     rclpy.init(args=args)
     
     # Set terminal to raw mode to get input without waiting for Enter key
-    old_attr = termios.tcgetattr(sys.stdin)
+    # Only do this if stdin is actually a terminal (not in automated/headless mode)
+    old_attr = None
+    if sys.stdin.isatty():
+        try:
+            old_attr = termios.tcgetattr(sys.stdin)
+            tty.setcbreak(sys.stdin.fileno())
+        except (termios.error, OSError):
+            old_attr = None
+    
     try:
-        tty.setcbreak(sys.stdin.fileno())
         
         # Create the node
         waypoint_nav = WaypointNavigation("waypoint_navigation_node")
@@ -303,8 +310,12 @@ def main(args=None):
             waypoint_nav.destroy_node()
             
     finally:
-        # Restore terminal settings
-        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_attr)
+        # Restore terminal settings if they were modified
+        if old_attr is not None:
+            try:
+                termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_attr)
+            except (termios.error, OSError):
+                pass  # Ignore errors during cleanup
     
     # Shutdown ROS 2
     rclpy.shutdown()
