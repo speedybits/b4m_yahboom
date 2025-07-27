@@ -453,19 +453,19 @@ test_ekf_consistency() {
     debug_log "Available odometry topics: $(ros2 topic list 2>/dev/null | grep -i odom | tr '\n' ' ')"
     
     # Check for filtered odometry first (robot_localization EKF publishes to /odom)
-    if ros2 topic echo /odom --once --timeout $timeout >/dev/null 2>&1; then
+    if timeout $timeout ros2 topic echo /odom --once >/dev/null 2>&1; then
         debug_log "EKF filter publishing to /odom topic (filtered odometry)"
         return 0
     fi
     
     # Fallback to alternative filtered topic name
-    if ros2 topic echo /odometry/filtered --once --timeout 3 >/dev/null 2>&1; then
+    if timeout 3 ros2 topic echo /odometry/filtered --once >/dev/null 2>&1; then
         debug_log "EKF filter publishing to /odometry/filtered topic"
         return 0
     fi
     
     # Check raw odometry as last resort
-    if ros2 topic echo /odom_raw --once --timeout 3 >/dev/null 2>&1; then
+    if timeout 3 ros2 topic echo /odom_raw --once >/dev/null 2>&1; then
         debug_log "Raw odometry available on /odom_raw topic (no filtering)"
         return 0
     fi
@@ -479,14 +479,19 @@ test_ekf_consistency() {
 
 test_transform_stability() {
     debug_log "Testing transform tree stability"
-    local timeout=10
+    local timeout=15
+    
+    # Add additional time for AMCL to establish transform after pose initialization
+    debug_log "Allowing additional 10 seconds for AMCL transform establishment after pose initialization"
+    sleep 10
     
     # Test critical transform chain: map -> odom -> base_link
-    if ros2 run tf2_ros tf2_echo map base_link --timeout $timeout >/dev/null 2>&1; then
+    if timeout $timeout ros2 run tf2_ros tf2_echo map base_link >/dev/null 2>&1; then
         debug_log "Transform chain map->base_link is stable"
         return 0
     else
         echo "ERROR: Transform stability failed - map->base_link chain not available"
+        echo "This usually indicates AMCL pose initialization did not complete properly"
         return 1
     fi
 }
