@@ -1,0 +1,59 @@
+# Indoor Optimized AMCL Parameters for Localization Testing
+# Optimized for indoor environments with smooth floors and regular obstacles
+# Focus: Better particle convergence and more responsive updates
+
+amcl:
+  ros__parameters:
+    use_sim_time: False
+    
+    # Motion model parameters - Reduced noise for smooth indoor surfaces
+    alpha1: 0.1    # Reduced rotational error from translation (indoor floors are smoother)
+    alpha2: 0.1    # Reduced translational error from translation
+    alpha3: 0.15   # Slightly higher translation error from rotation (wheel slip)
+    alpha4: 0.15   # Slightly higher rotational error from rotation
+    alpha5: 0.1    # Reduced translation-related noise
+    
+    # Frame configuration
+    base_frame_id: "base_footprint"
+    global_frame_id: "map"
+    odom_frame_id: "odom"
+    
+    # Laser processing parameters - More aggressive beam processing for clean indoor scans
+    beam_skip_distance: 0.3    # Reduced for more beam processing
+    beam_skip_error_threshold: 0.8
+    beam_skip_threshold: 0.2   # More sensitive to beam variations
+    do_beamskip: true          # Enable beam skipping for better performance
+    lambda_short: 0.05         # Reduced short reading weight
+    laser_likelihood_max_dist: 1.5  # Reduced for indoor scale
+    laser_max_range: 100.0
+    laser_min_range: -1.0
+    laser_model_type: "likelihood_field"
+    max_beams: 80              # Increased for better resolution
+    
+    # Particle filter parameters - Optimized for better convergence
+    max_particles: 1500        # Slightly reduced for faster computation
+    min_particles: 300         # Reduced minimum for faster convergence
+    pf_err: 0.03               # Tighter error tolerance for indoor precision
+    pf_z: 0.95                 # More confident in observations
+    
+    # Recovery parameters - Faster recovery for indoor navigation
+    recovery_alpha_fast: 0.1   # Enable fast recovery
+    recovery_alpha_slow: 0.02  # Enable slow recovery
+    
+    # Update parameters - More responsive to changes
+    resample_interval: 1
+    robot_model_type: "nav2_amcl::DifferentialMotionModel"
+    save_pose_rate: 1.0        # Increased save rate for better tracking
+    sigma_hit: 0.15            # Reduced sigma for tighter hit distribution
+    tf_broadcast: true
+    transform_tolerance: 2.0   # Reduced tolerance for tighter timing
+    update_min_a: 0.15         # More sensitive to angular changes
+    update_min_d: 0.2          # More sensitive to translational changes
+    
+    # Sensor model parameters - Optimized for indoor laser performance
+    z_hit: 0.7             # Higher weight for accurate hits (clean indoor environment)
+    z_max: 0.05            # Keep max range weight low
+    z_rand: 0.2            # Reduced random weight (less noise indoors)
+    z_short: 0.05          # Keep short reading weight low
+    
+    scan_topic: scan
