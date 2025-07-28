@@ -45,16 +45,23 @@ echo ""
 
 shutdown_log "B4M Robot shutdown script started"
 
-# Step 1: Stop all ROS2 nodes gracefully
-shutdown_log "Step 1: Stopping all ROS2 nodes gracefully"
+# Step 1: Stop all ROS2 nodes gracefully (except YB_Car_Node)
+shutdown_log "Step 1: Stopping all ROS2 nodes gracefully (preserving YB_Car_Node)"
+
+# Get list of all nodes and kill each one except YB_Car_Node
 ros2 node list 2>/dev/null | while read -r node; do
     if [ ! -z "$node" ]; then
-        shutdown_log "Stopping ROS2 node: $node"
+        if [[ "$node" == *"YB_Car_Node"* ]]; then
+            shutdown_log "Preserving YB_Car_Node: $node"
+        else
+            shutdown_log "Stopping ROS2 node: $node"
+            # Extract node name without namespace for killing
+            node_name=$(basename "$node")
+            pkill -f "$node_name" 2>/dev/null
+        fi
     fi
 done
 
-# Send SIGTERM to all ROS2 processes
-pkill -f "ros2" 2>/dev/null
 sleep 3
 
 # Step 2: Force kill remaining ROS2 processes if needed (but preserve YB_Car_Node and agent)
