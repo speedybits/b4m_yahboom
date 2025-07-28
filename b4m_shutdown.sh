@@ -57,12 +57,19 @@ done
 pkill -f "ros2" 2>/dev/null
 sleep 3
 
-# Step 2: Force kill remaining ROS2 processes if needed
+# Step 2: Force kill remaining ROS2 processes if needed (but preserve YB_Car_Node and agent)
 shutdown_log "Step 2: Force killing any remaining ROS2 processes"
-pkill -9 -f "ros2" 2>/dev/null
-pkill -9 -f "yahboom" 2>/dev/null
+
+# Kill ROS2 launches and navigation processes
+pkill -9 -f "ros2 launch" 2>/dev/null
+pkill -9 -f "yahboomcar_nav" 2>/dev/null  
+pkill -9 -f "yahboomcar_bringup" 2>/dev/null
 pkill -9 -f "nav2" 2>/dev/null
 pkill -9 -f "rviz" 2>/dev/null
+pkill -9 -f "amcl" 2>/dev/null
+
+# Kill Python ROS2 scripts but preserve the micro_ros_agent
+ps aux | grep "python.*ros2" | grep -v "micro_ros_agent" | awk '{print $2}' | xargs -r kill -9 2>/dev/null
 
 # Force kill common background ROS nodes that persist
 pkill -9 -f "complementary_filter_node" 2>/dev/null
@@ -72,6 +79,11 @@ pkill -9 -f "robot_state_publisher" 2>/dev/null
 pkill -9 -f "base_link_to_base_imu" 2>/dev/null
 pkill -9 -f "base_link_to_base_laser" 2>/dev/null
 pkill -9 -f "tf2_ros" 2>/dev/null
+
+# CRITICAL: Kill robot_localization processes that survive cleanup
+pkill -9 -f "ekf_node" 2>/dev/null
+pkill -9 -f "robot_localization" 2>/dev/null
+pkill -9 -f "ukf_node" 2>/dev/null
 
 # Step 3: Stop waypoint navigation and robot manager processes
 shutdown_log "Step 3: Stopping waypoint navigation and robot manager processes"

@@ -1,0 +1,59 @@
+# Fast Convergence AMCL Parameters for Localization Testing
+# Focus: Rapid particle convergence and quick recovery from localization loss
+# Trade-off: May sacrifice some accuracy for speed
+
+amcl:
+  ros__parameters:
+    use_sim_time: False
+    
+    # Motion model parameters - Higher noise tolerance for faster convergence
+    alpha1: 0.25   # Higher tolerance for faster particle spread
+    alpha2: 0.25   # Higher tolerance for faster adaptation
+    alpha3: 0.3    # Allow more rotational uncertainty
+    alpha4: 0.3    # Allow more rotational uncertainty
+    alpha5: 0.25   # Higher noise tolerance
+    
+    # Frame configuration
+    base_frame_id: "base_footprint"
+    global_frame_id: "map"
+    odom_frame_id: "odom"
+    
+    # Laser processing parameters - Faster processing
+    beam_skip_distance: 0.6    # More aggressive beam skipping
+    beam_skip_error_threshold: 0.7
+    beam_skip_threshold: 0.4
+    do_beamskip: true
+    lambda_short: 0.15         # Higher short reading tolerance
+    laser_likelihood_max_dist: 2.5  # Wider likelihood field
+    laser_max_range: 100.0
+    laser_min_range: -1.0
+    laser_model_type: "likelihood_field"
+    max_beams: 50              # Reduced for faster processing
+    
+    # Particle filter parameters - Optimized for quick convergence
+    max_particles: 1200        # Reduced for faster computation
+    min_particles: 200         # Lower minimum for faster convergence
+    pf_err: 0.08               # Higher error tolerance for speed
+    pf_z: 0.9                  # Moderate confidence for faster adaptation
+    
+    # Recovery parameters - Aggressive recovery
+    recovery_alpha_fast: 0.2   # Fast recovery enabled
+    recovery_alpha_slow: 0.05  # Moderate slow recovery
+    
+    # Update parameters - Very responsive updates
+    resample_interval: 1
+    robot_model_type: "nav2_amcl::DifferentialMotionModel"
+    save_pose_rate: 0.5        # Standard save rate
+    sigma_hit: 0.25            # Wider hit distribution for faster convergence
+    tf_broadcast: true
+    transform_tolerance: 3.5   # Higher tolerance for faster updates
+    update_min_a: 0.1          # More frequent angular updates
+    update_min_d: 0.15         # More frequent translational updates
+    
+    # Sensor model parameters - Balanced for quick adaptation
+    z_hit: 0.5             # Moderate weight for accurate hits
+    z_max: 0.1             # Higher max range weight for exploration
+    z_rand: 0.35           # Higher random weight for exploration
+    z_short: 0.05          # Standard short reading weight
+    
+    scan_topic: scan
