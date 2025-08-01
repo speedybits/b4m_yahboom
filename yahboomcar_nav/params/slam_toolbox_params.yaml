@@ -1,0 +1,57 @@
+slam_toolbox:
+  ros__parameters:
+    # Basic Configuration
+    odom_frame: odom
+    map_frame: map
+    base_frame: base_footprint
+    scan_topic: /scan
+    use_map_saver: true
+    use_lifecycle_manager: false
+
+    # SLAM Parameters
+    mode: mapping  # Options: mapping, localization, lifelong
+    
+    # EKF Integration - Use filtered odometry
+    # EKF publishes odom->base_footprint, slam_toolbox publishes map->odom
+    
+    # Loop Closure Parameters (tuned for indoor environment)
+    loop_search_maximum_distance: 3.0
+    loop_match_minimum_response_coarse: 0.35
+    loop_match_minimum_response_fine: 0.45
+    
+    # Scan Processing (optimized for Micro-ROS latency)
+    max_laser_range: 20.0
+    minimum_time_interval: 0.8  # Slightly higher for Micro-ROS stability
+    transform_timeout: 0.5      # Higher timeout for network latency
+    tf_buffer_duration: 30.0
+    
+    # Performance Tuning for B4M Robot with EKF
+    stack_size_to_use: 40000000
+    minimum_travel_distance: 0.3  # More sensitive with EKF filtering
+    minimum_travel_heading: 0.3   # More sensitive with EKF filtering
+    scan_buffer_size: 5           # Smaller buffer for limited CPU
+    scan_buffer_maximum_scan_distance: 10.0
+    link_match_minimum_response_fine: 0.1
+    link_scan_maximum_distance: 1.5
+    
+    # Map Resolution and Quality
+    resolution: 0.05
+    map_file_name: yahboom_slam_map
+    map_start_at_dock: true
+    
+    # Solver Parameters
+    solver_plugin: solver_plugins::CeresSolver
+    ceres_linear_solver: SPARSE_NORMAL_CHOLESKY
+    ceres_preconditioner: SCHUR_JACOBI
+    ceres_trust_strategy: LEVENBERG_MARQUARDT
+    ceres_dogleg_type: TRADITIONAL_DOGLEG
+    ceres_loss_function: None
+
+# Map Saver Parameters
+map_saver:
+  ros__parameters:
+    use_sim_time: false
+    save_map_timeout: 5.0
+    free_thresh_default: 0.25
+    occupied_thresh_default: 0.65
+    map_subscribe_transient_local: true

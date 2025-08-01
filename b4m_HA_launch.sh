@@ -130,7 +130,7 @@ debug_log() {
 # Function to check for existing ROS2 processes and prevent duplicates
 check_existing_processes() {
     local node_count=$(ros2 node list | wc -l 2>/dev/null || echo "0") 
-    local navigation_nodes=$(ros2 node list | grep -E "(amcl|nav2_container)" | wc -l 2>/dev/null || echo "0")
+    local navigation_nodes=$(ros2 node list | grep -E "(slam_toolbox|nav2_container)" | wc -l 2>/dev/null || echo "0")
     local hardware_nodes=$(ros2 node list | grep -E "(YB_Car_Node)" | wc -l 2>/dev/null || echo "0")
     
     echo "🔍 Pre-launch System Check"
@@ -267,7 +267,7 @@ check_existing_processes() {
     elif [ "$navigation_nodes" -gt 0 ]; then
         echo ""
         echo "⚠️  WARNING: Navigation nodes already running!"
-        echo "Detected: $(ros2 node list 2>/dev/null | grep -E '(amcl|nav2_container)' | tr '\n' ' ')"
+        echo "Detected: $(ros2 node list 2>/dev/null | grep -E '(slam_toolbox|nav2_container)' | tr '\n' ' ')"
         echo ""
         
         if [ "$AUTOTEST_MODE" = true ]; then
@@ -315,6 +315,7 @@ force_complete_system_cleanup() {
     pkill -f "b4m_waypoint_nav" 2>/dev/null || true
     pkill -f "rviz" 2>/dev/null || true
     pkill -f "nav2" 2>/dev/null || true
+    pkill -f "slam_toolbox" 2>/dev/null || true
     sleep 2
     
     # Kill any remaining ROS2 nodes
@@ -526,9 +527,8 @@ validate_step_success() {
             # Step 5: Navigation - check for navigation nodes, map data, and lifecycle activation
             local end_time=$(($(date +%s) + timeout))
             while [ $(date +%s) -lt $end_time ]; do
-                if ros2 node list 2>/dev/null | grep -q "map_server" && \
-                   ros2 topic list 2>/dev/null | grep -q "/map" && \
-                   ros2 node list 2>/dev/null | grep -q "amcl"; then
+                if ros2 node list 2>/dev/null | grep -q "slam_toolbox" && \
+                   ros2 topic list 2>/dev/null | grep -q "/map"; then
                     debug_log "Navigation nodes found, checking map data and lifecycle state..."
                     
                     # Check if map data is published
@@ -559,24 +559,24 @@ validate_step_success() {
             return 1
             ;;
         6)
-            # Step 6: Pose estimation - check if AMCL received pose and is now publishing
-            debug_log "Step 6: Validating automatic pose estimation"
+            # Step 6: SLAM initialization - check if slam_toolbox is publishing transforms
+            debug_log "Step 6: Validating SLAM system initialization"
             
-            # Wait for script to complete
+            # Wait for SLAM system to start
             sleep 5
             
-            # Verify AMCL is now publishing poses (indicates pose was accepted)
+            # Verify slam_toolbox is running and publishing transforms
             local end_time=$(($(date +%s) + timeout))
             while [ $(date +%s) -lt $end_time ]; do
-                if timeout 3 ros2 topic echo /amcl_pose --once >/dev/null 2>&1; then
-                    debug_log "Step 6 validation passed: AMCL received pose and is publishing"
+                if ros2 node list 2>/dev/null | grep -q "slam_toolbox" && \
+                   ros2 run tf2_ros tf2_echo map odom --timeout 2 >/dev/null 2>&1; then
+                    debug_log "Step 6 validation passed: SLAM system initialized and publishing transforms"
                     return 0
                 fi
                 sleep 1
             done
             
-            echo "ERROR: Step 6 validation failed - AMCL not publishing poses within $timeout seconds"
-            echo "This usually means the automatic pose estimate didn't work properly"
+            echo "ERROR: Step 6 validation failed - SLAM system not initializing properly within $timeout seconds"
             return 1
             ;;
         7)
@@ -935,11 +935,12 @@ execute_navigation_circuit_cycle() {
 generate_square_waypoints_from_startup() {
     echo "      📍 Generating 1x1m square waypoints from robot startup position..."
     
-    # Get robot's current position after Step 6 pose initialization
-    local startup_pose=$(timeout 5 ros2 topic echo /amcl_pose --once)
+    # Get robot's current position after Step 6 SLAM initialization
+    # Use tf to get robot pose since SLAM toolbox doesn't use amcl_pose topic
+    local startup_pose=$(timeout 5 ros2 run tf2_ros tf2_echo map base_link 2>/dev/null)
     
     if [[ -z "$startup_pose" ]]; then
-        echo "      ❌ Failed to get robot startup pose from AMCL"
+        echo "      ❌ Failed to get robot startup pose from SLAM transform"
         return 1
     fi
     
@@ -1040,11 +1041,11 @@ verify_waypoint_accuracy_automated() {
     # Wait for robot to settle (account for deceleration)
     sleep 3
     
-    # Get current robot pose from AMCL
-    local current_pose=$(timeout 5 ros2 topic echo /amcl_pose --once)
+    # Get current robot pose from SLAM transform
+    local current_pose=$(timeout 5 ros2 run tf2_ros tf2_echo map base_link 2>/dev/null)
     
     if [[ -z "$current_pose" ]]; then
-        echo "      ❌ Failed to get current pose from AMCL"
+        echo "      ❌ Failed to get current pose from SLAM transform"
         return 1
     fi
     
@@ -1798,14 +1799,14 @@ launch_in_terminal "Starting RViz for visualization of robot state and environme
     "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_nav display_launch.py" \
     "4"
 
-# Step 5: Launch the Navigation System
-launch_in_terminal "Launching the navigation system with pre-built map" \
-    "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_nav waypoint_navigation_launch.py maps:=\"$WORKSPACE_ROOT/yahboomcar_nav/maps/yahboom_map.yaml\"" \
+# Step 5: Launch the SLAM-based Navigation System
+launch_in_terminal "Launching SLAM-based navigation system" \
+    "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_nav slam_navigation_launch.py" \
     "5"
 
-# Step 6: Automatic Robot Positioning
-launch_in_terminal "Setting automatic pose estimate at map center for testing" \
-    "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && python3 \"$WORKSPACE_ROOT/scripts/set_initial_pose.py\"" \
+# Step 6: SLAM System Monitoring
+launch_in_terminal "Monitoring SLAM initialization and map building" \
+    "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && echo 'SLAM system initializing - map will be built automatically as robot moves'" \
     "6"
 
 # Step 7: Start the B4M Waypoint Navigation Node with MQTT Parameters
