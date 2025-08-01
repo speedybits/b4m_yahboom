@@ -1,18 +1,18 @@
 # b4m_waypoint_nav: Waypoint Navigation with Orientation Plan
 
 This document is divided into two main sections:
-1. **Waypoint Manager GUI**: Describes the standalone GUI application for managing waypoints
+1. **Robot Manager GUI**: Describes the standalone GUI application for managing waypoints
 2. **MQTT-Based Navigation**: Explains how the waypoint manager receives coordinates via MQTT and navigates the robot
 
-# SECTION 1: WAYPOINT MANAGER GUI
+# SECTION 1: ROBOT MANAGER GUI
 
 ## Overview
 
-The Waypoint Manager GUI is a standalone application that allows users to create, edit, and manage waypoints for the Yahboom robot. It operates independently of the robot or simulation for efficient workflow, with optional integration when the robot is running.
+The Robot Manager GUI is a standalone application that allows users to create, edit, and manage waypoints for the Yahboom robot. It operates independently of the robot or simulation for efficient workflow, with optional integration when the robot is running.
 
 ## Implementation Approach
 
-The Waypoint Manager has been implemented as a standalone Python-based GUI application for the following reasons:
+The Robot Manager has been implemented as a standalone Python-based GUI application for the following reasons:
 
 1. It allows for waypoint management without the overhead of running the full robot system or simulation
 2. Users can plan and organize waypoints at any time, improving workflow efficiency
@@ -208,7 +208,7 @@ Each waypoint is stored with the following information:
 
 ### Single Map Approach
 
-The Waypoint Manager GUI is simplified to work with a single map (yahboom_map):
+The Robot Manager GUI is simplified to work with a single map (yahboom_map):
 
 1. **Map Display**
    - The GUI displays the yahboom_map by default
@@ -284,7 +284,7 @@ The Waypoint Manager GUI is simplified to work with a single map (yahboom_map):
 
 ## Overview
 
-This section describes how the waypoint manager receives coordinates in MQTT format (from either HomeAssistant or the Waypoint Manager GUI) and causes the robot to navigate to the specified waypoint.
+This section describes how the waypoint manager receives coordinates in MQTT format (from either HomeAssistant or the Robot Manager GUI) and causes the robot to navigate to the specified waypoint.
 
 ## MQTT Communication Architecture
 
@@ -321,7 +321,7 @@ Status messages are published in the following format:
 
 1. **MQTT Subscription**
    - The `b4m_waypoint_nav.py` node subscribes to the `yahboom/navigation/command` topic
-   - It receives JSON-formatted navigation commands from either HomeAssistant or the Waypoint Manager GUI
+   - It receives JSON-formatted navigation commands from either HomeAssistant or the Robot Manager GUI
    - The node validates the received command format and extracts the necessary information
 
 2. **Command Processing**
@@ -354,7 +354,7 @@ Status messages are published in the following format:
 The system supports dynamic waypoint management without requiring navigation node restarts:
 
 1. **Coordinate-Based Navigation**
-   - The waypoint manager GUI **MUST** send coordinate-based navigation commands
+   - The Robot Manager GUI **MUST** send coordinate-based navigation commands
    - The GUI maintains its own internal mapping of waypoint names to coordinates
    - When a user selects a waypoint in the GUI, it looks up the coordinates and sends those
    - The waypoint name is included in the MQTT message for debugging purposes only
@@ -395,7 +395,7 @@ The `b4m_waypoint_nav.py` node is the central component that handles the actual 
 ### Communication Flow
 
 1. **User Interaction**
-   - User selects a waypoint in the waypoint_manager GUI or HomeAssistant
+   - User selects a waypoint in the Robot Manager GUI or HomeAssistant
    - User triggers navigation (clicks "Go to Selected Waypoint" button)
 
 2. **MQTT Communication**
