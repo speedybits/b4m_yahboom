@@ -248,9 +248,15 @@ The B4M Robot Manager serves as the central application for system control, inte
 1. Stop all ROS2 nodes
 2. Force kill remaining ROS2 processes if needed
 3. Stop waypoint navigation and robot manager processes
-4. Leave Micro-ROS agent running
+4. Leave Micro-ROS agent running (ALWAYS use --keep-agent)
 5. Clean up remaining Python processes
 6. Stop RViz if running
+
+**CRITICAL SHUTDOWN RULE:**
+- **ALWAYS use `./b4m_shutdown.sh --keep-agent`** - NEVER shut down the Micro-ROS agent
+- The Micro-ROS agent provides the critical hardware connection to the physical robot
+- Shutting down the agent requires physical robot restart and reconnection
+- Use `--keep-agent` flag to preserve the hardware connection during system restarts
 
 ## Testing Strategy
 
