@@ -10,8 +10,8 @@ controller_manager:
 
 diff_drive_controller:
   ros__parameters:
-    left_wheel_names: ["robot2/left_front_joint"]
-    right_wheel_names: ["robot2/right_front_joint"]
+    left_wheel_names: ["left_front_joint"]
+    right_wheel_names: ["right_front_joint"]
 
     wheel_separation: 0.16722
     wheels_per_side: 1  # actually 2 but only controlling front wheels
@@ -23,7 +23,7 @@ diff_drive_controller:
 
     publish_rate: 50.0
     odom_frame_id: odom
-    base_frame_id: robot2/base_link
+    base_frame_id: base_link
     pose_covariance_diagonal : [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
     twist_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
 
