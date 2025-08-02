@@ -4,7 +4,7 @@
 # This script automates the launch process for the B4M Robot with Home Assistant integration
 # Each step will be launched in a separate terminal with user confirmation
 #
-# Usage: ./b4m_HA_launch.sh [--skip-agent] [--only-agent] [--autotest] [--debug] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>]
+# Usage: ./b4m_HA_launch.sh [--skip-agent] [--only-agent] [--autotest] [--debug] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>] [--simulation]
 #   --skip-agent:                   Skip the Micro-ROS agent launch (Step 1)
 #   --only-agent:                   Launch ONLY the Micro-ROS agent (Step 1) and exit
 #   --autotest:                     Run in automated test mode (non-interactive)
@@ -13,6 +13,7 @@
 #   --tune-params:                  Enable parameter tuning iterations (requires --localization-test)
 #   --navigation-performance-test:  Execute advanced 1x1m square navigation circuit testing with comprehensive metrics
 #   --parameter-set <name>:         Specify AMCL parameter set to test (baseline, indoor_optimized, high_precision, balanced, fast_convergence)
+#   --simulation:                   Launch in Gazebo simulation mode instead of real robot
 
 # Parse command line arguments
 SKIP_AGENT=false
@@ -23,6 +24,7 @@ LOCALIZATION_TEST=false
 TUNE_PARAMS=false
 NAVIGATION_PERFORMANCE_TEST=false
 PARAMETER_SET=""
+SIMULATION_MODE=false
 for arg in "$@"; do
     case $arg in
         --skip-agent)
@@ -59,8 +61,12 @@ for arg in "$@"; do
             PARAMETER_SET="$1"
             shift
             ;;
+        --simulation)
+            SIMULATION_MODE=true
+            shift
+            ;;
         -h|--help)
-            echo "Usage: $0 [--skip-agent] [--only-agent] [--autotest] [--debug] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>]"
+            echo "Usage: $0 [--skip-agent] [--only-agent] [--autotest] [--debug] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>] [--simulation]"
             echo "  --skip-agent:                   Skip the Micro-ROS agent launch (Step 1)"
             echo "  --only-agent:                   Launch ONLY the Micro-ROS agent (Step 1) and exit"
             echo "  --autotest:                     Run in automated test mode (non-interactive)"
@@ -69,6 +75,7 @@ for arg in "$@"; do
             echo "  --tune-params:                  Enable parameter tuning iterations (requires --localization-test)"
             echo "  --navigation-performance-test:  Execute 1x1m square navigation circuit testing"
             echo "  --parameter-set <name>:         Specify parameter set to test (baseline, indoor_optimized, high_precision, balanced, fast_convergence)"
+            echo "  --simulation:                   Launch in Gazebo simulation mode instead of real robot"
             exit 0
             ;;
         *)
@@ -78,6 +85,13 @@ for arg in "$@"; do
             ;;
     esac
 done
+
+# Validate flag combinations
+if [ "$SIMULATION_MODE" = true ] && [ "$ONLY_AGENT" = true ]; then
+    echo "ERROR: --simulation and --only-agent cannot be used together"
+    echo "In simulation mode, Gazebo is launched instead of the Micro-ROS agent"
+    exit 1
+fi
 
 # Get the workspace root directory (where this script is located)
 WORKSPACE_ROOT=$(cd "$(dirname "$0")" && pwd)
@@ -440,33 +454,79 @@ validate_step_success() {
     local timeout=${2:-$AUTOTEST_TIMEOUT}
     local step_log=$3
     
-    debug_log "Validating Step $step_num (timeout: ${timeout}s)"
+    debug_log "Validating Step $step_num (timeout: ${timeout}s) - Mode: $([ "$SIMULATION_MODE" = true ] && echo "SIMULATION" || echo "REAL_ROBOT")"
     
     case $step_num in
         1)
-            # Step 1: Micro-ROS agent - assume already running correctly in autotest mode
-            debug_log "Step 1 validation: Assuming Micro-ROS agent is running (autotest mode)"
-            return 0
+            if [ "$SIMULATION_MODE" = true ]; then
+                # Step 1 Simulation: Gazebo world launch - check for Gazebo process and world
+                local end_time=$(($(date +%s) + timeout))
+                while [ $(date +%s) -lt $end_time ]; do
+                    if pgrep -f "gazebo" > /dev/null && \
+                       ros2 service list 2>/dev/null | grep -q "/gazebo/"; then
+                        debug_log "Step 1 validation passed: Gazebo simulation running with services"
+                        return 0
+                    fi
+                    sleep 1
+                done
+                echo "ERROR: Step 1 validation failed - Gazebo simulation not running within $timeout seconds"
+                return 1
+            else
+                # Step 1: Micro-ROS agent - assume already running correctly in autotest mode
+                debug_log "Step 1 validation: Assuming Micro-ROS agent is running (autotest mode)"
+                return 0
+            fi
             ;;
         2)
-            # Step 2: Robot connection - just wait for confirmation
-            sleep 2
-            return 0
+            if [ "$SIMULATION_MODE" = true ]; then
+                # Step 2 Simulation: Robot spawning - check for robot entity in Gazebo
+                local end_time=$(($(date +%s) + timeout))
+                while [ $(date +%s) -lt $end_time ]; do
+                    if ros2 service list 2>/dev/null | grep -q "/yahboomcar" || \
+                       ros2 topic list 2>/dev/null | grep -q "/joint_states"; then
+                        debug_log "Step 2 validation passed: Robot spawned in Gazebo simulation"
+                        return 0
+                    fi
+                    sleep 1
+                done
+                echo "ERROR: Step 2 validation failed - Robot not spawned in Gazebo within $timeout seconds"
+                return 1
+            else
+                # Step 2: Robot connection - just wait for confirmation
+                sleep 2
+                return 0
+            fi
             ;;
         3)
-            # Step 3: Data processing - check for required nodes and topics
-            local end_time=$(($(date +%s) + timeout))
-            while [ $(date +%s) -lt $end_time ]; do
-                if ros2 node list 2>/dev/null | grep -q "complementary_filter_gain_node" && \
-                   ros2 node list 2>/dev/null | grep -q "robot_state_publisher" && \
-                   ros2 topic list 2>/dev/null | grep -q "/tf"; then
-                    debug_log "Step 3 validation passed: Required nodes and topics found"
-                    return 0
-                fi
-                sleep 1
-            done
-            echo "ERROR: Step 3 validation failed - required nodes/topics not found within $timeout seconds"
-            return 1
+            if [ "$SIMULATION_MODE" = true ]; then
+                # Step 3 Simulation: Check for Gazebo controllers and robot state publisher
+                local end_time=$(($(date +%s) + timeout))
+                while [ $(date +%s) -lt $end_time ]; do
+                    if ros2 node list 2>/dev/null | grep -q "robot_state_publisher" && \
+                       ros2 topic list 2>/dev/null | grep -q "/tf" && \
+                       ros2 topic list 2>/dev/null | grep -q "/joint_states"; then
+                        debug_log "Step 3 validation passed: Gazebo robot systems active"
+                        return 0
+                    fi
+                    sleep 1
+                done
+                echo "ERROR: Step 3 validation failed - Gazebo robot systems not active within $timeout seconds"
+                return 1
+            else
+                # Step 3: Data processing - check for required nodes and topics
+                local end_time=$(($(date +%s) + timeout))
+                while [ $(date +%s) -lt $end_time ]; do
+                    if ros2 node list 2>/dev/null | grep -q "complementary_filter_gain_node" && \
+                       ros2 node list 2>/dev/null | grep -q "robot_state_publisher" && \
+                       ros2 topic list 2>/dev/null | grep -q "/tf"; then
+                        debug_log "Step 3 validation passed: Required nodes and topics found"
+                        return 0
+                    fi
+                    sleep 1
+                done
+                echo "ERROR: Step 3 validation failed - required nodes/topics not found within $timeout seconds"
+                return 1
+            fi
             ;;
         4)
             # Step 4: RViz - check process exists and validate map display capability
@@ -535,19 +595,30 @@ validate_step_success() {
                     if ros2 topic echo /map --once 2>/dev/null | grep -q "frame_id: map"; then
                         debug_log "Map data confirmed, checking navigation lifecycle activation..."
                         
-                        # Check if lifecycle manager activated the navigation nodes
-                        # Look for "Managed nodes are active" in the step log
-                        if [ -f "$step_log" ] && grep -q "Managed nodes are active" "$step_log"; then
-                            debug_log "Navigation lifecycle activation confirmed"
-                            
-                            # Give extra time for AMCL to fully initialize (critical for map frame)
-                            debug_log "Waiting additional 5 seconds for AMCL to fully initialize..."
-                            sleep 5
-                            
-                            debug_log "Step 5 validation passed: Navigation system fully activated with map"
-                            return 0
+                        # Different validation for simulation vs real robot
+                        if [ "$SIMULATION_MODE" = true ]; then
+                            # In simulation, check for SLAM toolbox and basic transform availability
+                            if ros2 run tf2_ros tf2_echo odom base_link --timeout 2 >/dev/null 2>&1; then
+                                debug_log "Step 5 validation passed: Gazebo SLAM navigation system active"
+                                return 0
+                            else
+                                debug_log "SLAM toolbox running but transforms not yet available"
+                            fi
                         else
-                            debug_log "Navigation nodes found but lifecycle not yet activated"
+                            # Check if lifecycle manager activated the navigation nodes
+                            # Look for "Managed nodes are active" in the step log
+                            if [ -f "$step_log" ] && grep -q "Managed nodes are active" "$step_log"; then
+                                debug_log "Navigation lifecycle activation confirmed"
+                                
+                                # Give extra time for AMCL to fully initialize (critical for map frame)
+                                debug_log "Waiting additional 5 seconds for AMCL to fully initialize..."
+                                sleep 5
+                                
+                                debug_log "Step 5 validation passed: Navigation system fully activated with map"
+                                return 0
+                            else
+                                debug_log "Navigation nodes found but lifecycle not yet activated"
+                            fi
                         fi
                     else
                         debug_log "Map topic exists but no data published yet"
@@ -568,10 +639,20 @@ validate_step_success() {
             # Verify slam_toolbox is running and publishing transforms
             local end_time=$(($(date +%s) + timeout))
             while [ $(date +%s) -lt $end_time ]; do
-                if ros2 node list 2>/dev/null | grep -q "slam_toolbox" && \
-                   ros2 run tf2_ros tf2_echo map odom --timeout 2 >/dev/null 2>&1; then
-                    debug_log "Step 6 validation passed: SLAM system initialized and publishing transforms"
-                    return 0
+                if ros2 node list 2>/dev/null | grep -q "slam_toolbox"; then
+                    if [ "$SIMULATION_MODE" = true ]; then
+                        # In simulation, check for basic transform chain
+                        if ros2 run tf2_ros tf2_echo odom base_link --timeout 2 >/dev/null 2>&1; then
+                            debug_log "Step 6 validation passed: Gazebo SLAM system initialized"
+                            return 0
+                        fi
+                    else
+                        # For real robot, check full transform chain
+                        if ros2 run tf2_ros tf2_echo map odom --timeout 2 >/dev/null 2>&1; then
+                            debug_log "Step 6 validation passed: SLAM system initialized and publishing transforms"
+                            return 0
+                        fi
+                    fi
                 fi
                 sleep 1
             done
@@ -1676,6 +1757,11 @@ if [ "$DEBUG_MODE" = true ]; then
     echo "🔍 Debug mode enabled - verbose logging active"
 fi
 
+if [ "$SIMULATION_MODE" = true ]; then
+    echo ""
+    echo "🎮 Simulation mode enabled - launching with Gazebo instead of real robot"
+fi
+
 if [ "$LOCALIZATION_TEST" = true ]; then
     echo ""
     echo "🧭 Localization testing enabled"
@@ -1734,8 +1820,12 @@ fi
 # Pre-launch system check to prevent duplicate processes
 check_existing_processes
 
-# Step 1: Start the Micro-ROS Agent (unless skipped)
-if [ "$SKIP_AGENT" = false ]; then
+# Step 1: Start the Micro-ROS Agent (unless skipped) OR Launch Gazebo Simulation
+if [ "$SIMULATION_MODE" = true ]; then
+    launch_in_terminal "Starting Gazebo simulation environment with world" \
+        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && gazebo --verbose worlds/empty.world" \
+        "1"
+elif [ "$SKIP_AGENT" = false ]; then
     launch_in_terminal "Starting the Micro-ROS Agent for ESP32 communication" \
         "docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host microros/micro-ros-agent:humble udp4 --port 8090" \
         "1"
@@ -1758,41 +1848,57 @@ if [ "$ONLY_AGENT" = true ]; then
     exit 0
 fi
 
-# Step 2: Power on the Yahboom Robot
-echo "====================================================="
-echo "STEP 2: Power on the physical Yahboom Robot"
-echo "====================================================="
-
-if [ "$AUTOTEST_MODE" = true ]; then
-    echo "🤖 AUTOTEST MODE: Assuming robot is already powered on and connected"
-    log_message "AUTOTEST STEP 2: Robot connection verification"
+# Step 2: Power on the Yahboom Robot OR Spawn Robot in Gazebo
+if [ "$SIMULATION_MODE" = true ]; then
+    echo "====================================================="
+    echo "STEP 2: Spawn robot in Gazebo simulation"
+    echo "====================================================="
     
-    # Validate robot connection
-    if validate_step_success "2" "$AUTOTEST_TIMEOUT"; then
-        echo "✅ Step 2 validation passed"
-        log_message "AUTOTEST STEP 2: PASSED"
-    else
-        handle_test_failure "2" "Robot connection verification failed"
-    fi
+    launch_in_terminal "Spawning Yahboom robot in Gazebo simulation" \
+        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 run gazebo_ros spawn_entity.py -entity yahboomcar -file \"$WORKSPACE_ROOT/yahboomcar_description/urdf/yahboomcar_robot2_gazebo.urdf\" -x 0 -y 0 -z 0.1" \
+        "2"
 else
-    echo "Manual step required:"
-    echo "  1. Turn on the physical robot's power switch"
-    echo "  2. Wait for the robot to boot up and connect to the Micro-ROS agent"
-    echo "  3. Check for connection messages in the Micro-ROS agent terminal"
-    echo ""
+    echo "====================================================="
+    echo "STEP 2: Power on the physical Yahboom Robot"
+    echo "====================================================="
 
-    log_message "STEP 2: Waiting for physical robot power on"
+    if [ "$AUTOTEST_MODE" = true ]; then
+        echo "🤖 AUTOTEST MODE: Assuming robot is already powered on and connected"
+        log_message "AUTOTEST STEP 2: Robot connection verification"
+        
+        # Validate robot connection
+        if validate_step_success "2" "$AUTOTEST_TIMEOUT"; then
+            echo "✅ Step 2 validation passed"
+            log_message "AUTOTEST STEP 2: PASSED"
+        else
+            handle_test_failure "2" "Robot connection verification failed"
+        fi
+    else
+        echo "Manual step required:"
+        echo "  1. Turn on the physical robot's power switch"
+        echo "  2. Wait for the robot to boot up and connect to the Micro-ROS agent"
+        echo "  3. Check for connection messages in the Micro-ROS agent terminal"
+        echo ""
 
-    echo "Press ENTER when the robot is powered on and connected..."
-    read
+        log_message "STEP 2: Waiting for physical robot power on"
 
-    log_message "STEP 2: Physical robot power on confirmed"
+        echo "Press ENTER when the robot is powered on and connected..."
+        read
+
+        log_message "STEP 2: Physical robot power on confirmed"
+    fi
 fi
 
-# Step 3: Launch the Car's Underlying Data Processing
-launch_in_terminal "Starting the car's underlying data processing for sensor integration" \
-    "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py" \
-    "3"
+# Step 3: Launch the Car's Underlying Data Processing OR Gazebo Controllers
+if [ "$SIMULATION_MODE" = true ]; then
+    launch_in_terminal "Starting Gazebo ros2_control controllers for differential drive" \
+        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && sleep 3 && ros2 run controller_manager spawner diff_drive_controller && ros2 run controller_manager spawner joint_state_broadcaster" \
+        "3"
+else
+    launch_in_terminal "Starting the car's underlying data processing for sensor integration" \
+        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py" \
+        "3"
+fi
 
 # Step 4: Start RViz for Visualization
 launch_in_terminal "Starting RViz for visualization of robot state and environment" \
@@ -1800,14 +1906,26 @@ launch_in_terminal "Starting RViz for visualization of robot state and environme
     "4"
 
 # Step 5: Launch the SLAM-based Navigation System
-launch_in_terminal "Launching SLAM-based navigation system" \
-    "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_nav slam_navigation_launch.py" \
-    "5"
+if [ "$SIMULATION_MODE" = true ]; then
+    launch_in_terminal "Launching SLAM-based navigation system (Gazebo simulation)" \
+        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_nav gazebo_slam_navigation_launch.py" \
+        "5"
+else
+    launch_in_terminal "Launching SLAM-based navigation system" \
+        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_nav slam_navigation_launch.py" \
+        "5"
+fi
 
 # Step 6: SLAM System Monitoring
-launch_in_terminal "Monitoring SLAM initialization and map building" \
-    "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && echo 'SLAM system initializing - map will be built automatically as robot moves'" \
-    "6"
+if [ "$SIMULATION_MODE" = true ]; then
+    launch_in_terminal "Initializing SLAM in Gazebo simulation environment" \
+        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && echo 'SLAM system initializing in Gazebo - use keyboard or RViz 2D Pose Estimate to initialize robot pose'" \
+        "6"
+else
+    launch_in_terminal "Monitoring SLAM initialization and map building" \
+        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && echo 'SLAM system initializing - map will be built automatically as robot moves'" \
+        "6"
+fi
 
 # Step 7: Start the B4M Waypoint Navigation Node with MQTT Parameters
 launch_in_terminal "Starting the B4M Waypoint Navigation Node with MQTT integration" \
@@ -1918,7 +2036,11 @@ log_message "B4M Robot launch script completed"
 if [ "$AUTOTEST_MODE" = true ]; then
     echo ""
     echo "======================================="
-    echo "B4M Robot Launch Test - PASSED"
+    if [ "$SIMULATION_MODE" = true ]; then
+        echo "B4M Robot Gazebo Simulation Test - PASSED"
+    else
+        echo "B4M Robot Launch Test - PASSED"
+    fi
     echo "======================================="
     echo "Test Run: $(date)"
     
@@ -1930,13 +2052,23 @@ if [ "$AUTOTEST_MODE" = true ]; then
     
     echo ""
     echo "Step Summary:"
-    echo "✅ Step 1: Micro-ROS Agent (assumed running - prerequisite)"
-    echo "✅ Step 2: Robot Connection" 
-    echo "✅ Step 3: Data Processing"
-    echo "✅ Step 4: RViz Launch"
-    echo "✅ Step 5: Navigation System"
-    echo "✅ Step 6: Pose Estimation"
-    echo "✅ Step 7: MQTT Navigation"
+    if [ "$SIMULATION_MODE" = true ]; then
+        echo "✅ Step 1: Gazebo Simulation Environment"
+        echo "✅ Step 2: Robot Spawning in Gazebo" 
+        echo "✅ Step 3: Gazebo Controllers"
+        echo "✅ Step 4: RViz Launch"
+        echo "✅ Step 5: SLAM Navigation (Gazebo)"
+        echo "✅ Step 6: SLAM Initialization (Gazebo)"
+        echo "✅ Step 7: MQTT Navigation"
+    else
+        echo "✅ Step 1: Micro-ROS Agent (assumed running - prerequisite)"
+        echo "✅ Step 2: Robot Connection" 
+        echo "✅ Step 3: Data Processing"
+        echo "✅ Step 4: RViz Launch"
+        echo "✅ Step 5: Navigation System"
+        echo "✅ Step 6: Pose Estimation"
+        echo "✅ Step 7: MQTT Navigation"
+    fi
     
     if [ "$LOCALIZATION_TEST" = true ]; then
         echo "✅ Step 8: Localization Quality Assessment"
