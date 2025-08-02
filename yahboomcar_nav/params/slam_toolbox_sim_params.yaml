@@ -3,7 +3,7 @@ slam_toolbox:
     # Basic Configuration (adjusted for Gazebo URDF frames)
     odom_frame: odom
     map_frame: map
-    base_frame: robot2/base_link
+    base_frame: base_link
     scan_topic: /scan
     use_map_saver: true
     use_lifecycle_manager: false

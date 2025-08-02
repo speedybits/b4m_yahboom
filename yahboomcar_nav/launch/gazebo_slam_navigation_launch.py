@@ -15,9 +15,9 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')  # Set to true for Gazebo
     namespace = LaunchConfiguration('namespace', default='')
     
-    # Use SLAM navigation parameters (without AMCL)
+    # Use Gazebo-specific SLAM navigation parameters (with use_sim_time: true)
     nav2_param_path = LaunchConfiguration('params_file', default=os.path.join(
-        package_path, 'params', 'slam_nav_params.yaml'))
+        package_path, 'params', 'gazebo_slam_nav_params.yaml'))
     
     # SLAM Toolbox simulation parameters
     slam_params_file = LaunchConfiguration('slam_params_file', 
