@@ -75,6 +75,15 @@ pkill -9 -f "nav2" 2>/dev/null
 pkill -9 -f "rviz" 2>/dev/null
 pkill -9 -f "amcl" 2>/dev/null
 
+# Kill Gazebo simulation processes
+shutdown_log "Stopping Gazebo simulation processes"
+pkill -9 -f "gazebo" 2>/dev/null
+pkill -9 -f "gzserver" 2>/dev/null
+pkill -9 -f "gzclient" 2>/dev/null
+pkill -9 -f "gazebo_ros2_control" 2>/dev/null
+pkill -9 -f "gazebo_ros_lidar_controller" 2>/dev/null
+pkill -9 -f "spawn_entity" 2>/dev/null
+
 # Kill Python ROS2 scripts but preserve the micro_ros_agent
 ps aux | grep "python.*ros2" | grep -v "micro_ros_agent" | awk '{print $2}' | xargs -r kill -9 2>/dev/null
 
@@ -136,7 +145,7 @@ pkill -f "xterm.*b4m_step" 2>/dev/null
 
 # Final status check
 shutdown_log "Checking for any remaining robot-related processes:"
-remaining_processes=$(ps aux | grep -E "(yahboom|b4m|nav2|rviz)" | grep -v grep | grep -v "b4m_shutdown" || true)
+remaining_processes=$(ps aux | grep -E "(yahboom|b4m|nav2|rviz|gazebo)" | grep -v grep | grep -v "b4m_shutdown" || true)
 if [ ! -z "$remaining_processes" ]; then
     shutdown_log "WARNING: Some processes may still be running:"
     echo "$remaining_processes" | tee -a "$SHUTDOWN_LOG"
