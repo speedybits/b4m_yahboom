@@ -2,6 +2,16 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Debug
+Periodically read debug_summary.md during debug sessions, and clear or update it as needed 
+
+## Running and Shut down
+Always use b4m_HA_launch to run tests. Use the --simulation switch for Gazebo-based tests
+If not running a simulation, always use the --skip-agent switch
+Always use b4m_shutdown to stop all running processes when appropriate
+If not running a simulation, always use b4m_shutdown --keep-agent
+
+
 ## Test-Driven Development
 Always create unit tests first for new features. These tests should fail because there is no code implemented at first
 Never create code that has mocked components or tests mocked components

@@ -392,12 +392,18 @@
   </ros2_control>
 
   <!-- Gazebo ros2_control plugin -->
-  <!-- FIX: Re-enable plugin with robot_state_publisher node parameter reference -->
+  <!-- FIX: Use external controller configuration file to avoid XML parsing issues -->
   <gazebo>
     <plugin filename="libgazebo_ros2_control.so" name="gazebo_ros2_control">
-      <parameters>/home/mike/projects/b4m_yahboom/yahboomcar_nav/params/gazebo_controllers.yaml</parameters>
-      <robot_param>robot_description</robot_param>
+      <ros>
+        <namespace></namespace>
+        <remapping>/cmd_vel:=/cmd_vel</remapping>
+        <remapping>/odom:=/odom</remapping>
+      </ros>
+      <control_period>0.01</control_period>
       <robot_param_node>robot_state_publisher</robot_param_node>
+      <robot_param>robot_description</robot_param>
+      <parameters>/home/mike/projects/b4m_yahboom/yahboomcar_nav/params/gazebo_controllers.yaml</parameters>
     </plugin>
   </gazebo>
 

@@ -3268,3 +3268,104 @@
 2025-07-25 20:52:27,047 - INFO - Successfully subscribed to yahboom/navigation/command
 2025-07-25 20:52:27,048 - INFO - Published ready message to yahboom/navigation/status
 2025-07-25 20:52:27,048 - INFO - Published command format info to yahboom/navigation/info
+2025-08-01 19:55:29,957 - INFO - B4MWaypointNav node starting
+2025-08-01 19:55:29,971 - INFO - Loading waypoints from /home/mike/projects/b4m_yahboom/install/b4m_waypoint_nav/share/b4m_waypoint_nav/waypoints.json
+2025-08-01 19:55:29,971 - INFO - File content length: 445 bytes
+2025-08-01 19:55:29,972 - INFO - Loaded waypoints for 1 maps: ['yahboom_map']
+2025-08-01 19:55:29,972 - INFO - Loaded waypoints for yahboom_map: ['Kitchen', 'Dining Room']
+2025-08-01 19:55:30,007 - INFO - MQTT Configuration - Broker: 192.168.68.111, Port: 1883, Username: robot
+2025-08-01 19:55:30,007 - INFO - Setting up MQTT client with ID: b4m_waypoint_nav_832
+2025-08-01 19:55:30,007 - INFO - Connecting to MQTT broker at 192.168.68.111:1883
+2025-08-01 19:55:30,008 - INFO - Using authentication for MQTT broker with username: robot
+2025-08-01 19:55:30,021 - INFO - Connected to MQTT broker
+2025-08-01 19:55:30,022 - INFO - Subscribing to MQTT topic: yahboom/navigation/command
+2025-08-01 19:55:30,022 - INFO - Successfully subscribed to yahboom/navigation/command
+2025-08-01 19:55:30,022 - INFO - Published ready message to yahboom/navigation/status
+2025-08-01 19:55:30,022 - INFO - Published command format info to yahboom/navigation/info
+2025-08-02 13:25:10,261 - INFO - B4MWaypointNav node starting
+2025-08-02 13:25:10,274 - INFO - Loading waypoints from /home/mike/projects/b4m_yahboom/install/b4m_waypoint_nav/share/b4m_waypoint_nav/waypoints.json
+2025-08-02 13:25:10,275 - INFO - File content length: 445 bytes
+2025-08-02 13:25:10,275 - INFO - Loaded waypoints for 1 maps: ['yahboom_map']
+2025-08-02 13:25:10,275 - INFO - Loaded waypoints for yahboom_map: ['Kitchen', 'Dining Room']
+2025-08-02 13:25:10,312 - INFO - MQTT Configuration - Broker: 192.168.68.111, Port: 1883, Username: robot
+2025-08-02 13:25:10,313 - INFO - Setting up MQTT client with ID: b4m_waypoint_nav_364
+2025-08-02 13:25:10,313 - INFO - Connecting to MQTT broker at 192.168.68.111:1883
+2025-08-02 13:25:10,313 - INFO - Using authentication for MQTT broker with username: robot
+2025-08-02 13:25:10,340 - INFO - Connected to MQTT broker
+2025-08-02 13:25:10,340 - INFO - Subscribing to MQTT topic: yahboom/navigation/command
+2025-08-02 13:25:10,341 - INFO - Successfully subscribed to yahboom/navigation/command
+2025-08-02 13:25:10,342 - INFO - Published ready message to yahboom/navigation/status
+2025-08-02 13:25:10,342 - INFO - Published command format info to yahboom/navigation/info
+2025-08-02 15:29:57,650 - INFO - B4MWaypointNav node starting
+2025-08-02 15:29:57,667 - INFO - Loading waypoints from /home/mike/projects/b4m_yahboom/install/b4m_waypoint_nav/share/b4m_waypoint_nav/waypoints.json
+2025-08-02 15:29:57,667 - INFO - File content length: 445 bytes
+2025-08-02 15:29:57,667 - INFO - Loaded waypoints for 1 maps: ['yahboom_map']
+2025-08-02 15:29:57,668 - INFO - Loaded waypoints for yahboom_map: ['Kitchen', 'Dining Room']
+2025-08-02 15:29:57,707 - INFO - MQTT Configuration - Broker: 192.168.68.111, Port: 1883, Username: robot
+2025-08-02 15:29:57,707 - INFO - Setting up MQTT client with ID: b4m_waypoint_nav_446
+2025-08-02 15:29:57,707 - INFO - Connecting to MQTT broker at 192.168.68.111:1883
+2025-08-02 15:29:57,708 - INFO - Using authentication for MQTT broker with username: robot
+2025-08-02 15:29:57,733 - INFO - Connected to MQTT broker
+2025-08-02 15:29:57,734 - INFO - Subscribing to MQTT topic: yahboom/navigation/command
+2025-08-02 15:29:57,734 - INFO - Successfully subscribed to yahboom/navigation/command
+2025-08-02 15:29:57,734 - INFO - Published ready message to yahboom/navigation/status
+2025-08-02 15:29:57,734 - INFO - Published command format info to yahboom/navigation/info
+2025-08-02 15:39:19,051 - INFO - B4MWaypointNav node starting
+2025-08-02 15:39:19,070 - INFO - Loading waypoints from /home/mike/projects/b4m_yahboom/install/b4m_waypoint_nav/share/b4m_waypoint_nav/waypoints.json
+2025-08-02 15:39:19,071 - INFO - File content length: 445 bytes
+2025-08-02 15:39:19,071 - INFO - Loaded waypoints for 1 maps: ['yahboom_map']
+2025-08-02 15:39:19,071 - INFO - Loaded waypoints for yahboom_map: ['Kitchen', 'Dining Room']
+2025-08-02 15:39:19,108 - INFO - MQTT Configuration - Broker: 192.168.68.111, Port: 1883, Username: robot
+2025-08-02 15:39:19,108 - INFO - Setting up MQTT client with ID: b4m_waypoint_nav_355
+2025-08-02 15:39:19,109 - INFO - Connecting to MQTT broker at 192.168.68.111:1883
+2025-08-02 15:39:19,109 - INFO - Using authentication for MQTT broker with username: robot
+2025-08-02 15:39:19,128 - INFO - Connected to MQTT broker
+2025-08-02 15:39:19,129 - INFO - Subscribing to MQTT topic: yahboom/navigation/command
+2025-08-02 15:39:19,130 - INFO - Successfully subscribed to yahboom/navigation/command
+2025-08-02 15:39:19,131 - INFO - Published ready message to yahboom/navigation/status
+2025-08-02 15:39:19,131 - INFO - Published command format info to yahboom/navigation/info
+2025-08-02 15:43:21,357 - INFO - MQTT message received on topic: yahboom/navigation/command, payload: "{"command": "goto", "waypoint_id": "Door", "position": {"x": 3.85, "y": -0.30}, "orientation": {"x": 0.0, "y": 0.0, "z": 0.7071, "w": 0.7071}}"
+2025-08-02 15:43:21,358 - INFO - Received navigation command: "{"command": "goto", "waypoint_id": "Door", "position": {"x": 3.85, "y": -0.30}, "orientation": {"x": 0.0, "y": 0.0, "z": 0.7071, "w": 0.7071}}"
+2025-08-02 15:43:21,358 - INFO - Using coordinate-based navigation for: "Door"
+2025-08-02 15:54:26,027 - INFO - B4MWaypointNav node starting
+2025-08-02 15:54:26,042 - INFO - Loading waypoints from /home/mike/projects/b4m_yahboom/install/b4m_waypoint_nav/share/b4m_waypoint_nav/waypoints.json
+2025-08-02 15:54:26,042 - INFO - File content length: 445 bytes
+2025-08-02 15:54:26,042 - INFO - Loaded waypoints for 1 maps: ['yahboom_map']
+2025-08-02 15:54:26,042 - INFO - Loaded waypoints for yahboom_map: ['Kitchen', 'Dining Room']
+2025-08-02 15:54:26,080 - INFO - MQTT Configuration - Broker: 192.168.68.111, Port: 1883, Username: robot
+2025-08-02 15:54:26,080 - INFO - Setting up MQTT client with ID: b4m_waypoint_nav_209
+2025-08-02 15:54:26,080 - INFO - Connecting to MQTT broker at 192.168.68.111:1883
+2025-08-02 15:54:26,081 - INFO - Using authentication for MQTT broker with username: robot
+2025-08-02 15:54:26,095 - INFO - Connected to MQTT broker
+2025-08-02 15:54:26,096 - INFO - Subscribing to MQTT topic: yahboom/navigation/command
+2025-08-02 15:54:26,096 - INFO - Successfully subscribed to yahboom/navigation/command
+2025-08-02 15:54:26,097 - INFO - Published ready message to yahboom/navigation/status
+2025-08-02 15:54:26,097 - INFO - Published command format info to yahboom/navigation/info
+2025-08-02 16:07:58,917 - INFO - B4MWaypointNav node starting
+2025-08-02 16:07:58,931 - INFO - Loading waypoints from /home/mike/projects/b4m_yahboom/install/b4m_waypoint_nav/share/b4m_waypoint_nav/waypoints.json
+2025-08-02 16:07:58,932 - INFO - File content length: 445 bytes
+2025-08-02 16:07:58,932 - INFO - Loaded waypoints for 1 maps: ['yahboom_map']
+2025-08-02 16:07:58,932 - INFO - Loaded waypoints for yahboom_map: ['Kitchen', 'Dining Room']
+2025-08-02 16:07:58,972 - INFO - MQTT Configuration - Broker: 192.168.68.111, Port: 1883, Username: robot
+2025-08-02 16:07:58,973 - INFO - Setting up MQTT client with ID: b4m_waypoint_nav_132
+2025-08-02 16:07:58,973 - INFO - Connecting to MQTT broker at 192.168.68.111:1883
+2025-08-02 16:07:58,974 - INFO - Using authentication for MQTT broker with username: robot
+2025-08-02 16:07:59,016 - INFO - Connected to MQTT broker
+2025-08-02 16:07:59,016 - INFO - Subscribing to MQTT topic: yahboom/navigation/command
+2025-08-02 16:07:59,017 - INFO - Successfully subscribed to yahboom/navigation/command
+2025-08-02 16:07:59,017 - INFO - Published ready message to yahboom/navigation/status
+2025-08-02 16:07:59,017 - INFO - Published command format info to yahboom/navigation/info
+2025-08-02 16:50:04,005 - INFO - B4MWaypointNav node starting
+2025-08-02 16:50:04,019 - INFO - Loading waypoints from /home/mike/projects/b4m_yahboom/install/b4m_waypoint_nav/share/b4m_waypoint_nav/waypoints.json
+2025-08-02 16:50:04,019 - INFO - File content length: 445 bytes
+2025-08-02 16:50:04,019 - INFO - Loaded waypoints for 1 maps: ['yahboom_map']
+2025-08-02 16:50:04,019 - INFO - Loaded waypoints for yahboom_map: ['Kitchen', 'Dining Room']
+2025-08-02 16:50:04,063 - INFO - MQTT Configuration - Broker: 192.168.68.111, Port: 1883, Username: robot
+2025-08-02 16:50:04,064 - INFO - Setting up MQTT client with ID: b4m_waypoint_nav_787
+2025-08-02 16:50:04,064 - INFO - Connecting to MQTT broker at 192.168.68.111:1883
+2025-08-02 16:50:04,064 - INFO - Using authentication for MQTT broker with username: robot
+2025-08-02 16:50:04,078 - INFO - Connected to MQTT broker
+2025-08-02 16:50:04,078 - INFO - Subscribing to MQTT topic: yahboom/navigation/command
+2025-08-02 16:50:04,079 - INFO - Successfully subscribed to yahboom/navigation/command
+2025-08-02 16:50:04,079 - INFO - Published ready message to yahboom/navigation/status
+2025-08-02 16:50:04,080 - INFO - Published command format info to yahboom/navigation/info
