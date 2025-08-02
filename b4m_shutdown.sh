@@ -84,6 +84,12 @@ pkill -9 -f "gazebo_ros2_control" 2>/dev/null
 pkill -9 -f "gazebo_ros_lidar_controller" 2>/dev/null
 pkill -9 -f "spawn_entity" 2>/dev/null
 
+# Kill ros2_control spawner processes
+shutdown_log "Stopping ros2_control spawner processes"
+pkill -9 -f "controller_manager/spawner.*diff_drive_controller" 2>/dev/null
+pkill -9 -f "controller_manager/spawner.*joint_state_broadcaster" 2>/dev/null
+pkill -9 -f "controller_manager/spawner" 2>/dev/null
+
 # Kill Python ROS2 scripts but preserve the micro_ros_agent
 ps aux | grep "python.*ros2" | grep -v "micro_ros_agent" | awk '{print $2}' | xargs -r kill -9 2>/dev/null
 
