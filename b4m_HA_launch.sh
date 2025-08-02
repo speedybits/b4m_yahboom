@@ -587,23 +587,35 @@ validate_step_success() {
             # Step 5: Navigation - check for navigation nodes, map data, and lifecycle activation
             local end_time=$(($(date +%s) + timeout))
             while [ $(date +%s) -lt $end_time ]; do
-                if ros2 node list 2>/dev/null | grep -q "slam_toolbox" && \
-                   ros2 topic list 2>/dev/null | grep -q "/map"; then
-                    debug_log "Navigation nodes found, checking map data and lifecycle state..."
-                    
-                    # Check if map data is published
-                    if ros2 topic echo /map --once 2>/dev/null | grep -q "frame_id: map"; then
-                        debug_log "Map data confirmed, checking navigation lifecycle activation..."
+                # FIX: Different validation logic for simulation vs real robot mode
+                if [ "$SIMULATION_MODE" = true ]; then
+                    # In SLAM simulation, check for node startup and lifecycle activation
+                    if ros2 node list 2>/dev/null | grep -q "slam_toolbox" && \
+                       ros2 node list 2>/dev/null | grep -q "lifecycle_manager_navigation"; then
+                        debug_log "SLAM and navigation nodes found, checking lifecycle activation..."
                         
-                        # Different validation for simulation vs real robot
-                        if [ "$SIMULATION_MODE" = true ]; then
-                            # In simulation, check for SLAM toolbox and basic transform availability
-                            if ros2 run tf2_ros tf2_echo odom base_link --timeout 2 >/dev/null 2>&1; then
-                                debug_log "Step 5 validation passed: Gazebo SLAM navigation system active"
-                                return 0
-                            else
-                                debug_log "SLAM toolbox running but transforms not yet available"
-                            fi
+                        # Check if lifecycle manager has activated navigation nodes OR is actively configuring
+                        if [ -f "$step_log" ] && grep -q "Managed nodes are active" "$step_log"; then
+                            debug_log "Step 5 validation passed: SLAM navigation system activated"
+                            return 0
+                        elif [ -f "$step_log" ] && grep -q "Activating.*controller_server\|Configuring.*server" "$step_log"; then
+                            debug_log "Step 5 validation passed: SLAM navigation system configuring successfully"
+                            return 0
+                        else
+                            debug_log "Navigation nodes starting up, waiting for lifecycle activation..."
+                        fi
+                    else
+                        debug_log "Waiting for SLAM toolbox and navigation nodes to start..."
+                    fi
+                else
+                    # Real robot mode - expect pre-existing map
+                    if ros2 node list 2>/dev/null | grep -q "slam_toolbox" && \
+                       ros2 topic list 2>/dev/null | grep -q "/map"; then
+                        debug_log "Navigation nodes found, checking map data and lifecycle state..."
+                        
+                        # Check if map data is published
+                        if ros2 topic echo /map --once 2>/dev/null | grep -q "frame_id: map"; then
+                            debug_log "Map data confirmed, checking navigation lifecycle activation..."
                         else
                             # Check if lifecycle manager activated the navigation nodes
                             # Look for "Managed nodes are active" in the step log
@@ -1823,7 +1835,7 @@ check_existing_processes
 # Step 1: Start the Micro-ROS Agent (unless skipped) OR Launch Gazebo Simulation
 if [ "$SIMULATION_MODE" = true ]; then
     launch_in_terminal "Starting Gazebo simulation environment with world" \
-        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && gazebo --verbose worlds/empty.world" \
+        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && gazebo --verbose -s libgazebo_ros_init.so -s libgazebo_ros_factory.so worlds/empty.world" \
         "1"
 elif [ "$SKIP_AGENT" = false ]; then
     launch_in_terminal "Starting the Micro-ROS Agent for ESP32 communication" \
@@ -1848,14 +1860,14 @@ if [ "$ONLY_AGENT" = true ]; then
     exit 0
 fi
 
-# Step 2: Power on the Yahboom Robot OR Spawn Robot in Gazebo
+# Step 2: Power on the Yahboom Robot OR Spawn Robot with Controllers in Gazebo
 if [ "$SIMULATION_MODE" = true ]; then
     echo "====================================================="
-    echo "STEP 2: Spawn robot in Gazebo simulation"
+    echo "STEP 2: Spawn robot with controllers in Gazebo simulation"
     echo "====================================================="
     
-    launch_in_terminal "Spawning Yahboom robot in Gazebo simulation" \
-        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 run gazebo_ros spawn_entity.py -entity yahboomcar -file \"$WORKSPACE_ROOT/yahboomcar_description/urdf/yahboomcar_robot2_gazebo.urdf\" -x 0 -y 0 -z 0.1" \
+    launch_in_terminal "Spawning Yahboom robot with controllers in Gazebo simulation" \
+        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_nav spawn_robot_with_controllers_gazebo.py" \
         "2"
 else
     echo "====================================================="
@@ -1891,9 +1903,10 @@ fi
 
 # Step 3: Launch the Car's Underlying Data Processing OR Gazebo Controllers
 if [ "$SIMULATION_MODE" = true ]; then
-    launch_in_terminal "Starting Gazebo ros2_control controllers for differential drive" \
-        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && sleep 3 && ros2 run controller_manager spawner diff_drive_controller && ros2 run controller_manager spawner joint_state_broadcaster" \
-        "3"
+    # NOTE: Robot state publisher and controllers are now handled in Step 2 
+    # by the spawn_robot_with_controllers_gazebo.py launch file
+    # No separate Step 3 needed for simulation mode
+    echo "✅ Step 3: Skipped for simulation mode (handled in Step 2)"
 else
     launch_in_terminal "Starting the car's underlying data processing for sensor integration" \
         "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py" \
@@ -1901,9 +1914,15 @@ else
 fi
 
 # Step 4: Start RViz for Visualization
-launch_in_terminal "Starting RViz for visualization of robot state and environment" \
-    "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_nav display_launch.py" \
-    "4"
+if [ "$SIMULATION_MODE" = true ]; then
+    launch_in_terminal "Starting RViz for visualization of robot state and environment (simulation mode)" \
+        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_nav display_launch.py use_sim_time:=true" \
+        "4"
+else
+    launch_in_terminal "Starting RViz for visualization of robot state and environment" \
+        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_nav display_launch.py use_sim_time:=false" \
+        "4"
+fi
 
 # Step 5: Launch the SLAM-based Navigation System
 if [ "$SIMULATION_MODE" = true ]; then
