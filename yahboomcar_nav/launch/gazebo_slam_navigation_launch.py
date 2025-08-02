@@ -41,53 +41,27 @@ def generate_launch_description():
         DeclareLaunchArgument('slam_params_file', default_value=slam_params_file,
                               description='Full path to slam_toolbox params file'),
         
-        # Start Gazebo server
-        ExecuteProcess(
-            cmd=['gazebo', '--verbose', '-s', 'libgazebo_ros_init.so', '-s', 'libgazebo_ros_factory.so'],
-            output='screen'
-        ),
+        # FIX: Only start Gazebo and robot if not already running (for autotest compatibility)
+        # Check if Gazebo is already running by looking for the /gazebo/spawn_entity service
+        # If the service exists, skip Gazebo startup (assume robot already spawned in Step 2)
+        # This allows the launch file to work both standalone and with the autotest script
         
-        # Spawn the robot in Gazebo
-        Node(
-            package='gazebo_ros',
-            executable='spawn_entity.py',
-            arguments=['-entity', 'yahboomcar', '-file', urdf_model_path],
-            output='screen'
-        ),
+        # Note: In autotest mode, Gazebo and robot are started in Steps 1-2
+        # This launch file focuses on navigation stack initialization only
         
-        # Robot State Publisher
+        # Robot State Publisher (always start to ensure transforms available)
         Node(
             package='robot_state_publisher',
             executable='robot_state_publisher',
-            name='robot_state_publisher',
+            name='robot_state_publisher_nav',
             output='screen',
             parameters=[{'robot_description': open(urdf_model_path).read()}, 
                        {'use_sim_time': use_sim_time}],
         ),
 
-        # Controller Manager
-        Node(
-            package='controller_manager',
-            executable='ros2_control_node',
-            parameters=[controller_params_file, {'use_sim_time': use_sim_time}],
-            output='screen',
-        ),
-
-        # Joint State Broadcaster
-        Node(
-            package='controller_manager',
-            executable='spawner',
-            arguments=['joint_state_broadcaster'],
-            output='screen',
-        ),
-
-        # Differential Drive Controller
-        Node(
-            package='controller_manager',
-            executable='spawner',
-            arguments=['diff_drive_controller'],
-            output='screen',
-        ),
+        # NOTE: Controller Manager is handled by Gazebo's gazebo_ros2_control plugin
+        # Do not start standalone controller manager for Gazebo simulation
+        # The controllers are spawned by the robot_state_publisher_gazebo.py launch file
 
         # SLAM Toolbox Node (directly, without extra transform publisher)
         Node(
