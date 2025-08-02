@@ -13,16 +13,20 @@ def generate_launch_description():
     default_rviz_config_path = package_path / 'rviz/view.rviz'
     rviz_arg = DeclareLaunchArgument(name='rvizconfig', default_value=str(default_rviz_config_path),
                                      description='Absolute path to rviz config file')
+    use_sim_time_arg = DeclareLaunchArgument(name='use_sim_time', default_value='false',
+                                           description='Use simulation time if true')
 
     rviz_node = Node(
         package='rviz2',
         executable='rviz2',
         name='rviz2',
         output='screen',
+        parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}],
         arguments=['-d', LaunchConfiguration('rvizconfig')],
     )
 
     return LaunchDescription([
         rviz_arg,
+        use_sim_time_arg,
         rviz_node
     ])

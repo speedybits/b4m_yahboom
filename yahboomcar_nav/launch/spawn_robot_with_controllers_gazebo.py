@@ -1,4 +1,5 @@
 import os
+import shlex
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import ExecuteProcess, IncludeLaunchDescription, TimerAction
@@ -26,10 +27,12 @@ def generate_launch_description():
     
     return LaunchDescription([
         # FIX: Start Robot State Publisher first so gazebo_ros2_control plugin can find robot_description
+        # Publish to global namespace (empty namespace) for gazebo_ros2_control to find
         Node(
             package='robot_state_publisher',
             executable='robot_state_publisher',
             name='robot_state_publisher',
+            namespace='',  # Global namespace
             output='screen',
             parameters=[
                 {'robot_description': robot_description_content},
@@ -37,7 +40,8 @@ def generate_launch_description():
             ],
         ),
         
-        # Second: Wait a moment then spawn the robot in Gazebo (plugin will load controller manager)
+        # Second: Spawn the robot in Gazebo - back to using file which works
+        # The gazebo_ros2_control plugin will find robot_description from robot_state_publisher
         TimerAction(
             period=2.0,  # Wait 2 seconds for robot_state_publisher to start
             actions=[
@@ -51,9 +55,9 @@ def generate_launch_description():
             ]
         ),
         
-        # Third: Spawn controllers after gazebo_ros2_control plugin initializes controller manager
+        # Fourth: Spawn controllers after gazebo_ros2_control plugin initializes controller manager
         TimerAction(
-            period=5.0,  # Wait for robot to be spawned and gazebo plugin to initialize controller manager
+            period=6.0,  # Wait for robot to be spawned and gazebo plugin to initialize controller manager
             actions=[
                 Node(
                     package='controller_manager',
@@ -65,7 +69,7 @@ def generate_launch_description():
         ),
         
         TimerAction(
-            period=7.0,  # Additional delay for second controller
+            period=8.0,  # Additional delay for second controller
             actions=[
                 Node(
                     package='controller_manager',
