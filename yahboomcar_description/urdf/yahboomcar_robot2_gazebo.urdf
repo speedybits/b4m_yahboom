@@ -49,7 +49,7 @@
   <joint name="base_joint" type="fixed">
         <parent link="base_footprint"/>
         <child link="base_link"/>
-        <origin xyz="0.0 0.0 0.0815" rpy="0 0 0"/>
+        <origin xyz="0.0 0.0 0.06595" rpy="0 0 0"/>
   </joint>
   <link
     name="left_front_wheel">
@@ -84,10 +84,9 @@
     <collision>
       <origin
         xyz="0 0 0"
-        rpy="0 0 0" />
+        rpy="1.57079632679 0 0" />
       <geometry>
-        <mesh
-          filename="/home/mike/projects/b4m_yahboom/yahboomcar_description/meshes/zh_Link.STL" />
+        <cylinder radius="0.033" length="0.015"/>
       </geometry>
     </collision>
   </link>
@@ -137,10 +136,9 @@
     <collision>
       <origin
         xyz="0 0 0"
-        rpy="0 0 0" />
+        rpy="1.57079632679 0 0" />
       <geometry>
-        <mesh
-          filename="/home/mike/projects/b4m_yahboom/yahboomcar_description/meshes/zh_Link.STL" />
+        <cylinder radius="0.033" length="0.015"/>
       </geometry>
     </collision>
   </link>
@@ -190,10 +188,9 @@
     <collision>
       <origin
         xyz="0 0 0"
-        rpy="0 0 0" />
+        rpy="1.57079632679 0 0" />
       <geometry>
-        <mesh
-          filename="/home/mike/projects/b4m_yahboom/yahboomcar_description/meshes/yh_Link.STL" />
+        <cylinder radius="0.033" length="0.015"/>
       </geometry>
     </collision>
   </link>
@@ -243,10 +240,9 @@
     <collision>
       <origin
         xyz="0 0 0"
-        rpy="0 0 0" />
+        rpy="1.57079632679 0 0" />
       <geometry>
-        <mesh
-          filename="/home/mike/projects/b4m_yahboom/yahboomcar_description/meshes/yh_Link.STL" />
+        <cylinder radius="0.033" length="0.015"/>
       </geometry>
     </collision>
   </link>
