@@ -113,11 +113,13 @@ Replace the current AMCL/gmapping setup with slam_toolbox to:
 - [ ] **MQTT Navigation**: Test existing waypoint navigation via MQTT
 - [ ] **GUI Compatibility**: Verify B4M Robot Manager works unchanged
 
-### ✅ **Gazebo Simulation Testing**
-- [x] **Launch Test**: SLAM system successfully launched with Ignition Gazebo
+### ⚠️ **Gazebo Simulation Testing**
+- [x] **Manual Launch Test**: SLAM system successfully launched with Ignition Gazebo
 - [x] **Robot Control**: Differential drive plugin working with cmd_vel commands
 - [x] **SLAM Integration**: SLAM toolbox running and ready for mapping
 - [x] **RViz Integration**: Visualization system launched and operational
+- [ ] **Integrated Launch Test**: `./b4m_HA_launch.sh --simulation --autotest --debug`
+- [ ] **Full System Validation**: Complete automated testing through launch script
 
 ### ⚠️ **Key Integration Points**
 - [ ] **MQTT Compatibility**: Existing waypoint commands work unchanged
@@ -200,8 +202,8 @@ Replace the current AMCL/gmapping setup with slam_toolbox to:
 2. ✅ **Launch Files Complete**: SLAM-based navigation launch implemented  
 3. ✅ **Launch Script Complete**: b4m_HA_launch.sh simplified and ready
 4. ⚠️ **Test Real Robot**: `./b4m_HA_launch.sh --autotest --debug`
-5. ✅ **Test Gazebo**: SLAM system operational with Ignition Gazebo direct plugin approach
-6. ⚠️ **Validate Remaining**: Real Robot environment (Gazebo + RViz already operational)
+5. ⚠️ **Test Gazebo Integration**: `./b4m_HA_launch.sh --simulation --autotest --debug`
+6. ⚠️ **Validate All Environments**: Gazebo integration + Real Robot testing
 
 ## 🚀 Implementation Summary
 
@@ -236,7 +238,16 @@ b4m_HA_launch.sh                                      [MODIFIED]
 ./b4m_shutdown.sh --keep-agent
 ```
 
-**For Gazebo Simulation Testing (Current Working Method):**
+**For Gazebo Simulation Testing (Integrated Method - GOAL):**
+```bash
+# Complete integrated launch using b4m_HA_launch.sh
+./b4m_HA_launch.sh --simulation --autotest --debug
+
+# Shutdown when done
+./b4m_shutdown.sh --keep-agent
+```
+
+**For Gazebo Simulation Testing (Manual Method - Currently Working):**
 ```bash
 # Start Ignition Gazebo
 source install/setup.bash && ign gazebo &
@@ -342,3 +353,40 @@ sudo apt install ros-humble-teleop-twist-keyboard
 - ✅ **Keyboard Teleop**: Ready for interactive robot control
 
 **Ready for**: Real-time SLAM mapping in Gazebo with keyboard teleop control.
+
+---
+
+## 🎮 b4m_HA_launch.sh Integration Requirements
+
+### ⚠️ **Missing Integration Step**
+The current manual testing approach bypasses the integrated `b4m_HA_launch.sh` system. However, the launch script has full support for simulation mode and needs to be validated:
+
+**Key Challenge**: The `b4m_HA_launch.sh --simulation` mode currently uses:
+- `gazebo --verbose -s libgazebo_ros_init.so -s libgazebo_ros_factory.so worlds/empty.world` (Gazebo Classic)
+- `ros2 launch yahboomcar_nav spawn_robot_with_controllers_gazebo.py` (ros2_control approach)
+
+**Our Working Solution Uses**:
+- `ign gazebo` (Ignition Gazebo)  
+- `ros2 launch yahboomcar_nav spawn_robot_simple_gazebo.py` (direct plugin approach)
+
+### 📋 **Integration Tasks Required**:
+
+1. **Update b4m_HA_launch.sh simulation mode**:
+   - Replace Gazebo Classic with Ignition Gazebo commands
+   - Replace ros2_control robot spawning with direct plugin approach  
+   - Update step validation for Ignition Gazebo instead of Gazebo Classic
+
+2. **Test integrated launch**:
+   - Verify `./b4m_HA_launch.sh --simulation --autotest --debug` works end-to-end
+   - Ensure all 7 steps complete successfully with new approach
+   - Validate automated step verification works with Ignition Gazebo
+
+3. **Complete system validation**:
+   - Full SLAM mapping test through integrated launch script
+   - MQTT navigation compatibility verification 
+   - Automated testing and validation pipeline
+
+### 🎯 **Integration Status**:
+- ⚠️ **Manual SLAM Testing**: ✅ Working (Ignition Gazebo + direct plugins)
+- ⚠️ **Integrated Launch Script**: 🔄 Requires updates for Ignition Gazebo  
+- ⚠️ **Full System Test**: 🔄 Pending b4m_HA_launch.sh integration
