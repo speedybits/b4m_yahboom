@@ -370,42 +370,8 @@
       xyz="0 0 0" />
   </joint>
 
-  <!-- ros2_control block for differential drive -->
-  <ros2_control name="GazeboSystem" type="system">
-    <hardware>
-      <plugin>gazebo_ros2_control/GazeboSystem</plugin>
-    </hardware>
-    
-    <!-- Left front wheel joint -->
-    <joint name="left_front_joint">
-      <command_interface name="velocity" />
-      <state_interface name="position"/>
-      <state_interface name="velocity"/>
-    </joint>
-    
-    <!-- Right front wheel joint -->
-    <joint name="right_front_joint">
-      <command_interface name="velocity" />
-      <state_interface name="position"/>
-      <state_interface name="velocity"/>
-    </joint>
-  </ros2_control>
-
-  <!-- Gazebo ros2_control plugin -->
-  <!-- FIX: Use external controller configuration file to avoid XML parsing issues -->
-  <gazebo>
-    <plugin filename="libgazebo_ros2_control.so" name="gazebo_ros2_control">
-      <ros>
-        <namespace></namespace>
-        <remapping>/cmd_vel:=/cmd_vel</remapping>
-        <remapping>/odom:=/odom</remapping>
-      </ros>
-      <control_period>0.01</control_period>
-      <robot_param_node>robot_state_publisher</robot_param_node>
-      <robot_param>robot_description</robot_param>
-      <parameters>/home/mike/projects/b4m_yahboom/yahboomcar_nav/params/gazebo_controllers.yaml</parameters>
-    </plugin>
-  </gazebo>
+  <!-- REMOVED: gz_ros2_control blocks to avoid conflicts with direct DiffDrive plugin -->
+  <!-- Using simple DiffDrive plugin instead for SLAM testing -->
 
   <!-- Gazebo plugin for the laser -->
   <gazebo reference="laser">
@@ -442,5 +408,22 @@
         <frame_name>laser</frame_name>
       </plugin>
     </sensor>
+  </gazebo>
+
+  <!-- Simple differential drive plugin for keyboard teleop -->
+  <!-- BYPASS: Direct motor control without ros2_control for SLAM testing -->
+  <gazebo>
+    <plugin filename="libignition-gazebo-diff-drive-system.so" name="ignition::gazebo::systems::DiffDrive">
+      <left_joint>left_front_joint</left_joint>
+      <right_joint>right_front_joint</right_joint>
+      <wheel_separation>0.19</wheel_separation>
+      <wheel_radius>0.033</wheel_radius>
+      <odom_publish_frequency>50</odom_publish_frequency>
+      <topic>cmd_vel</topic>
+      <odom_topic>odometry</odom_topic>
+      <tf_topic>tf</tf_topic>
+      <frame_id>odom</frame_id>
+      <child_frame_id>base_footprint</child_frame_id>
+    </plugin>
   </gazebo>
 </robot>
