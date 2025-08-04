@@ -18,6 +18,29 @@ export RCL_LOG_LEVEL=debug
 #   --debug:         Enable verbose debug logging
 #   --simulation:    Launch in Gazebo simulation mode instead of real robot
 #   --slam-test:     Add Steps 8-10 for automated SLAM testing (skips Robot Manager GUI)
+#
+# Example Usage Scenarios:
+#
+# 1. Interactive SLAM Mapping in Simulation:
+#    ./b4m_HA_launch.sh --simulation
+#    # Then use keyboard teleop to drive robot and build map:
+#    ros2 run teleop_twist_keyboard teleop_twist_keyboard
+#
+# 2. Automated System Validation:
+#    ./b4m_HA_launch.sh --simulation --autotest --slam-test
+#    # Runs full automated test suite including square navigation
+#
+# 3. Quick System Check:
+#    ./b4m_HA_launch.sh --simulation --autotest --debug
+#    # Validates all components are working with verbose output
+#
+# 4. Real Robot Testing:
+#    ./b4m_HA_launch.sh --autotest --debug
+#    # Tests with physical robot (requires robot to be powered on)
+#
+# 5. Development/Debug Mode:
+#    ./b4m_HA_launch.sh --simulation --debug
+#    # Interactive mode with verbose logging for troubleshooting
 
 # Parse command line arguments
 SKIP_AGENT=false
@@ -60,6 +83,24 @@ for arg in "$@"; do
             echo "  --debug:         Enable verbose debug logging"
             echo "  --simulation:    Launch in Gazebo simulation mode instead of real robot"
             echo "  --slam-test:     Add Steps 8-10 for automated SLAM testing (skips Robot Manager GUI)"
+            echo ""
+            echo "Example Usage Scenarios:"
+            echo ""
+            echo "1. Interactive SLAM Mapping in Simulation:"
+            echo "   ./b4m_HA_launch.sh --simulation"
+            echo "   # Then use: ros2 run teleop_twist_keyboard teleop_twist_keyboard"
+            echo ""
+            echo "2. Automated System Validation:"
+            echo "   ./b4m_HA_launch.sh --simulation --autotest --slam-test"
+            echo ""
+            echo "3. Quick System Check:"
+            echo "   ./b4m_HA_launch.sh --simulation --autotest --debug"
+            echo ""
+            echo "4. Real Robot Testing:"
+            echo "   ./b4m_HA_launch.sh --autotest --debug"
+            echo ""
+            echo "5. Development/Debug Mode:"
+            echo "   ./b4m_HA_launch.sh --simulation --debug"
             exit 0
             ;;
         *)
