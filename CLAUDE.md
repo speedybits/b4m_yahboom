@@ -2,8 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Debug
-Periodically read debug_summary.md during debug sessions, and clear or update it as needed 
+## Command time-outs
+The timeout for any command you run in b4m_HA_launch --autotest mode is 120s, unless you have a very good reason to make it longer
+
 
 ## Running and Shut down
 Always use b4m_HA_launch to run tests. Use the --simulation switch for Gazebo-based tests
