@@ -55,9 +55,10 @@ def generate_launch_description():
             ]
         ),
         
-        # Fourth: Spawn controllers after gazebo_ros2_control plugin initializes controller manager
+        # FIX: Increased delays based on Grok AI analysis - executor needs more time to spin
+        # Race condition: service advertised before executor ready to handle callbacks
         TimerAction(
-            period=6.0,  # Wait for robot to be spawned and gazebo plugin to initialize controller manager
+            period=10.0,  # Increased from 6s - ensure gazebo_ros2_control executor is spinning
             actions=[
                 Node(
                     package='controller_manager',
@@ -69,7 +70,7 @@ def generate_launch_description():
         ),
         
         TimerAction(
-            period=8.0,  # Additional delay for second controller
+            period=12.0,  # Increased from 8s - additional delay for second controller
             actions=[
                 Node(
                     package='controller_manager',
