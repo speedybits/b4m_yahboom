@@ -11,12 +11,13 @@ export RCL_LOG_LEVEL=debug
 # This script automates the launch process for the B4M Robot with Home Assistant integration
 # Each step will be launched in a separate terminal with user confirmation
 #
-# Usage: ./b4m_HA_launch.sh [--skip-agent] [--only-agent] [--autotest] [--debug] [--simulation]
+# Usage: ./b4m_HA_launch.sh [--skip-agent] [--only-agent] [--autotest] [--debug] [--simulation] [--slam-test]
 #   --skip-agent:    Skip the Micro-ROS agent launch (Step 1)
 #   --only-agent:    Launch ONLY the Micro-ROS agent (Step 1) and exit
 #   --autotest:      Run in automated test mode (non-interactive)
 #   --debug:         Enable verbose debug logging
 #   --simulation:    Launch in Gazebo simulation mode instead of real robot
+#   --slam-test:     Add Steps 8-10 for automated SLAM testing (skips Robot Manager GUI)
 
 # Parse command line arguments
 SKIP_AGENT=false
@@ -24,6 +25,7 @@ ONLY_AGENT=false
 AUTOTEST_MODE=false
 DEBUG_MODE=false
 SIMULATION_MODE=false
+SLAM_TEST_MODE=false
 for arg in "$@"; do
     case $arg in
         --skip-agent)
@@ -46,13 +48,18 @@ for arg in "$@"; do
             SIMULATION_MODE=true
             shift
             ;;
+        --slam-test)
+            SLAM_TEST_MODE=true
+            shift
+            ;;
         -h|--help)
-            echo "Usage: $0 [--skip-agent] [--only-agent] [--autotest] [--debug] [--simulation]"
+            echo "Usage: $0 [--skip-agent] [--only-agent] [--autotest] [--debug] [--simulation] [--slam-test]"
             echo "  --skip-agent:    Skip the Micro-ROS agent launch (Step 1)"
             echo "  --only-agent:    Launch ONLY the Micro-ROS agent (Step 1) and exit"
             echo "  --autotest:      Run in automated test mode (non-interactive)"
             echo "  --debug:         Enable verbose debug logging"
             echo "  --simulation:    Launch in Gazebo simulation mode instead of real robot"
+            echo "  --slam-test:     Add Steps 8-10 for automated SLAM testing (skips Robot Manager GUI)"
             exit 0
             ;;
         *)
@@ -68,6 +75,17 @@ if [ "$SIMULATION_MODE" = true ] && [ "$ONLY_AGENT" = true ]; then
     echo "ERROR: --simulation and --only-agent cannot be used together"
     echo "In simulation mode, Gazebo is launched instead of the Micro-ROS agent"
     exit 1
+fi
+
+if [ "$SLAM_TEST_MODE" = true ] && [ "$ONLY_AGENT" = true ]; then
+    echo "ERROR: --slam-test and --only-agent cannot be used together"
+    echo "SLAM testing requires full system launch, not just the agent"
+    exit 1
+fi
+
+if [ "$SLAM_TEST_MODE" = true ] && [ "$AUTOTEST_MODE" = false ]; then
+    echo "INFO: --slam-test automatically enables --autotest mode for automated testing"
+    AUTOTEST_MODE=true
 fi
 
 # Get the workspace root directory (where this script is located)
@@ -422,13 +440,19 @@ validate_step_success() {
         1)
             if [ "$SIMULATION_MODE" = true ]; then
                 # Step 1 Simulation: Ignition Gazebo world launch - check for ign gazebo process
+                debug_log "Waiting for Ignition Gazebo server to start..."
+                sleep 5  # Give Gazebo time to start
+                
                 local end_time=$(($(date +%s) + timeout))
                 while [ $(date +%s) -lt $end_time ]; do
+                    # Check for Gazebo server processes
                     if pgrep -f "ign gazebo" > /dev/null || pgrep -f "gz sim" > /dev/null; then
+                        debug_log "Ignition Gazebo process found, giving additional startup time..."
+                        sleep 5  # Give additional time for full initialization
                         debug_log "Step 1 validation passed: Ignition Gazebo simulation running"
                         return 0
                     fi
-                    sleep 1
+                    sleep 2
                 done
                 echo "ERROR: Step 1 validation failed - Ignition Gazebo simulation not running within $timeout seconds"
                 return 1
@@ -643,6 +667,142 @@ validate_step_success() {
                 return 1
             fi
             ;;
+        8)
+            # Step 8: Automated square movement - check for completion and results
+            debug_log "Step 8: Validating automated square movement completion"
+            
+            # Wait for script to complete (up to timeout)
+            local end_time=$(($(date +%s) + timeout))
+            while [ $(date +%s) -lt $end_time ]; do
+                if ! pgrep -f "automated_square_movement.py" > /dev/null; then
+                    debug_log "Automated square movement script completed"
+                    
+                    # Check for results file
+                    if [ -f "/tmp/automated_square_movement_results.json" ]; then
+                        # Validate results using Python
+                        if python3 -c "
+import json
+try:
+    with open('/tmp/automated_square_movement_results.json') as f:
+        results = json.load(f)
+    success = results.get('success', False)
+    sides_completed = results.get('sides_completed', 0)
+    loop_closed = results.get('loop_closed', False)
+    obstacles = results.get('obstacles_detected', 0)
+    print(f'Square movement results: success={success}, sides={sides_completed}, loop_closed={loop_closed}, obstacles={obstacles}')
+    exit(0 if success else 1)
+except Exception as e:
+    print(f'Error reading results: {e}')
+    exit(1)
+"; then
+                            debug_log "Step 8 validation passed: Automated square movement completed successfully"
+                            return 0
+                        else
+                            echo "ERROR: Step 8 validation failed - automated square movement did not meet success criteria"
+                            return 1
+                        fi
+                    else
+                        echo "ERROR: Step 8 validation failed - results file not found"
+                        return 1
+                    fi
+                fi
+                sleep 1
+            done
+            
+            echo "ERROR: Step 8 validation failed - automated square movement timed out"
+            return 1
+            ;;
+        9)
+            # Step 9: Map validation - check for completion and results
+            debug_log "Step 9: Validating map saving and validation completion"
+            
+            # Wait for script to complete
+            local end_time=$(($(date +%s) + timeout))
+            while [ $(date +%s) -lt $end_time ]; do
+                if ! pgrep -f "map_validation.py" > /dev/null; then
+                    debug_log "Map validation script completed"
+                    
+                    # Check for results file
+                    if [ -f "/tmp/map_validation_results.json" ]; then
+                        # Validate results
+                        if python3 -c "
+import json
+try:
+    with open('/tmp/map_validation_results.json') as f:
+        results = json.load(f)
+    success = results.get('validation_success', False)
+    map_received = results.get('map_received', False)
+    map_saved = results.get('map_saved', False)
+    obstacles = results.get('obstacles_detected', 0)
+    print(f'Map validation results: success={success}, map_received={map_received}, map_saved={map_saved}, obstacles={obstacles}')
+    exit(0 if success else 1)
+except Exception as e:
+    print(f'Error reading results: {e}')
+    exit(1)
+"; then
+                            debug_log "Step 9 validation passed: Map validation completed successfully"
+                            return 0
+                        else
+                            echo "ERROR: Step 9 validation failed - map validation did not meet success criteria"
+                            return 1
+                        fi
+                    else
+                        echo "ERROR: Step 9 validation failed - results file not found"
+                        return 1
+                    fi
+                fi
+                sleep 1
+            done
+            
+            echo "ERROR: Step 9 validation failed - map validation timed out"
+            return 1
+            ;;
+        10)
+            # Step 10: MQTT navigation test - check for completion and results
+            debug_log "Step 10: Validating MQTT navigation testing completion"
+            
+            # Wait for script to complete
+            local end_time=$(($(date +%s) + timeout))
+            while [ $(date +%s) -lt $end_time ]; do
+                if ! pgrep -f "mqtt_navigation_test.py" > /dev/null; then
+                    debug_log "MQTT navigation test script completed"
+                    
+                    # Check for results file
+                    if [ -f "/tmp/mqtt_navigation_test_results.json" ]; then
+                        # Validate results
+                        if python3 -c "
+import json
+try:
+    with open('/tmp/mqtt_navigation_test_results.json') as f:
+        results = json.load(f)
+    success = results.get('overall_success', False)
+    mqtt_connected = results.get('mqtt_connected', False)
+    navigation_working = results.get('navigation_working', False)
+    tests_successful = results.get('tests_successful', 0)
+    tests_completed = results.get('tests_completed', 0)
+    print(f'MQTT navigation results: success={success}, mqtt={mqtt_connected}, nav={navigation_working}, tests={tests_successful}/{tests_completed}')
+    exit(0 if success else 1)
+except Exception as e:
+    print(f'Error reading results: {e}')
+    exit(1)
+"; then
+                            debug_log "Step 10 validation passed: MQTT navigation testing completed successfully"
+                            return 0
+                        else
+                            echo "ERROR: Step 10 validation failed - MQTT navigation testing did not meet success criteria"
+                            return 1
+                        fi
+                    else
+                        echo "ERROR: Step 10 validation failed - results file not found"
+                        return 1
+                    fi
+                fi
+                sleep 1
+            done
+            
+            echo "ERROR: Step 10 validation failed - MQTT navigation testing timed out"
+            return 1
+            ;;
         *)
             echo "ERROR: Unknown step number for validation: $step_num"
             return 1
@@ -764,10 +924,12 @@ launch_in_terminal() {
         # Wait a moment for process to start
         sleep 2
         
-        # Validate step success - use longer timeout for navigation (Step 5)
+        # Validate step success - use longer timeout for navigation (Step 5) and SLAM movement (Step 8)
         local step_timeout="$AUTOTEST_TIMEOUT"
         if [ "$step_num" = "5" ]; then
             step_timeout="$NAVIGATION_TIMEOUT"
+        elif [ "$step_num" = "8" ]; then
+            step_timeout="120"  # Square movement needs more time
         fi
         
         if validate_step_success "$step_num" "$step_timeout" "$step_log"; then
@@ -976,9 +1138,15 @@ check_existing_processes
 
 # Step 1: Start the Micro-ROS Agent (unless skipped) OR Launch Gazebo Simulation
 if [ "$SIMULATION_MODE" = true ]; then
-    launch_in_terminal "Starting Ignition Gazebo simulation environment" \
-        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ign gazebo" \
-        "1"
+    if [ "$SLAM_TEST_MODE" = true ]; then
+        launch_in_terminal "Starting Ignition Gazebo simulation with SLAM test world (2 obstacles)" \
+            "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ign gazebo \"$WORKSPACE_ROOT/yahboomcar_nav/worlds/slam_test_world.sdf\"" \
+            "1"
+    else
+        launch_in_terminal "Starting Ignition Gazebo simulation environment" \
+            "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ign gazebo" \
+            "1"
+    fi
 elif [ "$SKIP_AGENT" = false ]; then
     launch_in_terminal "Starting the Micro-ROS Agent for ESP32 communication" \
         "docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host microros/micro-ros-agent:humble udp4 --port 8090" \
@@ -1094,13 +1262,49 @@ launch_in_terminal "Starting the B4M Waypoint Navigation Node with MQTT integrat
     "7"
 
 
-# Step 8: Start the Robot Manager GUI (skip in autotest mode)
-if [ "$AUTOTEST_MODE" = false ]; then
+# Step 8: Start the Robot Manager GUI (skip in autotest mode and SLAM test mode)
+if [ "$AUTOTEST_MODE" = false ] && [ "$SLAM_TEST_MODE" = false ]; then
     launch_in_terminal "Starting the B4M Robot Manager GUI for visual control of waypoints" \
         "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 run b4m_waypoint_nav b4m_robot_manager_node.py" \
         "8"
 else
-    debug_log "Robot Manager GUI skipped in autotest mode"
+    if [ "$SLAM_TEST_MODE" = true ]; then
+        debug_log "Robot Manager GUI skipped in SLAM test mode - will run automated SLAM testing instead"
+    else
+        debug_log "Robot Manager GUI skipped in autotest mode"
+    fi
+fi
+
+# SLAM Test Steps (8-10) - Only run when --slam-test is enabled
+if [ "$SLAM_TEST_MODE" = true ]; then
+    echo ""
+    echo "======================================================"
+    echo "🧪 AUTOMATED SLAM TESTING SEQUENCE"
+    echo "======================================================"
+    echo "Running Steps 8-10 for automated SLAM validation:"
+    echo "  Step 8: Automated 1-meter square movement with SLAM mapping"
+    echo "  Step 9: Automated map saving and validation" 
+    echo "  Step 10: Automated MQTT navigation testing"
+    echo ""
+    
+    log_message "SLAM TEST MODE: Starting automated SLAM testing sequence"
+    
+    # Step 8: Automated Square Movement with SLAM Mapping
+    launch_in_terminal "Step 8: Automated 1-meter square movement with SLAM mapping" \
+        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && python3 \"$WORKSPACE_ROOT/yahboomcar_nav/scripts/automated_square_movement.py\"" \
+        "8"
+    
+    # Step 9: Automated Map Saving and Validation
+    launch_in_terminal "Step 9: Automated map saving and validation" \
+        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && python3 \"$WORKSPACE_ROOT/yahboomcar_nav/scripts/map_validation.py\"" \
+        "9"
+    
+    # Step 10: Automated MQTT Navigation Testing
+    launch_in_terminal "Step 10: Automated MQTT navigation testing" \
+        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && python3 \"$WORKSPACE_ROOT/yahboomcar_nav/scripts/mqtt_navigation_test.py\"" \
+        "10"
+    
+    log_message "SLAM TEST MODE: All automated SLAM testing steps completed"
 fi
 
 
@@ -1109,15 +1313,27 @@ log_message "B4M Robot launch script completed"
 if [ "$AUTOTEST_MODE" = true ]; then
     echo ""
     echo "======================================="
-    if [ "$SIMULATION_MODE" = true ]; then
-        echo "B4M Robot Ignition Gazebo Simulation Test - PASSED"
+    if [ "$SLAM_TEST_MODE" = true ]; then
+        if [ "$SIMULATION_MODE" = true ]; then
+            echo "B4M Robot SLAM Testing - Gazebo Simulation - PASSED"
+        else
+            echo "B4M Robot SLAM Testing - Real Robot - PASSED"
+        fi
     else
-        echo "B4M Robot Launch Test - PASSED"
+        if [ "$SIMULATION_MODE" = true ]; then
+            echo "B4M Robot Ignition Gazebo Simulation Test - PASSED"
+        else
+            echo "B4M Robot Launch Test - PASSED"
+        fi
     fi
     echo "======================================="
     echo "Test Run: $(date)"
     
-    echo "All 7 tested steps completed successfully"
+    if [ "$SLAM_TEST_MODE" = true ]; then
+        echo "All 10 SLAM testing steps completed successfully"
+    else
+        echo "All 7 tested steps completed successfully"
+    fi
     
     echo ""
     echo "Step Summary:"
@@ -1139,12 +1355,22 @@ if [ "$AUTOTEST_MODE" = true ]; then
         echo "✅ Step 7: MQTT Navigation"
     fi
     
+    if [ "$SLAM_TEST_MODE" = true ]; then
+        echo "✅ Step 8: Automated Square Movement with SLAM Mapping"
+        echo "✅ Step 9: Automated Map Saving and Validation"
+        echo "✅ Step 10: Automated MQTT Navigation Testing"
+    fi
+    
     echo ""
     echo "Logs saved to: $MAIN_LOG"
     
     echo "======================================="
     
-    log_message "AUTOTEST COMPLETED SUCCESSFULLY - ALL STEPS PASSED"
+    if [ "$SLAM_TEST_MODE" = true ]; then
+        log_message "SLAM AUTOTEST COMPLETED SUCCESSFULLY - ALL STEPS PASSED"
+    else
+        log_message "AUTOTEST COMPLETED SUCCESSFULLY - ALL STEPS PASSED"
+    fi
 else
     echo "====================================================="
     echo "Launch script completed successfully!"
