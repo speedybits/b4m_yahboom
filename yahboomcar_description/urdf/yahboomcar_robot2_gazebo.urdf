@@ -473,9 +473,9 @@
       <odom_publish_frequency>50</odom_publish_frequency>
       <max_wheel_torque>5000</max_wheel_torque>
       <max_wheel_acceleration>200.0</max_wheel_acceleration>
-      <topic>cmd_vel</topic>
-      <odom_topic>odometry</odom_topic>
-      <tf_topic>tf</tf_topic>
+      <topic>/cmd_vel</topic>
+      <odom_topic>/odometry</odom_topic>
+      <tf_topic>/tf</tf_topic>
       <frame_id>odom</frame_id>
       <child_frame_id>base_footprint</child_frame_id>
     </plugin>
