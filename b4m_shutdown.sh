@@ -83,6 +83,7 @@ pkill -9 -f "gzclient" 2>/dev/null
 pkill -9 -f "gazebo_ros2_control" 2>/dev/null
 pkill -9 -f "gazebo_ros_lidar_controller" 2>/dev/null
 pkill -9 -f "spawn_entity" 2>/dev/null
+pkill -9 -f "ros_gz_bridge" 2>/dev/null
 
 # Kill ros2_control spawner processes
 shutdown_log "Stopping ros2_control spawner processes"
