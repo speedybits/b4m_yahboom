@@ -37,7 +37,7 @@ def generate_launch_description():
             ],
         ),
         
-        # ROS-Ignition Bridge for cmd_vel and odometry
+        # ROS-Ignition Bridge for cmd_vel and odometry - using global topics
         Node(
             package='ros_gz_bridge',
             executable='parameter_bridge',
