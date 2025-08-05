@@ -8,8 +8,8 @@ def generate_launch_description():
     # Get package directory
     package_path = get_package_share_directory('yahboomcar_nav')
     
-    # World file path
-    world_file = os.path.join('/home/mike/projects/b4m_yahboom/worlds', 'empty.sdf')
+    # World file path - use system empty world
+    world_file = '/usr/share/ignition/ignition-gazebo6/worlds/empty.sdf'
     
     # Launch configuration
     verbose = LaunchConfiguration('verbose', default='4')
