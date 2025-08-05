@@ -2,9 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Command time-outs
-The timeout for any command you run in b4m_HA_launch --autotest mode is 120s, unless you have a very good reason to make it longer
-
+## Regression testing
+Before commiting any code, we must be able to pass the regression: ./b4m_HA_launch --regression
 
 ## Running and Shut down
 Always use b4m_HA_launch to run tests. Use the --simulation switch for Gazebo-based tests

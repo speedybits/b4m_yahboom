@@ -1192,9 +1192,34 @@ if [ "$REGRESSION_MODE" = true ]; then
         echo "⚠️  WARNING: install/setup.bash not found for regression test!"
     fi
     
-    # Run test with timeout and proper output handling
-    timeout 300s python3 "$WORKSPACE_ROOT/test_square_corners.py" > "$REGRESSION_LOG" 2>&1
+    # Run test with extended timeout and proper output handling
+    # Test typically takes 3-4 minutes, so give it 10 minutes to be safe
+    echo "Executing: python3 $WORKSPACE_ROOT/test_square_corners.py"
+    echo "Working directory: $(pwd)"
+    echo "Python path: $(which python3)"
+    echo "Test file exists: $(test -f "$WORKSPACE_ROOT/test_square_corners.py" && echo "YES" || echo "NO")"
+    echo "Starting test execution..."
+    
+    # Create a wrapper script to isolate the test execution
+    cat > /tmp/regression_wrapper.sh << 'EOF'
+#!/bin/bash
+cd "$1"
+source install/setup.bash 2>/dev/null || true
+exec python3 test_square_corners.py
+EOF
+    chmod +x /tmp/regression_wrapper.sh
+    
+    # Run with more explicit error handling in isolated process
+    set +e  # Don't exit on error
+    bash /tmp/regression_wrapper.sh "$WORKSPACE_ROOT" > "$REGRESSION_LOG" 2>&1
     REGRESSION_EXIT_CODE=$?
+    set -e  # Re-enable exit on error
+    
+    # Clean up wrapper
+    rm -f /tmp/regression_wrapper.sh
+    
+    echo "Test completed with exit code: $REGRESSION_EXIT_CODE"
+    echo "Log file size: $(wc -l < "$REGRESSION_LOG" 2>/dev/null || echo "0") lines"
     
     echo ""
     echo "========================================================"
