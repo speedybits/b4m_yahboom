@@ -1,5 +1,3 @@
-# b4m_waypoint_nav: Waypoint Navigation with Orientation Plan
-
 This document is divided into two main sections:
 1. **Robot Manager GUI**: Describes the standalone GUI application for managing waypoints
 2. **MQTT-Based Navigation**: Explains how the waypoint manager receives coordinates via MQTT and navigates the robot

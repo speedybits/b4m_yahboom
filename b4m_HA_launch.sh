@@ -11,13 +11,14 @@ export RCL_LOG_LEVEL=debug
 # This script automates the launch process for the B4M Robot with Home Assistant integration
 # Each step will be launched in a separate terminal with user confirmation
 #
-# Usage: ./b4m_HA_launch.sh [--skip-agent] [--only-agent] [--autotest] [--debug] [--simulation] [--slam-test]
+# Usage: ./b4m_HA_launch.sh [--skip-agent] [--only-agent] [--autotest] [--debug] [--simulation] [--slam-test] [--regression]
 #   --skip-agent:    Skip the Micro-ROS agent launch (Step 1)
 #   --only-agent:    Launch ONLY the Micro-ROS agent (Step 1) and exit
 #   --autotest:      Run in automated test mode (non-interactive)
 #   --debug:         Enable verbose debug logging
 #   --simulation:    Launch in Gazebo simulation mode instead of real robot
 #   --slam-test:     Add Steps 8-10 for automated SLAM testing (skips Robot Manager GUI)
+#   --regression:    Run regression test (test_square_corners.py) after system launch
 
 # Parse command line arguments
 SKIP_AGENT=false
@@ -26,6 +27,7 @@ AUTOTEST_MODE=false
 DEBUG_MODE=false
 SIMULATION_MODE=false
 SLAM_TEST_MODE=false
+REGRESSION_MODE=false
 for arg in "$@"; do
     case $arg in
         --skip-agent)
@@ -52,14 +54,19 @@ for arg in "$@"; do
             SLAM_TEST_MODE=true
             shift
             ;;
+        --regression)
+            REGRESSION_MODE=true
+            shift
+            ;;
         -h|--help)
-            echo "Usage: $0 [--skip-agent] [--only-agent] [--autotest] [--debug] [--simulation] [--slam-test]"
+            echo "Usage: $0 [--skip-agent] [--only-agent] [--autotest] [--debug] [--simulation] [--slam-test] [--regression]"
             echo "  --skip-agent:    Skip the Micro-ROS agent launch (Step 1)"
             echo "  --only-agent:    Launch ONLY the Micro-ROS agent (Step 1) and exit"
             echo "  --autotest:      Run in automated test mode (non-interactive)"
             echo "  --debug:         Enable verbose debug logging"
             echo "  --simulation:    Launch in Gazebo simulation mode instead of real robot"
             echo "  --slam-test:     Add Steps 8-10 for automated SLAM testing (skips Robot Manager GUI)"
+            echo "  --regression:    Run regression test (test_square_corners.py) after system launch"
             exit 0
             ;;
         *)
@@ -86,6 +93,27 @@ fi
 if [ "$SLAM_TEST_MODE" = true ] && [ "$AUTOTEST_MODE" = false ]; then
     echo "INFO: --slam-test automatically enables --autotest mode for automated testing"
     AUTOTEST_MODE=true
+fi
+
+if [ "$REGRESSION_MODE" = true ]; then
+    # Regression mode is mutually exclusive with SLAM test
+    if [ "$SLAM_TEST_MODE" = true ]; then
+        echo "ERROR: --regression and --slam-test cannot be used together"
+        echo "Regression test runs its own square navigation test"
+        exit 1
+    fi
+    # Regression mode is mutually exclusive with only-agent
+    if [ "$ONLY_AGENT" = true ]; then
+        echo "ERROR: --regression and --only-agent cannot be used together"
+        echo "Regression test is self-contained"
+        exit 1
+    fi
+    # Regression mode is mutually exclusive with skip-agent
+    if [ "$SKIP_AGENT" = true ]; then
+        echo "ERROR: --regression and --skip-agent cannot be used together"
+        echo "Regression test manages its own simulation"
+        exit 1
+    fi
 fi
 
 # Get the workspace root directory (where this script is located)
@@ -1086,6 +1114,11 @@ if [ "$SIMULATION_MODE" = true ]; then
     echo "🎮 Simulation mode enabled - launching with Gazebo instead of real robot"
 fi
 
+if [ "$REGRESSION_MODE" = true ]; then
+    echo ""
+    echo "🧪 Regression test mode enabled - will run square corners test after launch"
+fi
+
 
 echo ""
 
@@ -1131,6 +1164,53 @@ if [ "$ONLY_AGENT" = true ]; then
     echo "🧹 Cleaning up any remaining robot processes..."
     ./b4m_shutdown.sh > /dev/null 2>&1 || true
     sleep 2
+fi
+
+# Regression Test Mode - Run test_square_corners.py directly without normal launch
+if [ "$REGRESSION_MODE" = true ]; then
+    echo ""
+    echo "========================================================"
+    echo "🧪 REGRESSION TEST MODE"
+    echo "========================================================"
+    echo "Running square corners navigation regression test..."
+    echo "This test launches its own simulation and manages the full test lifecycle."
+    echo ""
+    
+    log_message "REGRESSION TEST MODE: Starting test_square_corners.py"
+    
+    # Execute the regression test
+    REGRESSION_LOG="$LOGS_DIR/regression_test_$TIMESTAMP.log"
+    echo "📁 Regression test log: $REGRESSION_LOG"
+    echo ""
+    
+    # Run the test and capture exit code
+    cd "$WORKSPACE_ROOT"
+    if [ -f 'install/setup.bash' ]; then
+        source install/setup.bash
+        debug_log "Workspace sourced successfully for regression test"
+    else
+        echo "⚠️  WARNING: install/setup.bash not found for regression test!"
+    fi
+    
+    # Run test with timeout and proper output handling
+    timeout 300s python3 "$WORKSPACE_ROOT/test_square_corners.py" > "$REGRESSION_LOG" 2>&1
+    REGRESSION_EXIT_CODE=$?
+    
+    echo ""
+    echo "========================================================"
+    if [ $REGRESSION_EXIT_CODE -eq 0 ]; then
+        echo "✅ REGRESSION TEST PASSED"
+        log_message "REGRESSION TEST: PASSED - Robot successfully navigated square"
+    else
+        echo "❌ REGRESSION TEST FAILED"
+        log_message "REGRESSION TEST: FAILED - Exit code: $REGRESSION_EXIT_CODE"
+    fi
+    echo "========================================================"
+    echo "Regression test log saved to: $REGRESSION_LOG"
+    echo ""
+    
+    # Exit with regression test result
+    exit $REGRESSION_EXIT_CODE
 fi
 
 # Pre-launch system check to prevent duplicate processes
