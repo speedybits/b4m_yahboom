@@ -1,0 +1,33 @@
+# SLAM Toolbox Regression Test Suite Dependencies
+# Install with: pip3 install -r requirements.txt
+
+# Core Python dependencies
+psutil>=5.8.0          # Process monitoring and management
+numpy>=1.20.0          # Numerical computations for laser scan analysis
+pyyaml>=5.4.0          # YAML parsing for RViz configs and map files
+
+# ROS2 Python dependencies (usually available through ROS installation)
+# These are typically installed with ROS2 but listed for completeness:
+# rclpy                # ROS2 Python client library (installed with ROS2)
+# geometry_msgs        # ROS2 geometry message types (installed with ROS2)
+# sensor_msgs          # ROS2 sensor message types (installed with ROS2)  
+# nav_msgs             # ROS2 navigation message types (installed with ROS2)
+# tf2_ros              # ROS2 TF2 library (installed with ROS2)
+# tf2_geometry_msgs    # TF2 geometry message support (installed with ROS2)
+# std_srvs             # ROS2 standard services (installed with ROS2)
+# slam_toolbox         # SLAM toolbox service definitions (installed with slam_toolbox)
+
+# Optional dependencies for enhanced testing
+matplotlib>=3.3.0      # For plotting test results and map visualizations (optional)
+pillow>=8.0.0         # For image processing of map files (optional)
+
+# Testing framework (included with Python 3)
+# unittest is part of Python standard library
+
+# System requirements (install via apt/package manager):
+# ros-humble-slam-toolbox
+# ros-humble-nav2-bringup  
+# ros-humble-teleop-twist-keyboard
+# ignition-gazebo6
+# ros-humble-ros-gz-sim
+# ros-humble-ros-gz-bridge
