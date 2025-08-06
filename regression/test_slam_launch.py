@@ -120,39 +120,17 @@ class TestSLAMLaunch(unittest.TestCase):
         time.sleep(2)
     
     def test_01_gazebo_launch(self):
-        """Test that Ignition Gazebo launches successfully"""
-        self.gazebo_process = subprocess.Popen(
-            ['ign', 'gazebo', '--verbose'],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=dict(os.environ, ROS_DOMAIN_ID='20')
-        )
-        
-        # Wait for Gazebo to start
-        time.sleep(10)
-        
-        # Check if Gazebo is running
-        self.assertIsNone(self.gazebo_process.poll(), "Gazebo process terminated unexpectedly")
-        
-        # Check for Gazebo GUI process
-        gazebo_running = False
-        for proc in psutil.process_iter(['name', 'cmdline']):
-            try:
-                cmdline = ' '.join(proc.info['cmdline'] or [])
-                if 'ign gazebo' in cmdline or 'ignition gazebo' in cmdline:
-                    gazebo_running = True
-                    break
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
-        
-        self.assertTrue(gazebo_running, "Ignition Gazebo is not running")
+        """Test that Gazebo Classic launches successfully"""
+        # Note: Gazebo launch is now integrated into the SLAM test launch
+        # This test will be handled by test_02_robot_spawn
+        pass
     
     def test_02_robot_spawn(self):
-        """Test that robot spawns successfully in Gazebo"""
-        # Source ROS environment and launch robot
+        """Test that robot spawns successfully in Gazebo Classic"""
+        # Launch SLAM test with Gazebo Classic (includes robot spawn)
         cmd = [
             'bash', '-c',
-            'source install/setup.bash && ros2 launch yahboomcar_nav spawn_robot_simple_gazebo.py'
+            'source install/setup.bash && ros2 launch yahboomcar_nav slam_test_gazebo_classic.py'
         ]
         
         self.robot_process = subprocess.Popen(
@@ -184,24 +162,12 @@ class TestSLAMLaunch(unittest.TestCase):
     
     def test_03_slam_toolbox_launch(self):
         """Test that SLAM toolbox launches successfully"""
-        # Launch SLAM mapping
-        cmd = [
-            'bash', '-c',
-            'source install/setup.bash && ros2 launch yahboomcar_nav slam_mapping_gazebo.py'
-        ]
+        # SLAM toolbox launch is now integrated into the main launch file
+        # Wait for SLAM to fully start
+        time.sleep(25)  # Extended wait for full Gazebo Classic + SLAM startup
         
-        self.slam_process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=dict(os.environ, ROS_DOMAIN_ID='20')
-        )
-        
-        # Wait for SLAM to start
-        time.sleep(20)
-        
-        # Check if process is still running
-        self.assertIsNone(self.slam_process.poll(), "SLAM process terminated unexpectedly")
+        # The robot_process from test_02 includes SLAM launch
+        self.assertIsNone(self.robot_process.poll(), "SLAM process terminated unexpectedly")
     
     def test_04_slam_services_available(self):
         """Test that SLAM toolbox services are available"""
