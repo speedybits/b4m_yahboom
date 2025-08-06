@@ -425,13 +425,15 @@
   <!-- REMOVED: gz_ros2_control blocks to avoid conflicts with direct DiffDrive plugin -->
   <!-- Using simple DiffDrive plugin instead for SLAM testing -->
 
-  <!-- Gazebo plugin for the laser -->
+  <!-- Ignition Gazebo GPU lidar sensor -->
   <gazebo reference="laser">
-    <sensor type="ray" name="lidar">
+    <sensor type="gpu_lidar" name="gpu_lidar">
       <pose>0 0 0 0 0 0</pose>
+      <always_on>true</always_on>
       <visualize>true</visualize>
       <update_rate>10</update_rate>
-      <ray>
+      <topic>scan</topic>
+      <lidar>
         <scan>
           <horizontal>
             <samples>360</samples>
@@ -450,15 +452,7 @@
           <mean>0.0</mean>
           <stddev>0.01</stddev>
         </noise>
-      </ray>
-      <plugin name="gazebo_ros_lidar_controller" filename="libgazebo_ros_ray_sensor.so">
-        <ros>
-          <namespace>/</namespace>
-          <remapping>~/out:=scan</remapping>
-        </ros>
-        <output_type>sensor_msgs/LaserScan</output_type>
-        <frame_name>laser</frame_name>
-      </plugin>
+      </lidar>
     </sensor>
   </gazebo>
 

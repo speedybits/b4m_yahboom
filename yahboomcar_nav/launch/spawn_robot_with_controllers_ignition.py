@@ -37,13 +37,14 @@ def generate_launch_description():
             ],
         ),
         
-        # ROS-Ignition Bridge for cmd_vel and odometry - using global topics
+        # ROS-Ignition Bridge for cmd_vel, odometry, and laser scan - using global topics
         Node(
             package='ros_gz_bridge',
             executable='parameter_bridge',
             arguments=[
                 '/cmd_vel@geometry_msgs/msg/Twist@ignition.msgs.Twist',
                 '/odometry@nav_msgs/msg/Odometry@ignition.msgs.Odometry',
+                '/scan@sensor_msgs/msg/LaserScan@ignition.msgs.LaserScan',
                 '/tf@tf2_msgs/msg/TFMessage@ignition.msgs.Pose_V'
             ],
             output='screen',
