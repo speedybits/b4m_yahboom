@@ -425,21 +425,21 @@
   <!-- REMOVED: gz_ros2_control blocks to avoid conflicts with direct DiffDrive plugin -->
   <!-- Using simple DiffDrive plugin instead for SLAM testing -->
 
-  <!-- Ignition Gazebo GPU lidar sensor -->
+  <!-- Ignition Gazebo ray sensor (fallback approach) -->
   <gazebo reference="laser">
-    <sensor type="gpu_lidar" name="gpu_lidar">
+    <sensor name="laser_sensor" type="ray">
       <pose>0 0 0 0 0 0</pose>
       <always_on>true</always_on>
       <visualize>true</visualize>
-      <update_rate>10</update_rate>
+      <update_rate>10.0</update_rate>
       <topic>scan</topic>
-      <lidar>
+      <ray>
         <scan>
           <horizontal>
             <samples>360</samples>
-            <resolution>1</resolution>
             <min_angle>-3.14159</min_angle>
             <max_angle>3.14159</max_angle>
+            <resolution>1</resolution>
           </horizontal>
         </scan>
         <range>
@@ -452,7 +452,7 @@
           <mean>0.0</mean>
           <stddev>0.01</stddev>
         </noise>
-      </lidar>
+      </ray>
     </sensor>
   </gazebo>
 
@@ -472,6 +472,11 @@
       <tf_topic>/tf</tf_topic>
       <frame_id>odom</frame_id>
       <child_frame_id>base_footprint</child_frame_id>
+    </plugin>
+    
+    <!-- Sensors system plugin to enable sensors -->
+    <plugin filename="libignition-gazebo-sensors-system.so" name="ignition::gazebo::systems::Sensors">
+      <render_engine>ogre2</render_engine>
     </plugin>
   </gazebo>
 </robot>
