@@ -2,7 +2,7 @@
 
 ## Overview
 
-The B4M Robot is an autonomous navigation system built on ROS2 with Home Assistant integration. This guide covers how to use the `b4m_HA_launch.sh` script to launch and operate the robot system.
+The B4M Robot is an autonomous navigation system built on ROS2 with Home Assistant integration. This guide covers how to use the `b4m_HA_launch.sh` script to launch and operate the robot system with SLAM (Simultaneous Localization and Mapping) capabilities using Gazebo Classic for simulation.
 
 ## Prerequisites
 
@@ -47,18 +47,27 @@ Runs all steps automatically for testing and validation.
 
 ### 1. Interactive SLAM Mapping in Simulation
 ```bash
+# Using integrated launch (recommended)
 ./b4m_HA_launch.sh --simulation
+
+# Or using direct Gazebo Classic launch for SLAM testing
+ros2 launch yahboomcar_nav slam_test_gazebo_classic.py
 ```
 Then use keyboard teleop to drive the robot:
 ```bash
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
 ```
+Monitor SLAM map generation (69x77 grid) in RViz.
 
 ### 2. Automated System Validation
 ```bash
 ./b4m_HA_launch.sh --simulation --autotest --slam-test
 ```
-Runs full automated test suite including square navigation pattern.
+Runs full automated test suite including:
+- 1-meter square navigation pattern
+- SLAM map generation verification (69x77 grid)
+- MQTT waypoint navigation testing
+- 15 SLAM services availability check
 
 ### 3. Quick System Check
 ```bash
@@ -95,12 +104,12 @@ The script executes the following steps in sequence:
 
 ### Simulation Mode
 
-1. **Gazebo Launch**: Starts Ignition Gazebo simulation environment
-2. **Robot Spawning**: Spawns robot model with controllers in simulation
-3. **Robot Systems**: Initializes robot state and sensor systems
-4. **RViz Visualization**: Starts visualization with simulation time
-5. **SLAM Navigation**: Launches SLAM system for simulation
-6. **SLAM Initialization**: Initializes SLAM in simulation environment
+1. **Gazebo Launch**: Starts Gazebo Classic simulation environment
+2. **Robot Spawning**: Spawns robot model with integrated sensors
+3. **Robot Systems**: Initializes robot state publisher and transforms
+4. **RViz Visualization**: Starts visualization with laser scan display
+5. **SLAM Navigation**: Launches SLAM toolbox for mapping and localization
+6. **SLAM Initialization**: Verifies SLAM map generation (69x77 grid)
 7. **MQTT Navigation**: Starts waypoint navigation system
 8. **Robot Manager GUI**: Visual control interface (if not in autotest mode)
 
@@ -136,7 +145,7 @@ When enabled, adds these automated testing steps:
 - IMU for pose estimation
 
 ### Simulation Mode
-- Ignition Gazebo installed
+- Gazebo Classic 11 installed (`ros-humble-gazebo-*`)
 - Sufficient system resources for simulation
 - Display server (X11) for RViz visualization
 
@@ -166,6 +175,13 @@ The script includes built-in process monitoring:
 - Verify all sensor data is available (`ros2 topic list`)
 - Check transform tree (`ros2 run tf2_tools view_frames`)
 - Monitor logs for lifecycle manager errors
+- Verify SLAM is generating maps (`ros2 topic echo /map --once`)
+
+**SLAM not generating maps**
+- Check laser scan data: `ros2 topic echo /scan` (should show 360 points)
+- Verify transform chain: map->odom->base_footprint
+- Ensure robot is moving to generate map data
+- Check SLAM services: `ros2 service list | grep slam_toolbox`
 
 **Robot doesn't respond to commands**
 - Verify Micro-ROS agent connection
@@ -179,13 +195,22 @@ ros2 node list
 
 # Monitor topics
 ros2 topic list
-ros2 topic echo /scan
+ros2 topic echo /scan  # Should show 360 laser points
+
+# Check SLAM map generation
+ros2 topic echo /map --once  # Shows occupancy grid info
 
 # Check transforms
 ros2 run tf2_tools view_frames
 
+# Verify SLAM services
+ros2 service list | grep slam_toolbox
+
 # Monitor logs
 tail -f logs/b4m_launch_*.log
+
+# Test SLAM functionality
+python3 test_slam_working.py
 ```
 
 ## Cleanup
@@ -222,6 +247,13 @@ The system integrates with Home Assistant via MQTT:
   "orientation": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0}
 }
 ```
+
+### SLAM Integration
+The system uses SLAM toolbox for dynamic mapping and localization:
+- No pre-built map required
+- Real-time map generation during navigation
+- Automatic loop closure detection
+- Compatible with existing MQTT waypoint system
 
 ## Safety Considerations
 
