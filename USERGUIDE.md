@@ -2,13 +2,13 @@
 
 ## Overview
 
-The B4M Robot is an autonomous navigation system built on ROS2 with Home Assistant integration. This guide covers how to use the `b4m_HA_launch.sh` script to launch and operate the robot system with SLAM (Simultaneous Localization and Mapping) capabilities using Gazebo Classic for simulation.
+The B4M Robot is an autonomous navigation system built on ROS2 with Home Assistant integration. This guide covers how to use the `b4m_HA_launch.sh` script to launch and operate the robot system with SLAM (Simultaneous Localization and Mapping) capabilities using either Gazebo Classic or Ignition Gazebo for simulation.
 
 ## Prerequisites
 
 - ROS2 Humble installed and sourced
 - Docker (for Micro-ROS agent)
-- Physical robot or Gazebo simulation environment
+- Physical robot or Gazebo simulation environment (Classic or Ignition)
 - Built workspace (`colcon build` completed)
 
 ## Quick Start
@@ -19,15 +19,25 @@ The B4M Robot is an autonomous navigation system built on ROS2 with Home Assista
 ```
 Launches the full system with user prompts for each step.
 
-### Simulation Mode
+### Ignition Gazebo Simulation Mode
 ```bash
 ./b4m_HA_launch.sh --simulation
 ```
-Runs the robot in Gazebo simulation instead of using physical hardware.
+Runs the robot in Ignition Gazebo simulation instead of using physical hardware.
+
+### Gazebo Classic Simulation Mode
+```bash
+./b4m_HA_launch.sh --classic-sim
+```
+Runs the robot in Gazebo Classic simulation instead of using physical hardware.
 
 ### Automated Testing
 ```bash
+# Using Ignition Gazebo
 ./b4m_HA_launch.sh --simulation --autotest
+
+# Using Gazebo Classic
+./b4m_HA_launch.sh --classic-sim --autotest
 ```
 Runs all steps automatically for testing and validation.
 
@@ -39,7 +49,8 @@ Runs all steps automatically for testing and validation.
 | `--only-agent` | Launch ONLY the Micro-ROS agent and exit |
 | `--autotest` | Run in automated test mode (non-interactive) |
 | `--debug` | Enable verbose debug logging |
-| `--simulation` | Launch in Gazebo simulation mode |
+| `--simulation` | Launch in Ignition Gazebo simulation mode |
+| `--classic-sim` | Launch in Gazebo Classic simulation mode |
 | `--slam-test` | Add automated SLAM testing steps (implies --autotest) |
 | `-h, --help` | Show help information |
 
@@ -47,8 +58,11 @@ Runs all steps automatically for testing and validation.
 
 ### 1. Interactive SLAM Mapping in Simulation
 ```bash
-# Using integrated launch (recommended)
+# Using integrated launch with Ignition Gazebo (recommended)
 ./b4m_HA_launch.sh --simulation
+
+# Using integrated launch with Gazebo Classic (recommended)
+./b4m_HA_launch.sh --classic-sim
 
 # Or using direct Gazebo Classic launch for SLAM testing
 ros2 launch yahboomcar_nav slam_test_gazebo_classic.py
@@ -61,7 +75,11 @@ Monitor SLAM map generation (69x77 grid) in RViz.
 
 ### 2. Automated System Validation
 ```bash
+# Using Ignition Gazebo
 ./b4m_HA_launch.sh --simulation --autotest --slam-test
+
+# Using Gazebo Classic
+./b4m_HA_launch.sh --classic-sim --autotest --slam-test
 ```
 Runs full automated test suite including:
 - 1-meter square navigation pattern
@@ -71,7 +89,11 @@ Runs full automated test suite including:
 
 ### 3. Quick System Check
 ```bash
+# Using Ignition Gazebo
 ./b4m_HA_launch.sh --simulation --autotest --debug
+
+# Using Gazebo Classic
+./b4m_HA_launch.sh --classic-sim --autotest --debug
 ```
 Validates all components with verbose output for troubleshooting.
 
@@ -83,7 +105,11 @@ Tests with physical robot (requires robot to be powered on).
 
 ### 5. Development/Debug Mode
 ```bash
+# Using Ignition Gazebo
 ./b4m_HA_launch.sh --simulation --debug
+
+# Using Gazebo Classic
+./b4m_HA_launch.sh --classic-sim --debug
 ```
 Interactive mode with verbose logging for development work.
 
@@ -104,9 +130,20 @@ The script executes the following steps in sequence:
 
 ### Simulation Mode
 
-1. **Gazebo Launch**: Starts Gazebo Classic simulation environment
-2. **Robot Spawning**: Spawns robot model with integrated sensors
+#### Ignition Gazebo (`--simulation`)
+1. **Ignition Gazebo Launch**: Starts Ignition Gazebo simulation environment
+2. **Robot Spawning**: Spawns robot model with controllers
 3. **Robot Systems**: Initializes robot state publisher and transforms
+4. **RViz Visualization**: Starts visualization with laser scan display
+5. **SLAM Navigation**: Launches SLAM toolbox for mapping and localization
+6. **SLAM Initialization**: Verifies SLAM map generation (69x77 grid)
+7. **MQTT Navigation**: Starts waypoint navigation system
+8. **Robot Manager GUI**: Visual control interface (if not in autotest mode)
+
+#### Gazebo Classic (`--classic-sim`)
+1. **Gazebo Classic Launch**: Starts Gazebo Classic simulation with integrated robot spawning
+2. **Robot Initialization**: Robot systems handled by integrated launch file
+3. **Robot Systems**: Robot state publisher and transforms active
 4. **RViz Visualization**: Starts visualization with laser scan display
 5. **SLAM Navigation**: Launches SLAM toolbox for mapping and localization
 6. **SLAM Initialization**: Verifies SLAM map generation (69x77 grid)
@@ -145,9 +182,42 @@ When enabled, adds these automated testing steps:
 - IMU for pose estimation
 
 ### Simulation Mode
-- Gazebo Classic 11 installed (`ros-humble-gazebo-*`)
+- **Ignition Gazebo**: Ignition Gazebo 6 installed (`ros-humble-ros-gz-*`)
+- **Gazebo Classic**: Gazebo Classic 11 installed (`ros-humble-gazebo-*`)
 - Sufficient system resources for simulation
 - Display server (X11) for RViz visualization
+
+### Choosing Your Simulation Environment
+
+**Gazebo Classic (`--classic-sim`)**:
+- ✅ **Recommended for SLAM**: Proven reliable sensor data publication
+- ✅ **Stable performance**: Mature, well-tested simulation physics
+- ✅ **Integrated launches**: Robot spawning handled automatically
+- ✅ **Better sensor compatibility**: Laser sensors work consistently
+- 🔄 **Legacy platform**: Being phased out (end-of-life January 2025)
+
+**Ignition Gazebo (`--simulation`)**:
+- ✅ **Modern platform**: Active development, future-focused
+- ✅ **Advanced features**: Better graphics, improved physics simulation
+- ✅ **ROS2 integration**: Designed for ROS2 from the ground up
+- ⚠️ **Sensor complexity**: May require additional configuration
+- 📈 **Higher resource usage**: More demanding on system resources
+
+**Recommendation**: Use `--classic-sim` for SLAM testing and navigation validation due to proven sensor reliability. Use `--simulation` for advanced development work and future-proofing.
+
+## Navigation Testing
+
+### Manual Navigation Tests
+```bash
+# Test 1-meter square navigation with Gazebo Classic
+python3 test_square_corners_classic.py
+
+# Test 1-meter square navigation with Ignition Gazebo
+python3 test_square_corners.py
+```
+
+### Automated Navigation Tests
+Both simulation environments support the full automated test suite with navigation validation.
 
 ## Logging and Monitoring
 
@@ -188,6 +258,17 @@ The script includes built-in process monitoring:
 - Check ESP32 firmware and network configuration
 - Ensure robot is powered and connected
 
+**Gazebo Classic specific issues**
+- Check for `gzserver` and `gzclient` processes: `pgrep -f gazebo`
+- Verify world file loading: Check for world file path errors in logs
+- Robot spawning failures: Ensure `spawn_entity.py` completes successfully
+- Physics simulation issues: Check for physics engine warnings in Gazebo output
+
+**Ignition Gazebo specific issues**  
+- Check for `ign gazebo` or `gz sim` processes: `pgrep -f "ign gazebo"`
+- Sensor data publication: Monitor ROS-Gazebo bridge status
+- Controller manager failures: Check ros2_control integration
+
 ### Debug Commands
 ```bash
 # Check active ROS2 nodes
@@ -211,6 +292,16 @@ tail -f logs/b4m_launch_*.log
 
 # Test SLAM functionality
 python3 test_slam_working.py
+
+# Gazebo Classic specific debugging
+pgrep -f gazebo  # Check for Gazebo Classic processes
+gz model -l      # List models in Gazebo Classic (if gz tools installed)
+gazebo --verbose worlds/navigation_test_classic.world  # Launch world directly
+
+# Ignition Gazebo specific debugging  
+pgrep -f "ign gazebo"  # Check for Ignition Gazebo processes
+ign topic -l           # List Ignition topics
+ign model -l           # List Ignition models
 ```
 
 ## Cleanup
@@ -268,5 +359,12 @@ The system uses SLAM toolbox for dynamic mapping and localization:
 For additional help:
 - Check log files in the `logs/` directory
 - Use `--debug` flag for verbose output
+- Try different simulation environments (`--simulation` vs `--classic-sim`)
+- Review the migration guide: `FUTURE_GAZEBO_CLASSIC_MIGRATION.md`
 - Refer to individual component documentation in the workspace
 - Monitor ROS2 system status with standard ROS2 tools
+
+### Available Test Scripts
+- `test_square_corners_classic.py` - Gazebo Classic navigation test
+- `test_square_corners.py` - Ignition Gazebo navigation test  
+- `test_slam_working.py` - SLAM functionality validation

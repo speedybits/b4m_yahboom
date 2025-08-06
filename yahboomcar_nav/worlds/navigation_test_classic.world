@@ -1,0 +1,133 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <world name="navigation_test">
+    <!-- Include standard models -->
+    <include>
+      <uri>model://ground_plane</uri>
+    </include>
+    <include>
+      <uri>model://sun</uri>
+    </include>
+    
+    <!-- Physics settings optimized for navigation testing -->
+    <physics name="default" type="ode">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <real_time_update_rate>1000</real_time_update_rate>
+    </physics>
+    
+    <!-- Camera for visual monitoring (optional) -->
+    <gui fullscreen='0'>
+      <camera name='user_camera'>
+        <pose>0 -5 3 0 0.5 1.57</pose>
+        <view_controller>orbit</view_controller>
+      </camera>
+    </gui>
+    
+    <!-- Simple navigation test environment -->
+    <!-- No obstacles needed for basic 1-meter square navigation test -->
+    <!-- The robot should be able to navigate freely in a 2x2 meter area -->
+    
+    <!-- Optional: Add reference markers at corners of 1-meter square for visual validation -->
+    <!-- Corner marker 1: (0.5, 0.5) -->
+    <model name="corner_marker_1">
+      <pose>0.5 0.5 0.01 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.05</radius>
+              <length>0.02</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>1.0 0.0 0.0 1</ambient>
+            <diffuse>1.0 0.0 0.0 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    
+    <!-- Corner marker 2: (0.5, -0.5) -->
+    <model name="corner_marker_2">
+      <pose>0.5 -0.5 0.01 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.05</radius>
+              <length>0.02</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.0 1.0 0.0 1</ambient>
+            <diffuse>0.0 1.0 0.0 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    
+    <!-- Corner marker 3: (-0.5, -0.5) -->
+    <model name="corner_marker_3">
+      <pose>-0.5 -0.5 0.01 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.05</radius>
+              <length>0.02</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.0 0.0 1.0 1</ambient>
+            <diffuse>0.0 0.0 1.0 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    
+    <!-- Corner marker 4: (-0.5, 0.5) -->
+    <model name="corner_marker_4">
+      <pose>-0.5 0.5 0.01 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.05</radius>
+              <length>0.02</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>1.0 1.0 0.0 1</ambient>
+            <diffuse>1.0 1.0 0.0 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    
+    <!-- Center marker for reference -->
+    <model name="center_marker">
+      <pose>0 0 0.01 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.03</radius>
+              <length>0.02</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>1.0 1.0 1.0 1</ambient>
+            <diffuse>1.0 1.0 1.0 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    
+  </world>
+</sdf>

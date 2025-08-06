@@ -16,7 +16,8 @@ export RCL_LOG_LEVEL=debug
 #   --only-agent:    Launch ONLY the Micro-ROS agent (Step 1) and exit
 #   --autotest:      Run in automated test mode (non-interactive)
 #   --debug:         Enable verbose debug logging
-#   --simulation:    Launch in Gazebo simulation mode instead of real robot
+#   --simulation:    Launch in Ignition Gazebo simulation mode instead of real robot
+#   --classic-sim:   Launch in Gazebo Classic simulation mode instead of real robot
 #   --slam-test:     Add Steps 8-10 for automated SLAM testing (skips Robot Manager GUI)
 #   --regression:    Run regression test (test_square_corners.py) after system launch
 
@@ -27,6 +28,7 @@ AUTOTEST_MODE=false
 DEBUG_MODE=false
 SIMULATION_MODE=false
 SLAM_TEST_MODE=false
+CLASSIC_GAZEBO_MODE=false
 REGRESSION_MODE=false
 for arg in "$@"; do
     case $arg in
@@ -50,6 +52,11 @@ for arg in "$@"; do
             SIMULATION_MODE=true
             shift
             ;;
+        --classic-sim)
+            SIMULATION_MODE=true
+            CLASSIC_GAZEBO_MODE=true
+            shift
+            ;;
         --slam-test)
             SLAM_TEST_MODE=true
             shift
@@ -64,7 +71,8 @@ for arg in "$@"; do
             echo "  --only-agent:    Launch ONLY the Micro-ROS agent (Step 1) and exit"
             echo "  --autotest:      Run in automated test mode (non-interactive)"
             echo "  --debug:         Enable verbose debug logging"
-            echo "  --simulation:    Launch in Gazebo simulation mode instead of real robot"
+            echo "  --simulation:    Launch in Ignition Gazebo simulation mode instead of real robot"
+            echo "  --classic-sim:   Launch in Gazebo Classic simulation mode instead of real robot"
             echo "  --slam-test:     Add Steps 8-10 for automated SLAM testing (skips Robot Manager GUI)"
             echo "  --regression:    Run regression test (test_square_corners.py) after system launch"
             exit 0
@@ -79,7 +87,7 @@ done
 
 # Validate flag combinations
 if [ "$SIMULATION_MODE" = true ] && [ "$ONLY_AGENT" = true ]; then
-    echo "ERROR: --simulation and --only-agent cannot be used together"
+    echo "ERROR: --simulation/--classic-sim and --only-agent cannot be used together"
     echo "In simulation mode, Gazebo is launched instead of the Micro-ROS agent"
     exit 1
 fi
@@ -467,22 +475,39 @@ validate_step_success() {
     case $step_num in
         1)
             if [ "$SIMULATION_MODE" = true ]; then
-                # Step 1 Simulation: Ignition Gazebo world launch - check for ign gazebo process
-                debug_log "Waiting for Ignition Gazebo server to start..."
+                # Step 1 Simulation: Gazebo world launch - check for gazebo process
+                if [ "$CLASSIC_GAZEBO_MODE" = true ]; then
+                    debug_log "Waiting for Gazebo Classic server to start..."
+                else
+                    debug_log "Waiting for Ignition Gazebo server to start..."
+                fi
                 sleep 5  # Give Gazebo time to start
                 
                 local end_time=$(($(date +%s) + timeout))
                 while [ $(date +%s) -lt $end_time ]; do
                     # Check for Gazebo server processes
-                    if pgrep -f "ign gazebo" > /dev/null || pgrep -f "gz sim" > /dev/null; then
-                        debug_log "Ignition Gazebo process found, giving additional startup time..."
-                        sleep 5  # Give additional time for full initialization
-                        debug_log "Step 1 validation passed: Ignition Gazebo simulation running"
-                        return 0
+                    if [ "$CLASSIC_GAZEBO_MODE" = true ]; then
+                        if pgrep -f "gzserver" > /dev/null || pgrep -f "gazebo" > /dev/null; then
+                            debug_log "Gazebo Classic process found, giving additional startup time..."
+                            sleep 5  # Give additional time for full initialization
+                            debug_log "Step 1 validation passed: Gazebo Classic simulation running"
+                            return 0
+                        fi
+                    else
+                        if pgrep -f "ign gazebo" > /dev/null || pgrep -f "gz sim" > /dev/null; then
+                            debug_log "Ignition Gazebo process found, giving additional startup time..."
+                            sleep 5  # Give additional time for full initialization
+                            debug_log "Step 1 validation passed: Ignition Gazebo simulation running"
+                            return 0
+                        fi
                     fi
                     sleep 2
                 done
-                echo "ERROR: Step 1 validation failed - Ignition Gazebo simulation not running within $timeout seconds"
+                if [ "$CLASSIC_GAZEBO_MODE" = true ]; then
+                    echo "ERROR: Step 1 validation failed - Gazebo Classic simulation not running within $timeout seconds"
+                else
+                    echo "ERROR: Step 1 validation failed - Ignition Gazebo simulation not running within $timeout seconds"
+                fi
                 return 1
             else
                 # Step 1: Micro-ROS agent - assume already running correctly in autotest mode
@@ -1243,14 +1268,26 @@ check_existing_processes
 
 # Step 1: Start the Micro-ROS Agent (unless skipped) OR Launch Gazebo Simulation
 if [ "$SIMULATION_MODE" = true ]; then
-    if [ "$SLAM_TEST_MODE" = true ]; then
-        launch_in_terminal "Starting Ignition Gazebo simulation with SLAM test world (2 obstacles)" \
-            "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ign gazebo \"$WORKSPACE_ROOT/yahboomcar_nav/worlds/slam_test_world.sdf\"" \
-            "1"
+    if [ "$CLASSIC_GAZEBO_MODE" = true ]; then
+        if [ "$SLAM_TEST_MODE" = true ]; then
+            launch_in_terminal "Starting Gazebo Classic simulation with SLAM test world" \
+                "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_nav slam_test_gazebo_classic.py" \
+                "1"
+        else
+            launch_in_terminal "Starting Gazebo Classic simulation environment" \
+                "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_nav gazebo_classic_nav_launch.py" \
+                "1"
+        fi
     else
-        launch_in_terminal "Starting Ignition Gazebo simulation environment" \
-            "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ign gazebo" \
-            "1"
+        if [ "$SLAM_TEST_MODE" = true ]; then
+            launch_in_terminal "Starting Ignition Gazebo simulation with SLAM test world (2 obstacles)" \
+                "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ign gazebo \"$WORKSPACE_ROOT/yahboomcar_nav/worlds/slam_test_world.sdf\"" \
+                "1"
+        else
+            launch_in_terminal "Starting Ignition Gazebo simulation environment" \
+                "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ign gazebo" \
+                "1"
+        fi
     fi
 elif [ "$SKIP_AGENT" = false ]; then
     launch_in_terminal "Starting the Micro-ROS Agent for ESP32 communication" \
@@ -1278,12 +1315,18 @@ fi
 # Step 2: Power on the Yahboom Robot OR Spawn Robot with Controllers in Gazebo
 if [ "$SIMULATION_MODE" = true ]; then
     echo "====================================================="
-    echo "STEP 2: Spawn robot with controllers in Gazebo simulation"
+    echo "STEP 2: Robot initialization in Gazebo simulation"
     echo "====================================================="
     
-    launch_in_terminal "Spawning Yahboom robot with direct plugin in Ignition Gazebo" \
-        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_nav spawn_robot_simple_gazebo.py" \
-        "2"
+    if [ "$CLASSIC_GAZEBO_MODE" = true ]; then
+        # Gazebo Classic: Robot spawning is handled in Step 1 launch files
+        echo "✅ Step 2: Robot initialization handled by Gazebo Classic launch (Step 1)"
+        log_message "STEP 2: Gazebo Classic robot initialization complete"
+    else
+        launch_in_terminal "Spawning Yahboom robot with direct plugin in Ignition Gazebo" \
+            "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_nav spawn_robot_simple_gazebo.py" \
+            "2"
+    fi
 else
     echo "====================================================="
     echo "STEP 2: Power on the physical Yahboom Robot"
@@ -1420,13 +1463,21 @@ if [ "$AUTOTEST_MODE" = true ]; then
     echo "======================================="
     if [ "$SLAM_TEST_MODE" = true ]; then
         if [ "$SIMULATION_MODE" = true ]; then
-            echo "B4M Robot SLAM Testing - Gazebo Simulation - PASSED"
+            if [ "$CLASSIC_GAZEBO_MODE" = true ]; then
+                echo "B4M Robot SLAM Testing - Gazebo Classic Simulation - PASSED"
+            else
+                echo "B4M Robot SLAM Testing - Ignition Gazebo Simulation - PASSED"
+            fi
         else
             echo "B4M Robot SLAM Testing - Real Robot - PASSED"
         fi
     else
         if [ "$SIMULATION_MODE" = true ]; then
-            echo "B4M Robot Ignition Gazebo Simulation Test - PASSED"
+            if [ "$CLASSIC_GAZEBO_MODE" = true ]; then
+                echo "B4M Robot Gazebo Classic Simulation Test - PASSED"
+            else
+                echo "B4M Robot Ignition Gazebo Simulation Test - PASSED"
+            fi
         else
             echo "B4M Robot Launch Test - PASSED"
         fi
@@ -1443,13 +1494,23 @@ if [ "$AUTOTEST_MODE" = true ]; then
     echo ""
     echo "Step Summary:"
     if [ "$SIMULATION_MODE" = true ]; then
-        echo "✅ Step 1: Ignition Gazebo Simulation Environment"
-        echo "✅ Step 2: Robot Spawning in Ignition Gazebo" 
-        echo "✅ Step 3: Ignition Gazebo Robot Systems"
-        echo "✅ Step 4: RViz Launch"
-        echo "✅ Step 5: SLAM Navigation (Ignition Gazebo)"
-        echo "✅ Step 6: SLAM Initialization (Ignition Gazebo)"
-        echo "✅ Step 7: MQTT Navigation"
+        if [ "$CLASSIC_GAZEBO_MODE" = true ]; then
+            echo "✅ Step 1: Gazebo Classic Simulation Environment"
+            echo "✅ Step 2: Robot Spawning in Gazebo Classic" 
+            echo "✅ Step 3: Gazebo Classic Robot Systems"
+            echo "✅ Step 4: RViz Launch"
+            echo "✅ Step 5: SLAM Navigation (Gazebo Classic)"
+            echo "✅ Step 6: SLAM Initialization (Gazebo Classic)"
+            echo "✅ Step 7: MQTT Navigation"
+        else
+            echo "✅ Step 1: Ignition Gazebo Simulation Environment"
+            echo "✅ Step 2: Robot Spawning in Ignition Gazebo" 
+            echo "✅ Step 3: Ignition Gazebo Robot Systems"
+            echo "✅ Step 4: RViz Launch"
+            echo "✅ Step 5: SLAM Navigation (Ignition Gazebo)"
+            echo "✅ Step 6: SLAM Initialization (Ignition Gazebo)"
+            echo "✅ Step 7: MQTT Navigation"
+        fi
     else
         echo "✅ Step 1: Micro-ROS Agent (assumed running - prerequisite)"
         echo "✅ Step 2: Robot Connection" 
