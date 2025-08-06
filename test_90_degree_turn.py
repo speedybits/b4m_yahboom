@@ -128,12 +128,11 @@ def test_90_degree_turns():
     # Launch simulation
     print("\nLaunching simulation...")
     gazebo_proc = subprocess.Popen([
-        'ros2', 'launch', 'yahboomcar_nav', 'ignition_gazebo_launch.py'
+        'ros2', 'launch', 'yahboomcar_nav', 'gazebo_classic_nav_launch.py'
     ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     
-    sim_proc = subprocess.Popen([
-        'ros2', 'launch', 'yahboomcar_nav', 'spawn_robot_with_controllers_ignition.py'
-    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    # Robot spawning is now integrated into gazebo_classic_nav_launch.py
+    sim_proc = None
     
     try:
         print("Waiting for system initialization...")
@@ -214,7 +213,7 @@ def test_90_degree_turns():
             executor.shutdown()
         rclpy.shutdown()
         
-        for proc in [sim_proc, gazebo_proc]:
+        for proc in [gazebo_proc]:
             if proc and proc.poll() is None:
                 proc.terminate()
                 try:
@@ -222,7 +221,9 @@ def test_90_degree_turns():
                 except subprocess.TimeoutExpired:
                     proc.kill()
         
-        subprocess.run(['pkill', '-f', 'ign gazebo'], capture_output=True)
+        subprocess.run(['pkill', '-f', 'gazebo'], capture_output=True)
+        subprocess.run(['pkill', '-f', 'gzserver'], capture_output=True)
+        subprocess.run(['pkill', '-f', 'gzclient'], capture_output=True)
         subprocess.run(['pkill', '-f', 'controller_manager'], capture_output=True)
         subprocess.run(['pkill', '-f', 'robot_state_publisher'], capture_output=True)
         time.sleep(2)

@@ -31,16 +31,12 @@ def test_motor_control():
     subprocess.run(['./b4m_shutdown.sh', '--keep-agent'], capture_output=True)
     time.sleep(2)
     
-    # Launch the full simulation with controllers
-    print("Launching simulation with controllers...")
-    sim_proc = subprocess.Popen([
-        'ros2', 'launch', 'yahboomcar_nav', 'spawn_robot_with_controllers_ignition.py'
-    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    
-    # Also launch Gazebo
+    # Launch Gazebo Classic simulation with integrated robot
+    print("Launching Gazebo Classic simulation...")
     gazebo_proc = subprocess.Popen([
-        'ros2', 'launch', 'yahboomcar_nav', 'ignition_gazebo_launch.py'
+        'ros2', 'launch', 'yahboomcar_nav', 'gazebo_classic_nav_launch.py'
     ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    sim_proc = None  # No separate spawn process needed
     
     try:
         # Wait for system to initialize

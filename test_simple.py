@@ -9,12 +9,14 @@ import os
 def run_simple_test():
     """Simple integrated test that launches and verifies the robot model"""
     
-    print("=== Simplified Ignition Gazebo Model Test ===")
+    print("=== Simplified Gazebo Classic Model Test ===")
     
     # Clean up first
     print("\n1. Cleaning up existing processes...")
     subprocess.run(['./b4m_shutdown.sh', '--keep-agent'], capture_output=True)
-    subprocess.run(['pkill', '-f', 'ign gazebo'], capture_output=True)
+    subprocess.run(['pkill', '-f', 'gazebo'], capture_output=True)
+    subprocess.run(['pkill', '-f', 'gzserver'], capture_output=True)
+    subprocess.run(['pkill', '-f', 'gzclient'], capture_output=True)
     subprocess.run(['pkill', '-f', 'controller_manager'], capture_output=True)
     time.sleep(2)
     
@@ -22,26 +24,24 @@ def run_simple_test():
     launch_proc = None
     
     try:
-        # Launch Ignition Gazebo with auto-start
-        print("\n2. Launching Ignition Gazebo with auto-start...")
+        # Launch Gazebo Classic with auto-start
+        print("\n2. Launching Gazebo Classic with auto-start...")
         gazebo_proc = subprocess.Popen([
-            'ros2', 'launch', 'yahboomcar_nav', 'ignition_gazebo_launch.py'
+            'ros2', 'launch', 'yahboomcar_nav', 'gazebo_classic_nav_launch.py'
         ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         print("   (Simulation should start automatically - no play button needed)")
         time.sleep(5)
         
         # Check if Gazebo is running
-        gazebo_check = subprocess.run(['pgrep', '-f', 'ign gazebo'], capture_output=True)
+        gazebo_check = subprocess.run(['pgrep', '-f', 'gzserver'], capture_output=True)
         if gazebo_check.returncode != 0:
-            print("✗ Failed to launch Ignition Gazebo")
+            print("✗ Failed to launch Gazebo Classic")
             return 1
-        print("✓ Ignition Gazebo launched successfully")
+        print("✓ Gazebo Classic launched successfully")
         
-        # Launch robot with controllers
-        print("\n3. Spawning robot with controllers...")
-        launch_proc = subprocess.Popen([
-            'ros2', 'launch', 'yahboomcar_nav', 'spawn_robot_with_controllers_ignition.py'
-        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        print("\n3. Robot already spawned with Gazebo Classic launch...")
+        # No separate spawning needed - robot is integrated into gazebo_classic_nav_launch.py
+        launch_proc = None
         
         # Wait for everything to initialize
         print("   Waiting for initialization...")
@@ -82,7 +82,7 @@ def run_simple_test():
             return 1
         
         print("\n=== All checks passed! ===")
-        print("The robot model is loaded correctly in Ignition Gazebo")
+        print("The robot model is loaded correctly in Gazebo Classic")
         print("- Simulation is running")
         print("- Robot components are active")
         print("- Required topics are available")
@@ -102,7 +102,9 @@ def run_simple_test():
                 except subprocess.TimeoutExpired:
                     proc.kill()
         
-        subprocess.run(['pkill', '-f', 'ign gazebo'], capture_output=True)
+        subprocess.run(['pkill', '-f', 'gazebo'], capture_output=True)
+        subprocess.run(['pkill', '-f', 'gzserver'], capture_output=True)
+        subprocess.run(['pkill', '-f', 'gzclient'], capture_output=True)
         subprocess.run(['pkill', '-f', 'controller_manager'], capture_output=True)
         subprocess.run(['pkill', '-f', 'robot_state_publisher'], capture_output=True)
         subprocess.run(['pkill', '-f', 'spawner'], capture_output=True)
