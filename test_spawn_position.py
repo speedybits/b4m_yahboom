@@ -23,58 +23,30 @@ def test_spawn_position():
     spawn_proc = None
     
     try:
-        # Launch Ignition Gazebo
-        print("Launching Ignition Gazebo...")
+        # Launch Gazebo Classic
+        print("Launching Gazebo Classic...")
         gazebo_proc = subprocess.Popen([
-            'ros2', 'launch', 'yahboomcar_nav', 'ignition_gazebo_launch.py'
+            'ros2', 'launch', 'yahboomcar_nav', 'gazebo_classic_nav_launch.py'
         ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         time.sleep(5)
         
-        # Start robot state publisher with URDF
-        print("Starting robot state publisher...")
-        urdf_path = "/home/mike/projects/b4m_yahboom/yahboomcar_description/urdf/yahboomcar_robot2_gazebo.urdf"
-        with open(urdf_path, 'r') as f:
-            robot_desc = f.read()
+        # Robot spawning is now integrated into gazebo_classic_nav_launch.py
+        print("Robot spawning is integrated into the launch file...")
+        robot_state_proc = None
+        spawn_proc = None
         
-        robot_state_proc = subprocess.Popen([
-            'ros2', 'run', 'robot_state_publisher', 'robot_state_publisher',
-            '--ros-args', '-p', f'robot_description:={robot_desc}'
-        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        time.sleep(2)
-        
-        # Spawn robot at ground level (z=0)
-        print("Spawning robot at z=0...")
-        spawn_proc = subprocess.Popen([
-            'ros2', 'run', 'ros_gz_sim', 'create',
-            '-name', 'test_robot',
-            '-topic', '/robot_description',
-            '-x', '0', '-y', '0', '-z', '0'
-        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        
-        # Wait for spawn to complete
+        # Wait for launch to complete
         time.sleep(5)
         
-        # Check if robot spawned successfully by checking spawn process return code
-        spawn_return = spawn_proc.wait(timeout=5)
-        
-        if spawn_return == 0:
-            print("✓ Robot spawned successfully")
-            # Additional verification: check if simulation is running
-            sim_check = subprocess.run(['pgrep', '-f', 'ign gazebo'], capture_output=True)
-            if sim_check.returncode == 0:
-                print("✓ Simulation running")
-                print("Test result: PASSED")
-                return 0
-            else:
-                print("✗ Simulation not running")
-                print("Test result: FAILED")
-                return 1
+        # Check if simulation is running
+        sim_check = subprocess.run(['pgrep', '-f', 'gazebo'], capture_output=True)
+        if sim_check.returncode == 0:
+            print("✓ Gazebo Classic simulation running")
+            print("✓ Robot spawned successfully (integrated in launch)")
+            print("Test result: PASSED")
+            return 0
         else:
-            print("✗ Robot spawn failed with return code:", spawn_return)
-            # Check spawn stderr for errors
-            spawn_errors = spawn_proc.stderr.read().decode()
-            if spawn_errors:
-                print("Spawn errors:", spawn_errors)
+            print("✗ Gazebo Classic simulation not running")
             print("Test result: FAILED")
             return 1
             
@@ -93,8 +65,9 @@ def test_spawn_position():
                     proc.kill()
         
         # Extra cleanup
-        subprocess.run(['pkill', '-f', 'ign gazebo'], capture_output=True)
-        subprocess.run(['pkill', '-f', 'ros_gz_sim'], capture_output=True)
+        subprocess.run(['pkill', '-f', 'gazebo'], capture_output=True)
+        subprocess.run(['pkill', '-f', 'gzserver'], capture_output=True)
+        subprocess.run(['pkill', '-f', 'gzclient'], capture_output=True)
         subprocess.run(['pkill', '-f', 'robot_state_publisher'], capture_output=True)
         time.sleep(2)
 

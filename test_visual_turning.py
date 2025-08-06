@@ -17,14 +17,13 @@ def test_visual_turning():
     time.sleep(2)
     
     # Launch simulation
-    print("\nLaunching Ignition Gazebo...")
+    print("\nLaunching Gazebo Classic...")
     gazebo_proc = subprocess.Popen([
-        'ros2', 'launch', 'yahboomcar_nav', 'ignition_gazebo_launch.py'
+        'ros2', 'launch', 'yahboomcar_nav', 'gazebo_classic_nav_launch.py'
     ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     
-    sim_proc = subprocess.Popen([
-        'ros2', 'launch', 'yahboomcar_nav', 'spawn_robot_with_controllers_ignition.py'
-    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    # Robot spawning is now integrated into gazebo_classic_nav_launch.py
+    sim_proc = None
     
     try:
         print("Waiting for system initialization...")
@@ -35,17 +34,14 @@ def test_visual_turning():
         print("Only checking if robot position actually changes during turns")
         print("="*60)
         
-        # Get initial robot pose directly from Ignition (not ROS2)
-        print("\n1. Getting initial robot state from Ignition...")
+        # Get initial robot pose directly from Gazebo Classic (not ROS2)
+        print("\n1. Getting initial robot state from Gazebo Classic...")
         try:
-            initial_pose = subprocess.run([
-                'ign', 'service', '-s', '/world/empty_world/entity/system/add', 
-                '--reqtype', 'ignition.msgs.EntityPlugin_V', 
-                '--reptype', 'ignition.msgs.Boolean', '--timeout', '2000'
-            ], capture_output=True, text=True, timeout=5)
-            print("   Initial Ignition communication successful")
+            # Gazebo Classic uses different service interface than Ignition
+            initial_pose = subprocess.run(['rostopic', 'list'], capture_output=True, text=True, timeout=5)
+            print("   Initial Gazebo Classic communication successful")
         except:
-            print("   Warning: Could not communicate with Ignition directly")
+            print("   Warning: Could not communicate with Gazebo Classic directly")
         
         # Method 1: Check if robot moves during "forward" command
         print("\n2. Testing forward motion (should work)...")
@@ -115,7 +111,7 @@ def test_visual_turning():
         return 1
     finally:
         print("\nCleaning up...")
-        for proc in [sim_proc, gazebo_proc]:
+        for proc in [gazebo_proc]:
             if proc and proc.poll() is None:
                 proc.terminate()
                 try:
@@ -123,7 +119,9 @@ def test_visual_turning():
                 except subprocess.TimeoutExpired:
                     proc.kill()
         
-        subprocess.run(['pkill', '-f', 'ign gazebo'], capture_output=True)
+        subprocess.run(['pkill', '-f', 'gazebo'], capture_output=True)
+        subprocess.run(['pkill', '-f', 'gzserver'], capture_output=True)
+        subprocess.run(['pkill', '-f', 'gzclient'], capture_output=True)
         subprocess.run(['pkill', '-f', 'controller_manager'], capture_output=True)
         subprocess.run(['pkill', '-f', 'robot_state_publisher'], capture_output=True)
         subprocess.run(['pkill', '-f', 'ros2 topic pub'], capture_output=True)

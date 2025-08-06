@@ -25,12 +25,11 @@ def test_simple_turn():
     # Launch simulation
     print("Launching simulation...")
     gazebo_proc = subprocess.Popen([
-        'ros2', 'launch', 'yahboomcar_nav', 'ignition_gazebo_launch.py'
+        'ros2', 'launch', 'yahboomcar_nav', 'gazebo_classic_nav_launch.py'
     ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     
-    sim_proc = subprocess.Popen([
-        'ros2', 'launch', 'yahboomcar_nav', 'spawn_robot_with_controllers_ignition.py'
-    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    # Robot spawning is now integrated into gazebo_classic_nav_launch.py
+    sim_proc = None
     
     try:
         print("Waiting for initialization...")
@@ -100,7 +99,7 @@ def test_simple_turn():
             executor.shutdown()
         rclpy.shutdown()
         
-        for proc in [sim_proc, gazebo_proc]:
+        for proc in [gazebo_proc]:
             if proc and proc.poll() is None:
                 proc.terminate()
                 try:
@@ -108,7 +107,9 @@ def test_simple_turn():
                 except subprocess.TimeoutExpired:
                     proc.kill()
         
-        subprocess.run(['pkill', '-f', 'ign gazebo'], capture_output=True)
+        subprocess.run(['pkill', '-f', 'gazebo'], capture_output=True)
+        subprocess.run(['pkill', '-f', 'gzserver'], capture_output=True)
+        subprocess.run(['pkill', '-f', 'gzclient'], capture_output=True)
         time.sleep(2)
 
 if __name__ =="__main__":

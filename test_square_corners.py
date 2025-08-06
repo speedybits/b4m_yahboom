@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# test_square_corners.py - Test that verifies robot reaches each corner of 1m square
+# test_square_corners.py - Test that verifies robot reaches each corner of 1m square using Gazebo Classic
 
 import rclpy
 from rclpy.node import Node
@@ -15,7 +15,7 @@ class SquareCornersNode(Node):
     def __init__(self):
         super().__init__('square_corners_test')
         self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)
-        self.odom_sub = self.create_subscription(Odometry, '/odometry', self.odom_callback, 10)
+        self.odom_sub = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
         
         self.x = 0.0
         self.y = 0.0
@@ -93,23 +93,19 @@ class SquareCornersNode(Node):
         return False
 
 def test_square_corners():
-    """Test that robot reaches each corner of a 1-meter square"""
+    """Test that robot reaches each corner of a 1-meter square using Gazebo Classic"""
     
-    print("=== Square Corners Navigation Test ===")
+    print("=== Square Corners Navigation Test (Gazebo Classic) ===")
     print("This test verifies the robot reaches each corner of a 1m square")
     
     # Cleanup first
     subprocess.run(['./b4m_shutdown.sh', '--keep-agent'], capture_output=True)
     time.sleep(2)
     
-    # Launch simulation
-    print("\nLaunching simulation...")
-    gazebo_proc = subprocess.Popen([
-        'ros2', 'launch', 'yahboomcar_nav', 'ignition_gazebo_launch.py'
-    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    
+    # Launch Gazebo Classic simulation
+    print("\nLaunching Gazebo Classic simulation...")
     sim_proc = subprocess.Popen([
-        'ros2', 'launch', 'yahboomcar_nav', 'spawn_robot_with_controllers_ignition.py'
+        'ros2', 'launch', 'yahboomcar_nav', 'gazebo_classic_nav_launch.py'
     ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     
     try:
@@ -176,7 +172,7 @@ def test_square_corners():
                 
                 if final_error < 0.2:
                     print("\n✅ SQUARE NAVIGATION SUCCESSFUL!")
-                    print("Robot successfully navigated a 1-meter square")
+                    print("Robot successfully navigated a 1-meter square in Gazebo Classic")
                     return 0
                 else:
                     print("\n⚠️  Square completed but with high error")
@@ -197,16 +193,17 @@ def test_square_corners():
             executor.shutdown()
         rclpy.shutdown()
         
-        for proc in [sim_proc, gazebo_proc]:
-            if proc and proc.poll() is None:
-                proc.terminate()
-                try:
-                    proc.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
+        if sim_proc and sim_proc.poll() is None:
+            sim_proc.terminate()
+            try:
+                sim_proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                sim_proc.kill()
         
-        subprocess.run(['pkill', '-f', 'ign gazebo'], capture_output=True)
-        subprocess.run(['pkill', '-f', 'controller_manager'], capture_output=True)
+        # Cleanup Gazebo Classic processes
+        subprocess.run(['pkill', '-f', 'gazebo'], capture_output=True)
+        subprocess.run(['pkill', '-f', 'gzserver'], capture_output=True)
+        subprocess.run(['pkill', '-f', 'gzclient'], capture_output=True)
         subprocess.run(['pkill', '-f', 'robot_state_publisher'], capture_output=True)
         time.sleep(2)
 

@@ -14,18 +14,16 @@ def test_minimal_turn():
     time.sleep(2)
     
     # Launch Gazebo GUI
-    print("1. Launching Gazebo GUI (auto-starts)...")
+    print("1. Launching Gazebo Classic GUI (auto-starts)...")
     gazebo_proc = subprocess.Popen([
-        'ros2', 'launch', 'yahboomcar_nav', 'ignition_gazebo_launch.py'
+        'ros2', 'launch', 'yahboomcar_nav', 'gazebo_classic_nav_launch.py'
     ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     
     time.sleep(8)
     
-    # Launch robot spawner 
-    print("2. Spawning robot in Gazebo...")
-    sim_proc = subprocess.Popen([
-        'ros2', 'launch', 'yahboomcar_nav', 'spawn_robot_with_controllers_ignition.py'
-    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    print("2. Robot already spawned with Gazebo Classic launch...")
+    # No separate spawning needed - robot is integrated into gazebo_classic_nav_launch.py
+    sim_proc = None
     
     time.sleep(10)
     
