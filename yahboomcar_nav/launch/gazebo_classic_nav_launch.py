@@ -1,8 +1,8 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import ExecuteProcess, TimerAction
-from launch.substitutions import LaunchConfiguration
+from launch.actions import ExecuteProcess, TimerAction, DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 
 def generate_launch_description():
@@ -11,11 +11,16 @@ def generate_launch_description():
     desc_package_path = get_package_share_directory('yahboomcar_description')
     
     # Launch configuration variables
-    use_sim_time = LaunchConfiguration('use_sim_time', default='true')
-    verbose = LaunchConfiguration('verbose', default='true')
+    use_sim_time = LaunchConfiguration('use_sim_time')
+    verbose = LaunchConfiguration('verbose')
+    world_name = LaunchConfiguration('world_name')
     
-    # World file
-    world_file = os.path.join(nav_package_path, 'worlds', 'navigation_test_classic.world')
+    # World file - dynamic selection based on world_name parameter
+    world_file = PathJoinSubstitution([
+        nav_package_path, 
+        'worlds', 
+        [world_name, '.world']
+    ])
     
     # Robot description  
     urdf_file = os.path.join(desc_package_path, 'urdf', 'yahboomcar_robot_classic_nav.urdf')
@@ -25,7 +30,24 @@ def generate_launch_description():
         robot_description_content = urdf_file_handle.read()
     
     return LaunchDescription([
-        # Launch Gazebo Classic with the navigation test world
+        # Declare launch arguments
+        DeclareLaunchArgument(
+            'use_sim_time',
+            default_value='true',
+            description='Use simulation time'
+        ),
+        DeclareLaunchArgument(
+            'verbose',
+            default_value='true',
+            description='Enable verbose output'
+        ),
+        DeclareLaunchArgument(
+            'world_name',
+            default_value='navigation_test_classic',
+            description='Name of the world file (without .world extension)'
+        ),
+        
+        # Launch Gazebo Classic with the selected world
         ExecuteProcess(
             cmd=['gazebo', '--verbose', '-s', 'libgazebo_ros_init.so', 
                  '-s', 'libgazebo_ros_factory.so', world_file],
