@@ -11,7 +11,7 @@ export RCL_LOG_LEVEL=debug
 # This script automates the launch process for the B4M Robot with Home Assistant integration
 # Each step will be launched in a separate terminal with user confirmation
 #
-# Usage: ./b4m_HA_launch.sh [--skip-agent] [--only-agent] [--autotest] [--debug] [--simulation] [--slam-test] [--regression]
+# Usage: ./b4m_HA_launch.sh [--skip-agent] [--only-agent] [--autotest] [--debug] [--simulation] [--slam-test] [--regression] [--explore]
 #   --skip-agent:    Skip the Micro-ROS agent launch (Step 1)
 #   --only-agent:    Launch ONLY the Micro-ROS agent (Step 1) and exit
 #   --autotest:      Run in automated test mode (non-interactive)
@@ -19,6 +19,7 @@ export RCL_LOG_LEVEL=debug
 #   --simulation:    Launch in Gazebo simulation mode instead of real robot
 #   --slam-test:     Add Steps 8-10 for automated SLAM testing (skips Robot Manager GUI)
 #   --regression:    Run regression test (test_square_corners.py) after system launch
+#   --explore:       Enable autonomous exploration mode with obstacle avoidance
 
 # Parse command line arguments
 SKIP_AGENT=false
@@ -28,6 +29,7 @@ DEBUG_MODE=false
 SIMULATION_MODE=false
 SLAM_TEST_MODE=false
 REGRESSION_MODE=false
+EXPLORE_MODE=false
 for arg in "$@"; do
     case $arg in
         --skip-agent)
@@ -58,8 +60,12 @@ for arg in "$@"; do
             REGRESSION_MODE=true
             shift
             ;;
+        --explore)
+            EXPLORE_MODE=true
+            shift
+            ;;
         -h|--help)
-            echo "Usage: $0 [--skip-agent] [--only-agent] [--autotest] [--debug] [--simulation] [--slam-test] [--regression]"
+            echo "Usage: $0 [--skip-agent] [--only-agent] [--autotest] [--debug] [--simulation] [--slam-test] [--regression] [--explore]"
             echo "  --skip-agent:    Skip the Micro-ROS agent launch (Step 1)"
             echo "  --only-agent:    Launch ONLY the Micro-ROS agent (Step 1) and exit"
             echo "  --autotest:      Run in automated test mode (non-interactive)"
@@ -67,6 +73,7 @@ for arg in "$@"; do
             echo "  --simulation:    Launch in Gazebo simulation mode instead of real robot"
             echo "  --slam-test:     Add Steps 8-10 for automated SLAM testing (skips Robot Manager GUI)"
             echo "  --regression:    Run regression test (test_square_corners.py) after system launch"
+            echo "  --explore:       Enable autonomous exploration mode with obstacle avoidance"
             exit 0
             ;;
         *)
@@ -113,6 +120,32 @@ if [ "$REGRESSION_MODE" = true ]; then
         echo "ERROR: --regression and --skip-agent cannot be used together"
         echo "Regression test manages its own simulation"
         exit 1
+    fi
+    # Regression mode is mutually exclusive with explore mode
+    if [ "$EXPLORE_MODE" = true ]; then
+        echo "ERROR: --regression and --explore cannot be used together"
+        echo "Regression test is a specific navigation test"
+        exit 1
+    fi
+fi
+
+if [ "$EXPLORE_MODE" = true ]; then
+    # Explore mode is mutually exclusive with SLAM test mode
+    if [ "$SLAM_TEST_MODE" = true ]; then
+        echo "ERROR: --explore and --slam-test cannot be used together"
+        echo "Choose either exploration or SLAM testing mode"
+        exit 1
+    fi
+    # Explore mode is mutually exclusive with only-agent
+    if [ "$ONLY_AGENT" = true ]; then
+        echo "ERROR: --explore and --only-agent cannot be used together"
+        echo "Exploration requires full system launch"
+        exit 1
+    fi
+    # Explore mode automatically enables autotest for autonomous operation
+    if [ "$AUTOTEST_MODE" = false ]; then
+        echo "INFO: --explore automatically enables --autotest mode for autonomous operation"
+        AUTOTEST_MODE=true
     fi
 fi
 
@@ -696,19 +729,66 @@ validate_step_success() {
             fi
             ;;
         8)
-            # Step 8: Automated square movement - check for completion and results
-            debug_log "Step 8: Validating automated square movement completion"
-            
-            # Wait for script to complete (up to timeout)
-            local end_time=$(($(date +%s) + timeout))
-            while [ $(date +%s) -lt $end_time ]; do
-                if ! pgrep -f "automated_square_movement.py" > /dev/null; then
-                    debug_log "Automated square movement script completed"
+            # Step 8: Different validation based on mode
+            if [ "$EXPLORE_MODE" = true ]; then
+                # Step 8 Exploration: Autonomous exploration - check if process is running and active
+                debug_log "Step 8: Validating autonomous exploration startup"
+                
+                # Give the exploration script time to initialize
+                sleep 3
+                
+                # Check if the exploration script is running
+                if pgrep -f "autonomous_exploration.py" > /dev/null; then
+                    debug_log "Autonomous exploration script is running"
                     
-                    # Check for results file
-                    if [ -f "/tmp/automated_square_movement_results.json" ]; then
-                        # Validate results using Python
-                        if python3 -c "
+                    # Check if the exploration script is actually working by monitoring log output
+                    local step_log_present=false
+                    if [ -f "$step_log" ]; then
+                        # Look for initialization message in the last few lines
+                        if tail -20 "$step_log" | grep -q "Autonomous Explorer initialized"; then
+                            debug_log "Autonomous exploration initialized successfully"
+                            step_log_present=true
+                        fi
+                        
+                        # Also check for laser data reception
+                        if tail -10 "$step_log" | grep -q "laser scan data" || \
+                           tail -10 "$step_log" | grep -q "Laser readings: .* points" || \
+                           tail -10 "$step_log" | grep -q "Exploration Status"; then
+                            debug_log "Step 8 validation passed: Autonomous exploration active with laser data"
+                            return 0
+                        fi
+                    fi
+                    
+                    # If we have the process but no clear signs of activity, wait a bit more
+                    debug_log "Exploration process found, waiting for laser data reception..."
+                    sleep 5
+                    
+                    # Final check for any signs of activity
+                    if [ -f "$step_log" ] && tail -20 "$step_log" | grep -q -E "(obstacle|exploration|laser|turning)"; then
+                        debug_log "Step 8 validation passed: Autonomous exploration showing activity"
+                        return 0
+                    else
+                        echo "ERROR: Step 8 validation failed - autonomous exploration not showing expected activity"
+                        return 1
+                    fi
+                else
+                    echo "ERROR: Step 8 validation failed - autonomous exploration process not found"
+                    return 1
+                fi
+            else
+                # Step 8: Automated square movement - check for completion and results (SLAM test mode)
+                debug_log "Step 8: Validating automated square movement completion"
+                
+                # Wait for script to complete (up to timeout)
+                local end_time=$(($(date +%s) + timeout))
+                while [ $(date +%s) -lt $end_time ]; do
+                    if ! pgrep -f "automated_square_movement.py" > /dev/null; then
+                        debug_log "Automated square movement script completed"
+                        
+                        # Check for results file
+                        if [ -f "/tmp/automated_square_movement_results.json" ]; then
+                            # Validate results using Python
+                            if python3 -c "
 import json
 try:
     with open('/tmp/automated_square_movement_results.json') as f:
@@ -723,22 +803,23 @@ except Exception as e:
     print(f'Error reading results: {e}')
     exit(1)
 "; then
-                            debug_log "Step 8 validation passed: Automated square movement completed successfully"
-                            return 0
+                                debug_log "Step 8 validation passed: Automated square movement completed successfully"
+                                return 0
+                            else
+                                echo "ERROR: Step 8 validation failed - automated square movement did not meet success criteria"
+                                return 1
+                            fi
                         else
-                            echo "ERROR: Step 8 validation failed - automated square movement did not meet success criteria"
+                            echo "ERROR: Step 8 validation failed - results file not found"
                             return 1
                         fi
-                    else
-                        echo "ERROR: Step 8 validation failed - results file not found"
-                        return 1
                     fi
-                fi
-                sleep 1
-            done
-            
-            echo "ERROR: Step 8 validation failed - automated square movement timed out"
-            return 1
+                    sleep 1
+                done
+                
+                echo "ERROR: Step 8 validation failed - automated square movement timed out"
+                return 1
+            fi
             ;;
         9)
             # Step 9: Map validation - check for completion and results
@@ -1119,6 +1200,11 @@ if [ "$REGRESSION_MODE" = true ]; then
     echo "🧪 Regression test mode enabled - will run square corners test after launch"
 fi
 
+if [ "$EXPLORE_MODE" = true ]; then
+    echo ""
+    echo "🗺️  Exploration mode enabled - robot will autonomously explore with obstacle avoidance"
+fi
+
 
 echo ""
 
@@ -1248,9 +1334,17 @@ if [ "$SIMULATION_MODE" = true ]; then
             "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_nav slam_test_gazebo_classic.py" \
             "1"
     else
-        launch_in_terminal "Starting Gazebo Classic simulation environment" \
-            "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_nav gazebo_classic_nav_launch.py" \
-            "1"
+        # Select world based on explore mode
+        if [ "$EXPLORE_MODE" = true ]; then
+            WORLD_NAME="exploration_test_classic"
+            launch_in_terminal "Starting Gazebo Classic simulation environment with exploration obstacles" \
+                "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_nav gazebo_classic_nav_launch.py world_name:=$WORLD_NAME" \
+                "1"
+        else
+            launch_in_terminal "Starting Gazebo Classic simulation environment" \
+                "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_nav gazebo_classic_nav_launch.py" \
+                "1"
+        fi
     fi
 elif [ "$SKIP_AGENT" = false ]; then
     launch_in_terminal "Starting the Micro-ROS Agent for ESP32 communication" \
@@ -1367,8 +1461,22 @@ launch_in_terminal "Starting the B4M Waypoint Navigation Node with MQTT integrat
     "7"
 
 
-# Step 8: Start the Robot Manager GUI (skip in autotest mode and SLAM test mode)
-if [ "$AUTOTEST_MODE" = false ] && [ "$SLAM_TEST_MODE" = false ]; then
+# Step 8: Start the Robot Manager GUI OR Exploration Mode
+if [ "$EXPLORE_MODE" = true ]; then
+    echo ""
+    echo "======================================================"
+    echo "🗺️  AUTONOMOUS EXPLORATION MODE"
+    echo "======================================================"
+    echo "Starting autonomous exploration with obstacle avoidance"
+    echo "Robot will slowly move around the environment while mapping"
+    echo ""
+    
+    log_message "EXPLORE MODE: Starting autonomous exploration with obstacle avoidance"
+    
+    launch_in_terminal "Step 8: Autonomous exploration with obstacle avoidance and SLAM mapping" \
+        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && python3 \"$WORKSPACE_ROOT/scripts/autonomous_exploration.py\"" \
+        "8"
+elif [ "$AUTOTEST_MODE" = false ] && [ "$SLAM_TEST_MODE" = false ]; then
     launch_in_terminal "Starting the B4M Robot Manager GUI for visual control of waypoints" \
         "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 run b4m_waypoint_nav b4m_robot_manager_node.py" \
         "8"
@@ -1424,6 +1532,12 @@ if [ "$AUTOTEST_MODE" = true ]; then
         else
             echo "B4M Robot SLAM Testing - Real Robot - PASSED"
         fi
+    elif [ "$EXPLORE_MODE" = true ]; then
+        if [ "$SIMULATION_MODE" = true ]; then
+            echo "B4M Robot Autonomous Exploration - Gazebo Classic Simulation - LAUNCHED"
+        else
+            echo "B4M Robot Autonomous Exploration - Real Robot - LAUNCHED"
+        fi
     else
         if [ "$SIMULATION_MODE" = true ]; then
             echo "B4M Robot Gazebo Classic Simulation Test - PASSED"
@@ -1436,6 +1550,8 @@ if [ "$AUTOTEST_MODE" = true ]; then
     
     if [ "$SLAM_TEST_MODE" = true ]; then
         echo "All 10 SLAM testing steps completed successfully"
+    elif [ "$EXPLORE_MODE" = true ]; then
+        echo "All 8 system launch steps completed - autonomous exploration active"
     else
         echo "All 7 tested steps completed successfully"
     fi
@@ -1464,6 +1580,8 @@ if [ "$AUTOTEST_MODE" = true ]; then
         echo "✅ Step 8: Automated Square Movement with SLAM Mapping"
         echo "✅ Step 9: Automated Map Saving and Validation"
         echo "✅ Step 10: Automated MQTT Navigation Testing"
+    elif [ "$EXPLORE_MODE" = true ]; then
+        echo "🗺️  Step 8: Autonomous Exploration with Obstacle Avoidance (ACTIVE)"
     fi
     
     echo ""
@@ -1473,6 +1591,8 @@ if [ "$AUTOTEST_MODE" = true ]; then
     
     if [ "$SLAM_TEST_MODE" = true ]; then
         log_message "SLAM AUTOTEST COMPLETED SUCCESSFULLY - ALL STEPS PASSED"
+    elif [ "$EXPLORE_MODE" = true ]; then
+        log_message "EXPLORATION MODE LAUNCHED SUCCESSFULLY - AUTONOMOUS EXPLORATION ACTIVE"
     else
         log_message "AUTOTEST COMPLETED SUCCESSFULLY - ALL STEPS PASSED"
     fi
