@@ -142,11 +142,9 @@ if [ "$EXPLORE_MODE" = true ]; then
         echo "Exploration requires full system launch"
         exit 1
     fi
-    # Explore mode automatically enables autotest for autonomous operation
-    if [ "$AUTOTEST_MODE" = false ]; then
-        echo "INFO: --explore automatically enables --autotest mode for autonomous operation"
-        AUTOTEST_MODE=true
-    fi
+    # Explore mode does NOT automatically enable autotest - it can run interactively
+    # User can still manually combine --explore --autotest if they want automated validation
+    echo "INFO: --explore mode will run interactively (use --autotest --explore for automated validation)"
 fi
 
 # Get the workspace root directory (where this script is located)
