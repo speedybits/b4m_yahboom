@@ -109,12 +109,14 @@ pkill -9 -f "robot_localization" 2>/dev/null
 pkill -9 -f "ukf_node" 2>/dev/null
 
 # Step 3: Stop waypoint navigation and robot manager processes
-shutdown_log "Step 3: Stopping waypoint navigation and robot manager processes"
+shutdown_log "Step 3: Stopping waypoint navigation, robot manager, and autonomous explorer processes"
 pkill -f "b4m_waypoint_nav" 2>/dev/null
 pkill -f "b4m_robot_manager" 2>/dev/null
+pkill -f "autonomous_explorer" 2>/dev/null
 sleep 2
 pkill -9 -f "b4m_waypoint_nav" 2>/dev/null
 pkill -9 -f "b4m_robot_manager" 2>/dev/null
+pkill -9 -f "autonomous_explorer" 2>/dev/null
 
 # Step 4: Stop Micro-ROS agent Docker container (if not keeping it)
 if [ "$KEEP_AGENT" = true ]; then
