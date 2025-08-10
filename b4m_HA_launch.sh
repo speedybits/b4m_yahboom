@@ -300,81 +300,54 @@ if [ "$REGRESSION_MODE" = true ]; then
     echo "✅ System launch complete! Now running tests..."
     echo ""
     
-    # Step 2: Run regression tests
-    echo "🧪 PHASE 2: REGRESSION TESTS"
-    echo "Running tests against the launched system..."
+    # Step 2: Run regression test
+    echo "🧪 PHASE 2: REGRESSION TEST"
+    echo "Running comprehensive laser scan rotation test..."
     echo ""
     
-    # Test 1: Basic Movement Control
-    echo "========================================" 
-    echo "🎯 TEST 1/2: Basic Movement Control"
-    echo "========================================"
-    echo "Verifies robot responds to movement commands"
-    echo ""
-    
-    TEST_MODE="SIMULATION"
-    TEST_MODE_ARG="--simulation"
-    if [ "$SIMULATION_MODE" = false ]; then
-        TEST_MODE="REAL_ROBOT"
-        TEST_MODE_ARG="--real-robot"
-    fi
-    
+    # Set test environment (system is already running in regression mode)
     export SYSTEM_ALREADY_RUNNING="true"
-    export TEST_MODE="$TEST_MODE"
     
-    if python3 tests/integration/test_basic_movement.py $TEST_MODE_ARG > $LOGS_DIR/regression_test_$TIMESTAMP.log 2>&1; then
-        echo "✅ Movement Test PASSED"
-        MOVEMENT_RESULT="PASSED"
-    else
-        echo "❌ Movement Test FAILED"
-        MOVEMENT_RESULT="FAILED"
-    fi
-    
-    echo ""
-    echo "🔄 Keeping system running for next test..."
-    echo ""
-    
-    # Test 2: Laser Scan Stability
+    # Run the comprehensive test
     echo "========================================"
-    echo "🔍 TEST 2/2: Laser Scan Stability"
+    echo "🎯 COMPREHENSIVE LASER ROTATION TEST"
     echo "========================================"
-    echo "Rotates robot 360+ degrees to verify laser scans don't spin with robot"
-    echo "Ensures laser data remains fixed in map frame (not robot frame)"
+    echo "This test verifies:"
+    echo "  1. Laser scan data is published and visible"
+    echo "  2. Robot can rotate 360 degrees"
+    echo "  3. Laser scans remain fixed in map frame"
     echo ""
     
-    if python3 regression/test_laser_scan_stability_configurable.py $TEST_MODE_ARG > $LOGS_DIR/laser_stability_test_$TIMESTAMP.log 2>&1; then
-        echo "✅ Laser Stability Test PASSED"
-        STABILITY_RESULT="PASSED"
+    if python3 regression/test_laser_rotation_comprehensive.py > $LOGS_DIR/regression_test_$TIMESTAMP.log 2>&1; then
+        echo "✅ Comprehensive Test PASSED"
+        echo "  ✓ Laser scans are visible"
+        echo "  ✓ Robot rotates correctly"
+        echo "  ✓ Laser data is stable in map frame"
+        TEST_RESULT="PASSED"
     else
-        echo "❌ Laser Stability Test FAILED"
-        STABILITY_RESULT="FAILED"
+        echo "❌ Comprehensive Test FAILED"
+        echo "  Check log for details: $LOGS_DIR/regression_test_$TIMESTAMP.log"
+        TEST_RESULT="FAILED"
     fi
     
     # Step 3: Report results and cleanup
     echo ""
-    echo "🏁 REGRESSION TEST SUITE RESULTS"
+    echo "🏁 REGRESSION TEST RESULTS"
     echo "======================================"
     
-    TESTS_PASSED=0
-    if [ "$MOVEMENT_RESULT" = "PASSED" ]; then ((TESTS_PASSED++)); fi
-    if [ "$STABILITY_RESULT" = "PASSED" ]; then ((TESTS_PASSED++)); fi
-    
-    echo "Total Tests: 2"
-    echo "Passed: $TESTS_PASSED"
-    echo "Failed: $((2 - TESTS_PASSED))"
-    echo ""
-    echo "Test Logs:"
-    echo "  Movement Test: $LOGS_DIR/regression_test_$TIMESTAMP.log"
-    echo "  Laser Stability: $LOGS_DIR/laser_stability_test_$TIMESTAMP.log"
+    echo "Test Result: $TEST_RESULT"
+    echo "Test Log: $LOGS_DIR/regression_test_$TIMESTAMP.log"
     echo ""
     
-    if [ $TESTS_PASSED -eq 2 ]; then
-        echo "🎉 ALL REGRESSION TESTS PASSED!"
-        echo "Cartographer SLAM integration is working correctly."
+    if [ "$TEST_RESULT" = "PASSED" ]; then
+        echo "🎉 REGRESSION TEST PASSED!"
+        echo "✅ Laser scans are published and visible in RViz"
+        echo "✅ Robot can rotate 360 degrees successfully"
+        echo "✅ Cartographer SLAM integration is working correctly"
         FINAL_RESULT=0
     else
-        echo "💥 REGRESSION TESTS FAILED!"
-        echo "Some tests need to be fixed before merging changes"
+        echo "💥 REGRESSION TEST FAILED!"
+        echo "Please check the test log for details"
         FINAL_RESULT=1
     fi
     
