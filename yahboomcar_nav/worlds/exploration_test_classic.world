@@ -1,0 +1,487 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <world name="exploration_test">
+    <!-- Include standard models -->
+    <include>
+      <uri>model://ground_plane</uri>
+    </include>
+    <include>
+      <uri>model://sun</uri>
+    </include>
+    
+    <!-- Physics settings optimized for navigation testing -->
+    <physics name="default" type="ode">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <real_time_update_rate>1000</real_time_update_rate>
+    </physics>
+    
+    <!-- Camera for visual monitoring positioned higher for better view -->
+    <gui fullscreen='0'>
+      <camera name='user_camera'>
+        <pose>0 -8 6 0 0.7 1.57</pose>
+        <view_controller>orbit</view_controller>
+      </camera>
+    </gui>
+    
+    <!-- Exploration environment with obstacles for autonomous navigation testing -->
+    
+    <!-- Central large obstacle - Table/Platform -->
+    <model name="central_table">
+      <pose>1.0 1.5 0.4 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.8 1.2 0.8</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.8 0.6 0.4 1</ambient>
+            <diffuse>0.8 0.6 0.4 1</diffuse>
+          </material>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.8 1.2 0.8</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    
+    <!-- Wall obstacles to create corridors -->
+    <model name="wall_north">
+      <pose>0 3.5 0.5 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>4.0 0.2 1.0</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.7 0.7 0.7 1</ambient>
+            <diffuse>0.7 0.7 0.7 1</diffuse>
+          </material>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>4.0 0.2 1.0</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    
+    <model name="wall_south">
+      <pose>0 -3.5 0.5 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>4.0 0.2 1.0</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.7 0.7 0.7 1</ambient>
+            <diffuse>0.7 0.7 0.7 1</diffuse>
+          </material>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>4.0 0.2 1.0</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    
+    <model name="wall_east">
+      <pose>3.5 0 0.5 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.2 7.0 1.0</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.7 0.7 0.7 1</ambient>
+            <diffuse>0.7 0.7 0.7 1</diffuse>
+          </material>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.2 7.0 1.0</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    
+    <model name="wall_west">
+      <pose>-3.5 0 0.5 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.2 7.0 1.0</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.7 0.7 0.7 1</ambient>
+            <diffuse>0.7 0.7 0.7 1</diffuse>
+          </material>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.2 7.0 1.0</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    
+    <!-- Cylindrical obstacles - Pillars -->
+    <model name="pillar_1">
+      <pose>-1.5 2.0 0.5 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.3</radius>
+              <length>1.0</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.6 0.3 0.8 1</ambient>
+            <diffuse>0.6 0.3 0.8 1</diffuse>
+          </material>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <cylinder>
+              <radius>0.3</radius>
+              <length>1.0</length>
+            </cylinder>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    
+    <model name="pillar_2">
+      <pose>2.5 -1.0 0.5 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.25</radius>
+              <length>1.0</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.3 0.8 0.6 1</ambient>
+            <diffuse>0.3 0.8 0.6 1</diffuse>
+          </material>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <cylinder>
+              <radius>0.25</radius>
+              <length>1.0</length>
+            </cylinder>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    
+    <!-- Small box obstacles scattered around -->
+    <model name="box_obstacle_1">
+      <pose>-2.0 -1.5 0.2 0 0 0.5</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.4 0.4 0.4</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>1.0 0.2 0.2 1</ambient>
+            <diffuse>1.0 0.2 0.2 1</diffuse>
+          </material>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.4 0.4 0.4</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    
+    <model name="box_obstacle_2">
+      <pose>0.5 -2.5 0.15 0 0 1.2</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.3 0.6 0.3</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.2 1.0 0.2 1</ambient>
+            <diffuse>0.2 1.0 0.2 1</diffuse>
+          </material>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.3 0.6 0.3</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    
+    <model name="box_obstacle_3">
+      <pose>-1.0 0.8 0.25 0 0 -0.3</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.5 0.3 0.5</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.2 0.2 1.0 1</ambient>
+            <diffuse>0.2 0.2 1.0 1</diffuse>
+          </material>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.5 0.3 0.5</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    
+    <!-- L-shaped obstacle to create interesting navigation challenge -->
+    <model name="l_obstacle_1">
+      <pose>-1.8 -2.8 0.3 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.8 0.2 0.6</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.9 0.5 0.1 1</ambient>
+            <diffuse>0.9 0.5 0.1 1</diffuse>
+          </material>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.8 0.2 0.6</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    
+    <model name="l_obstacle_2">
+      <pose>-2.2 -2.5 0.3 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.2 0.6 0.6</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.9 0.5 0.1 1</ambient>
+            <diffuse>0.9 0.5 0.1 1</diffuse>
+          </material>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.2 0.6 0.6</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    
+    <!-- Narrow corridor entrance - challenging navigation -->
+    <model name="narrow_entrance_1">
+      <pose>2.0 2.5 0.4 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.3 1.0 0.8</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.5 0.5 0.5 1</ambient>
+            <diffuse>0.5 0.5 0.5 1</diffuse>
+          </material>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.3 1.0 0.8</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    
+    <model name="narrow_entrance_2">
+      <pose>2.8 2.5 0.4 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.3 1.0 0.8</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.5 0.5 0.5 1</ambient>
+            <diffuse>0.5 0.5 0.5 1</diffuse>
+          </material>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.3 1.0 0.8</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    
+    <!-- Reference corner markers (smaller, less obtrusive) -->
+    <model name="corner_marker_ne">
+      <pose>3.0 3.0 0.01 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.03</radius>
+              <length>0.02</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>1.0 0.0 0.0 1</ambient>
+            <diffuse>1.0 0.0 0.0 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    
+    <model name="corner_marker_nw">
+      <pose>-3.0 3.0 0.01 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.03</radius>
+              <length>0.02</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.0 1.0 0.0 1</ambient>
+            <diffuse>0.0 1.0 0.0 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    
+    <model name="corner_marker_se">
+      <pose>3.0 -3.0 0.01 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.03</radius>
+              <length>0.02</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.0 0.0 1.0 1</ambient>
+            <diffuse>0.0 0.0 1.0 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    
+    <model name="corner_marker_sw">
+      <pose>-3.0 -3.0 0.01 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.03</radius>
+              <length>0.02</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>1.0 1.0 0.0 1</ambient>
+            <diffuse>1.0 1.0 0.0 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    
+    <!-- Center spawn marker for reference -->
+    <model name="spawn_marker">
+      <pose>0 0 0.01 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.05</radius>
+              <length>0.02</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>1.0 1.0 1.0 1</ambient>
+            <diffuse>1.0 1.0 1.0 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    
+  </world>
+</sdf>
