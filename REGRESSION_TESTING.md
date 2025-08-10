@@ -8,19 +8,33 @@ The regression test system performs a controlled 360° rotation while capturing 
 
 ## Running Regression Tests
 
-### Basic Command
+### Simulation Testing
 ```bash
 ./b4m_HA_launch.sh --simulation --regression
 ```
 
-This command will:
-1. Launch Gazebo Classic simulation with exploration world
+### Real Robot Testing
+```bash
+./b4m_HA_launch.sh --regression
+```
+
+Both commands will:
+1. Launch appropriate environment (Gazebo simulation OR real robot hardware)
 2. Start RViz visualization 
 3. Initialize Cartographer SLAM system
 4. Perform controlled 360° robot rotation
 5. Capture screenshots at 3 key moments
-6. Compare screenshots with reference images
+6. Compare screenshots with mode-appropriate reference images
 7. Report pass/fail based on 90% similarity threshold
+
+**Important:** Real robot and simulation use different reference screenshots due to different map environments.
+
+### Automatic Mode Detection
+The regression system automatically detects whether it's running in simulation or on a real robot:
+- **Simulation Mode**: Detected when `ROS_USE_SIM_TIME=true` environment variable is set
+- **Real Robot Mode**: Detected when `ROS_USE_SIM_TIME` is unset or false
+- **Reference Selection**: Automatically selects the correct reference directory based on detected mode
+- **Logging**: All output clearly indicates which mode is active
 
 ## Test Process
 
@@ -64,13 +78,21 @@ The system uses weighted combination of multiple similarity measures:
 
 ## Reference Screenshots
 
-Reference images are stored in `regression/reference_screenshots/`:
+Reference images are stored in mode-specific directories:
 
-- `reference_initial.png` - Perfect laser scan visualization at start
-- `reference_mid.png` - Mid-rotation with active map building  
-- `reference_final.png` - Complete 360° rotation with full map
+### Simulation References
+`regression/reference_screenshots_simulation/`:
+- `reference_initial.png` - Perfect laser scan visualization at start (simulation)
+- `reference_mid.png` - Mid-rotation with active map building (simulation)
+- `reference_final.png` - Complete 360° rotation with full map (simulation)
 
-These represent the expected "gold standard" visualization quality.
+### Real Robot References  
+`regression/reference_screenshots_real/`:
+- `reference_initial.png` - Perfect laser scan visualization at start (real robot)
+- `reference_mid.png` - Mid-rotation with active map building (real robot)  
+- `reference_final.png` - Complete 360° rotation with full map (real robot)
+
+These represent the expected "gold standard" visualization quality for each environment.
 
 ## Installation Requirements
 
@@ -113,8 +135,16 @@ sudo apt install python3-opencv python3-skimage
 
 ### Reference Screenshots Outdated
 If system improvements require new reference images:
-1. Run successful test that produces good visualization
-2. Copy new screenshots from `regression/screenshots/` to `regression/reference_screenshots/`
+
+**For Simulation:**
+1. Run successful test: `./b4m_HA_launch.sh --simulation --regression`
+2. Copy new screenshots from `regression/screenshots/` to `regression/reference_screenshots_simulation/`
+3. Rename to `reference_initial.png`, `reference_mid.png`, `reference_final.png`
+4. Commit updated references
+
+**For Real Robot:**
+1. Run successful test: `./b4m_HA_launch.sh --regression` (on real robot)
+2. Copy new screenshots from `regression/screenshots/` to `regression/reference_screenshots_real/`
 3. Rename to `reference_initial.png`, `reference_mid.png`, `reference_final.png`
 4. Commit updated references
 
@@ -122,8 +152,15 @@ If system improvements require new reference images:
 
 ### Before Committing Code
 Always run regression test before committing non-documentation changes:
+
+**For simulation development:**
 ```bash
 ./b4m_HA_launch.sh --simulation --regression
+```
+
+**For real robot deployment:**
+```bash
+./b4m_HA_launch.sh --regression
 ```
 
 ### Continuous Integration
@@ -149,7 +186,8 @@ Changes to these areas may cause regression failures:
 - `scripts/capture_rviz.sh` - Screenshot capture utility
 
 ### Configuration  
-- `regression/reference_screenshots/` - Reference images (committed)
+- `regression/reference_screenshots_simulation/` - Simulation reference images (committed)
+- `regression/reference_screenshots_real/` - Real robot reference images (committed)
 - `regression/screenshots/` - Test outputs (gitignored)
 - `b4m_HA_launch.sh` - Main launch script with regression mode
 
