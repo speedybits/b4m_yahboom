@@ -50,9 +50,15 @@ class LaserRotationTestNode(Node):
         self.current_yaw = 0
         self.total_rotation = 0
         
-        # Test parameters
-        self.rotation_speed = 0.5  # rad/s - moderate speed
+        # Test parameters - match autonomous_exploration.py for consistency
+        self.rotation_speed = 0.3  # rad/s - same as autonomous exploration
         self.target_rotation = 2 * math.pi  # 360 degrees
+        
+        # Control loop parameters (matching autonomous exploration)
+        self.control_timer = self.create_timer(0.1, self.control_callback)  # 10Hz like exploration
+        self.test_active = False
+        self.rotation_start_time = None
+        self.screenshot_taken = False
         
     def capture_screenshot(self, name_prefix="test"):
         """Capture a screenshot of RViz during test"""
@@ -81,6 +87,35 @@ class LaserRotationTestNode(Node):
                 return "Screenshot script not found"
         except Exception as e:
             return f"Screenshot error: {e}"
+    
+    def control_callback(self):
+        """Control loop - runs at 10Hz like autonomous exploration"""
+        if not self.test_active:
+            return
+            
+        # Only rotate if we have odometry data
+        if not self.odom_received:
+            return
+            
+        # Check if we've completed the rotation
+        if self.total_rotation >= self.target_rotation:
+            # Stop rotation
+            cmd = Twist()
+            self.cmd_pub.publish(cmd)
+            self.test_active = False
+            print(f"✅ 360° rotation completed: {math.degrees(self.total_rotation):.1f}°")
+            return
+            
+        # Continue rotation
+        cmd = Twist()
+        cmd.angular.z = self.rotation_speed
+        self.cmd_pub.publish(cmd)
+        
+        # Take mid-rotation screenshot
+        if not self.screenshot_taken and self.total_rotation > math.pi:  # > 180°
+            print("📸 Capturing mid-rotation RViz state...")
+            self.capture_screenshot("laser_mid_rotation")
+            self.screenshot_taken = True
         
     def scan_callback(self, msg):
         """Track laser scan reception"""
@@ -110,13 +145,13 @@ class LaserRotationTestNode(Node):
         self.current_yaw = yaw
         
     def check_laser_visualization(self):
-        """Check if laser scan would be visible in RViz"""
+        """Check if laser scan would be visible in RViz - following autonomous exploration pattern"""
         print("\n🔍 CHECKING LASER SCAN VISIBILITY")
         print("=" * 50)
         
-        # Wait for laser scans
+        # Wait for laser scans (like autonomous_exploration.py)
         print("Waiting for laser scan data on /scan topic...")
-        timeout = 5
+        timeout = 10  # Give more time for system to fully initialize
         start_time = time.time()
         
         while not self.scan_received and (time.time() - start_time) < timeout:
@@ -130,89 +165,72 @@ class LaserRotationTestNode(Node):
             
         print(f"✅ Laser scan data detected! ({self.scan_count} messages received)")
         
-        # Capture initial screenshot
-        print(f"📸 Capturing initial RViz state...")
-        screenshot = self.capture_screenshot("laser_initial")
-        
-        # Check for map frame (needed for transform verification)
-        print("\nChecking for map frame establishment...")
-        try:
-            # For Cartographer, do initial rotation to establish map
-            print("Performing initial rotation to help establish map frame...")
-            cmd = Twist()
-            cmd.angular.z = 0.3
-            for _ in range(20):  # 2 seconds
-                self.cmd_pub.publish(cmd)
-                time.sleep(0.1)
-            cmd.angular.z = 0.0
-            self.cmd_pub.publish(cmd)
+        # Wait for odometry data 
+        print("Waiting for odometry data on /odom topic...")
+        timeout_start = time.time()
+        while not self.odom_received and (time.time() - timeout_start) < 5:
+            time.sleep(0.1)
             
-            # Now check for map frame
-            transform = self.tf_buffer.lookup_transform(
-                'map', 'laser', rclpy.time.Time(), 
-                timeout=rclpy.duration.Duration(seconds=5.0)
-            )
-            print("✅ Map frame established - transforms available")
-        except Exception as e:
-            print("⚠️  Map frame not yet established (expected with Cartographer)")
-            print("   Continuing with rotation test...")
-            
-        return True
-        
-    def perform_rotation_test(self):
-        """Rotate robot 360 degrees and verify behavior"""
-        print("\n🔄 PERFORMING 360° ROTATION TEST")
-        print("=" * 50)
-        
         if not self.odom_received:
             print("❌ FAIL: No odometry data received!")
             return False
             
+        print("✅ Odometry data detected!")
+        
+        # Give Cartographer additional time to initialize (like exploration mode)
+        print("🗺️  Allowing Cartographer time to initialize mapping...")
+        time.sleep(5)  # Extra time for SLAM to be ready
+        
+        # Capture initial screenshot
+        print(f"📸 Capturing initial RViz state...")
+        screenshot = self.capture_screenshot("laser_initial")
+        
+        return True
+        
+    def perform_rotation_test(self):
+        """Start controlled 360° rotation using timer-based control loop (like autonomous exploration)"""
+        print("\n🔄 PERFORMING 360° ROTATION TEST")
+        print("=" * 50)
+        
         print(f"Starting rotation at {math.degrees(self.rotation_speed):.1f}°/s")
         print("Target: 360° (one full rotation)")
+        print("Using 10Hz control loop (like autonomous exploration)")
         
         # Reset rotation tracking
         self.total_rotation = 0
-        rotation_start = time.time()
-        
-        # Start rotating
-        cmd = Twist()
-        cmd.angular.z = self.rotation_speed
-        
-        # Track scan behavior during rotation
+        self.screenshot_taken = False
         initial_scan_count = self.scan_count
-        last_report_time = time.time()
-        screenshot_taken = False
         
-        while self.total_rotation < self.target_rotation:
-            self.cmd_pub.publish(cmd)
+        # Start the control-loop based rotation
+        self.test_active = True
+        self.rotation_start_time = time.time()
+        
+        print("\n🔄 Rotation in progress...")
+        print("   (Control loop running at 10Hz)")
+        
+        # Wait for rotation to complete with status updates
+        last_report_time = time.time()
+        while self.test_active:
+            time.sleep(1.0)  # Check status every second
             
-            # Report progress every 2 seconds
             current_time = time.time()
-            if current_time - last_report_time > 2.0:
+            if current_time - last_report_time > 3.0:  # Report every 3 seconds
                 rotation_degrees = math.degrees(self.total_rotation)
-                scans_per_sec = (self.scan_count - initial_scan_count) / (current_time - rotation_start)
-                print(f"  Rotation: {rotation_degrees:.1f}° | Laser scan rate: {scans_per_sec:.1f} Hz")
+                elapsed_time = current_time - self.rotation_start_time
+                scans_per_sec = (self.scan_count - initial_scan_count) / elapsed_time if elapsed_time > 0 else 0
+                print(f"  Progress: {rotation_degrees:.1f}° | Laser scan rate: {scans_per_sec:.1f} Hz")
                 last_report_time = current_time
-                
-                # Capture mid-rotation screenshot (only once around 180°)
-                if not screenshot_taken and rotation_degrees > 180:
-                    print("📸 Capturing mid-rotation RViz state...")
-                    screenshot = self.capture_screenshot("laser_mid_rotation")
-                    screenshot_taken = True
-                
-            time.sleep(0.1)
             
             # Safety timeout
-            if (current_time - rotation_start) > 30:
+            if (current_time - self.rotation_start_time) > 45:
                 print("⚠️  Rotation timeout - stopping")
+                self.test_active = False
+                cmd = Twist()
+                self.cmd_pub.publish(cmd)
                 break
-                
-        # Stop rotating
-        cmd.angular.z = 0.0
-        self.cmd_pub.publish(cmd)
         
-        rotation_time = time.time() - rotation_start
+        # Final statistics
+        rotation_time = time.time() - self.rotation_start_time
         final_rotation_degrees = math.degrees(self.total_rotation)
         total_scans = self.scan_count - initial_scan_count
         
