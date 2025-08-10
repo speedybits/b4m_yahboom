@@ -118,3 +118,6 @@ localization_tests/param_backups/
 
 # Runtime logs from launch script
 logs/
+
+# Regression test screenshots
+regression/screenshots/
