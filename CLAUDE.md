@@ -12,7 +12,16 @@ If you are unable to run a command that you need to run, please stop and tell me
 After any changes that involve user interaction, please make sure the USERGUIDE.md is updated
 
 ## Regression testing
-Before commiting any code that is not documentation, we must be able to pass the regression: ./b4m_HA_launch --regression
+Before commiting any code that is not documentation, we must be able to pass the regression: ./b4m_HA_launch --simulation --regression
+
+The regression test now includes automated image comparison that validates RViz visualization:
+- Captures screenshots at 3 key moments: initial, mid-rotation (180°), and final (360°)
+- Compares against reference screenshots with 90% similarity threshold
+- Uses multi-method analysis: histogram, SSIM, feature matching, and template matching
+- Ensures laser scan visualization and SLAM mapping functionality remain consistent
+- Test fails if screenshots differ by more than 10% from reference images
+
+Dependencies required: python3-opencv python3-skimage
 
 ## Running and Shut down
 Always use b4m_HA_launch to run tests. Use the --simulation switch for Gazebo Classic simulation tests

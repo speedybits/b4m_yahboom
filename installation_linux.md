@@ -187,6 +187,15 @@ After installing ROS2 Humble, you'll need additional packages for the Yahboom ro
   pip3 install pillow numpy pyserial paho-mqtt
   ```
 
+### Image Analysis Dependencies (for Regression Testing)
+
+- [ ] Install OpenCV and scikit-image for screenshot comparison:
+  ```bash
+  sudo apt install python3-opencv python3-skimage
+  ```
+
+**Note:** These packages are required for the automated regression testing system that compares RViz screenshots to ensure consistent laser scan visualization and SLAM mapping functionality.
+
 ### Network Analysis Tools (for troubleshooting)
 
 - [ ] Install network diagnostic tools:
