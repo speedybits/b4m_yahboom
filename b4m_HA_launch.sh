@@ -255,9 +255,10 @@ if [ "$REGRESSION_MODE" = true ]; then
     echo "Launching system components for regression testing..."
     
     if [ "$SIMULATION_MODE" = true ]; then
-        # Launch Gazebo Classic simulation
-        echo "🎮 Step 1: Starting Gazebo Classic simulation environment"
-        ros2 launch yahboomcar_nav gazebo_classic_nav_launch.py > /dev/null 2>&1 &
+        # Launch Gazebo Classic simulation with exploration world (same as --explore mode)
+        echo "🎮 Step 1: Starting Gazebo Classic simulation with exploration world"
+        echo "   Using exploration_test_classic world for consistent testing"
+        ros2 launch yahboomcar_nav gazebo_classic_nav_launch.py world_name:=exploration_test_classic > /dev/null 2>&1 &
         GAZEBO_PID=$!
         echo "   Waiting for simulation initialization..."
         sleep 12
@@ -337,7 +338,8 @@ if [ "$REGRESSION_MODE" = true ]; then
     echo "========================================"
     echo "🔍 TEST 2/2: Laser Scan Stability"
     echo "========================================"
-    echo "Verifies laser scans stay fixed in map frame during robot rotation"
+    echo "Rotates robot 360+ degrees to verify laser scans don't spin with robot"
+    echo "Ensures laser data remains fixed in map frame (not robot frame)"
     echo ""
     
     if python3 regression/test_laser_scan_stability_configurable.py $TEST_MODE_ARG > $LOGS_DIR/laser_stability_test_$TIMESTAMP.log 2>&1; then
