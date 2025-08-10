@@ -122,4 +122,5 @@ logs/
 # Regression test screenshots and results (but keep reference screenshots)
 regression/screenshots/*.png
 regression/screenshots/*.json
-!regression/reference_screenshots/
+!regression/reference_screenshots_simulation/
+!regression/reference_screenshots_real/

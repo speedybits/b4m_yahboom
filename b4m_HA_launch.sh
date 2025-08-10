@@ -192,9 +192,9 @@ if [ "$EXPLORE_MODE" = true ]; then
     # Step 3: Launch Cartographer SLAM for real-time mapping
     echo "🗺️  Step 3: Starting Cartographer SLAM for real-time mapping"
     if [ "$SIMULATION_MODE" = true ]; then
-        ros2 launch yahboomcar_nav cartographer_launch.py use_sim_time:=true > "$LOGS_DIR/exploration_cartographer_$TIMESTAMP.log" 2>&1 &
+        ros2 launch yahboomcar_nav map_cartographer_launch.py use_sim_time:=true > "$LOGS_DIR/exploration_cartographer_$TIMESTAMP.log" 2>&1 &
     else
-        ros2 launch yahboomcar_nav cartographer_launch.py use_sim_time:=false > "$LOGS_DIR/exploration_cartographer_$TIMESTAMP.log" 2>&1 &
+        ros2 launch yahboomcar_nav map_cartographer_launch.py use_sim_time:=false > "$LOGS_DIR/exploration_cartographer_$TIMESTAMP.log" 2>&1 &
     fi
     CARTOGRAPHER_PID=$!
     echo "   Waiting for SLAM system initialization..."
@@ -271,7 +271,7 @@ if [ "$REGRESSION_MODE" = true ]; then
         
         # Step 3: Start Cartographer SLAM (identical to explore mode)
         echo "🗺️  Step 3: Starting Cartographer SLAM system (simulation)"
-        ros2 launch yahboomcar_nav cartographer_launch.py use_sim_time:=true > /dev/null 2>&1 &
+        ros2 launch yahboomcar_nav map_cartographer_launch.py use_sim_time:=true > /dev/null 2>&1 &
         CARTOGRAPHER_PID=$!
         echo "   Waiting for Cartographer initialization..."
         sleep 10
@@ -290,7 +290,7 @@ if [ "$REGRESSION_MODE" = true ]; then
         sleep 8
         
         echo "🗺️  Step 3: Starting Cartographer SLAM system (real robot)"
-        ros2 launch yahboomcar_nav cartographer_launch.py use_sim_time:=false > /dev/null 2>&1 &
+        ros2 launch yahboomcar_nav map_cartographer_launch.py use_sim_time:=false > /dev/null 2>&1 &
         CARTOGRAPHER_PID=$!
         echo "   Waiting for Cartographer initialization..."
         sleep 10
@@ -302,7 +302,13 @@ if [ "$REGRESSION_MODE" = true ]; then
     # Step 4: Start regression rotation (identical to exploration Step 4)
     echo "🧪 PHASE 2: REGRESSION TEST"
     echo "🚀 Step 4: Starting controlled 360° rotation (mimicking autonomous exploration)"
-    cd "$WORKSPACE_ROOT" && . install/setup.bash && python3 "$WORKSPACE_ROOT/scripts/regression_rotation.py" > "$LOGS_DIR/regression_rotation_$TIMESTAMP.log" 2>&1 &
+    
+    # Set environment variable for simulation/real robot detection
+    if [ "$SIMULATION_MODE" = true ]; then
+        cd "$WORKSPACE_ROOT" && . install/setup.bash && ROS_USE_SIM_TIME=true python3 "$WORKSPACE_ROOT/scripts/regression_rotation.py" > "$LOGS_DIR/regression_rotation_$TIMESTAMP.log" 2>&1 &
+    else
+        cd "$WORKSPACE_ROOT" && . install/setup.bash && ROS_USE_SIM_TIME=false python3 "$WORKSPACE_ROOT/scripts/demo_based_regression.py" > "$LOGS_DIR/regression_rotation_$TIMESTAMP.log" 2>&1 &
+    fi
     ROTATION_PID=$!
     
     echo ""
@@ -1847,8 +1853,12 @@ launch_in_terminal() {
     fi
     
     # Interactive mode (original behavior)
-    echo "Press ENTER to execute this command, or Ctrl+C to exit..."
-    read
+    if [ "$ONLY_AGENT" = true ]; then
+        echo "🎯 ONLY-AGENT MODE: Executing automatically..."
+    else
+        echo "Press ENTER to execute this command, or Ctrl+C to exit..."
+        read
+    fi
     
     echo ""
     echo "📁 Log file location: $step_log"

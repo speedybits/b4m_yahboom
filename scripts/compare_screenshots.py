@@ -189,12 +189,14 @@ class ScreenshotComparator:
             
         return weighted_similarity, details
     
-    def compare_screenshot_set(self, actual_dir, reference_dir, output_file=None):
+    def compare_screenshot_set(self, actual_dir, reference_dir, output_file=None, mode="simulation"):
         """Compare a set of screenshots and return overall results"""
         actual_dir = Path(actual_dir)
         reference_dir = Path(reference_dir)
         
         print("🖼️  SCREENSHOT COMPARISON")
+        print("=" * 50)
+        print(f"Mode: {mode.upper()}")
         print("=" * 50)
         
         comparisons = [
@@ -221,7 +223,12 @@ class ScreenshotComparator:
             
             if not reference_file.exists():
                 print(f"\n❌ Reference screenshot not found: {reference_file}")
-                results[name] = {"error": "Reference screenshot not found", "passed": False}
+                if mode == "real":
+                    print(f"   ℹ️  Real robot reference screenshots need to be created.")
+                    print(f"   ℹ️  Run a successful real robot test, then copy screenshots to reference directory.")
+                    results[name] = {"error": "Real robot reference screenshots not yet created", "passed": False, "needs_reference_creation": True}
+                else:
+                    results[name] = {"error": "Reference screenshot not found", "passed": False}
                 all_passed = False
                 continue
             
@@ -263,15 +270,24 @@ def main():
     parser = argparse.ArgumentParser(description="Compare regression test screenshots with references")
     parser.add_argument("--actual-dir", default="regression/screenshots", 
                        help="Directory containing actual screenshots")
-    parser.add_argument("--reference-dir", default="regression/reference_screenshots",
-                       help="Directory containing reference screenshots")  
+    parser.add_argument("--reference-dir", default=None,
+                       help="Directory containing reference screenshots (auto-selected by mode if not specified)")  
     parser.add_argument("--threshold", type=float, default=0.90,
                        help="Similarity threshold (0.0-1.0, default: 0.90)")
     parser.add_argument("--output", help="Save detailed results to JSON file")
     parser.add_argument("--single", nargs=2, metavar=('ACTUAL', 'REFERENCE'),
                        help="Compare two specific images")
+    parser.add_argument("--mode", default="simulation", choices=["simulation", "real"],
+                       help="Test mode for logging purposes")
     
     args = parser.parse_args()
+    
+    # Auto-select reference directory based on mode if not specified
+    if args.reference_dir is None:
+        if args.mode == "simulation":
+            args.reference_dir = "regression/reference_screenshots_simulation"
+        else:
+            args.reference_dir = "regression/reference_screenshots_real"
     
     comparator = ScreenshotComparator(args.threshold)
     
@@ -283,7 +299,7 @@ def main():
     else:
         # Full screenshot set comparison
         all_passed, results = comparator.compare_screenshot_set(
-            args.actual_dir, args.reference_dir, args.output
+            args.actual_dir, args.reference_dir, args.output, args.mode
         )
         return 0 if all_passed else 1
 
