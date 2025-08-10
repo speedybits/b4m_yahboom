@@ -2,6 +2,25 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Commits
+Only commit files if the b4m_HA_launch --simulation --regression has passed
+
+## Get help running important commands
+If you are unable to run a command that you need to run, please stop and tell me what you need me to run. For example, if you can't run a 'sudo' command, please stop and tell me.
+
+## User guide
+After any changes that involve user interaction, please make sure the USERGUIDE.md is updated
+
+## Regression testing
+Before commiting any code that is not documentation, we must be able to pass the regression: ./b4m_HA_launch --regression
+
+## Running and Shut down
+Always use b4m_HA_launch to run tests. Use the --simulation switch for Gazebo Classic simulation tests
+If not running a simulation, always use the --skip-agent switch
+Always use b4m_shutdown to stop all running processes when appropriate
+If not running a simulation, always use b4m_shutdown --keep-agent
+
+
 ## Test-Driven Development
 Always create unit tests first for new features. These tests should fail because there is no code implemented at first
 Never create code that has mocked components or tests mocked components
@@ -258,14 +277,39 @@ The B4M Robot Manager serves as the central application for system control, inte
 - Shutting down the agent requires physical robot restart and reconnection
 - Use `--keep-agent` flag to preserve the hardware connection during system restarts
 
+## Simulation Environment
+
+The system uses **Gazebo Classic 11.10.2** as the primary simulation platform:
+
+### Simulation Launch
+- **Primary command**: `./b4m_HA_launch.sh --simulation`
+- **Test mode**: `./b4m_HA_launch.sh --simulation --autotest`
+- **SLAM testing**: `./b4m_HA_launch.sh --simulation --slam-test`
+
+### Gazebo Classic Features
+- **Integrated robot spawning**: Robot model is automatically spawned in `gazebo_classic_nav_launch.py`
+- **Working laser sensors**: Reliable sensor data for SLAM (360-point scans)
+- **Differential drive control**: Direct `/cmd_vel` topic control
+- **ROS2 Humble integration**: Mature plugin ecosystem with stable performance
+
+### Simulation Files
+- **World files**: `yahboomcar_nav/worlds/navigation_test_classic.world`
+- **Robot URDF**: `yahboomcar_description/urdf/yahboomcar_robot_classic_nav.urdf`
+- **Launch files**: `yahboomcar_nav/launch/gazebo_classic_nav_launch.py`
+
+### SLAM Integration
+- **Map generation**: 69x77 occupancy grid maps
+- **SLAM launch**: Uses `slam_test_gazebo_classic.py` for dedicated SLAM testing
+- **Real-time mapping**: Keyboard teleop with `teleop_twist_keyboard` for map building
+
 ## Testing Strategy
 
 ### Unit Testing
 Standard ROS2 testing framework with pytest for Python nodes and gtest for C++ nodes.
 
 ### Integration Testing
-- End-to-end navigation tests
-- SLAM mapping validation
+- End-to-end navigation tests using Gazebo Classic simulation
+- SLAM mapping validation with 69x77 grid verification
 - Multi-robot coordination tests
 - MQTT command/status validation
 

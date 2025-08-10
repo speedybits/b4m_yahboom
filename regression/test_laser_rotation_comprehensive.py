@@ -21,10 +21,17 @@ import threading
 import numpy as np
 import tf2_ros
 import os
+import subprocess
+from pathlib import Path
 
 class LaserRotationTestNode(Node):
     def __init__(self):
         super().__init__('laser_rotation_test')
+        
+        # Screenshot capture setup
+        self.script_dir = Path(__file__).parent.parent / "scripts"
+        self.capture_script = self.script_dir / "capture_and_analyze.py"
+        self.screenshot_dir = Path(__file__).parent / "screenshots"
         
         # Publishers and subscribers
         self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)
@@ -46,6 +53,34 @@ class LaserRotationTestNode(Node):
         # Test parameters
         self.rotation_speed = 0.5  # rad/s - moderate speed
         self.target_rotation = 2 * math.pi  # 360 degrees
+        
+    def capture_screenshot(self, name_prefix="test"):
+        """Capture a screenshot of RViz during test"""
+        try:
+            # Ensure screenshot directory exists
+            self.screenshot_dir.mkdir(exist_ok=True)
+            
+            if self.capture_script.exists():
+                result = subprocess.run(
+                    ["python3", str(self.capture_script), "--name", name_prefix, 
+                     "--output-dir", str(self.screenshot_dir), "--wait-for-rviz"],
+                    capture_output=True, text=True, timeout=10
+                )
+                if result.returncode == 0:
+                    # Extract filename from output
+                    lines = result.stdout.strip().split('\n')
+                    for line in lines:
+                        if 'Screenshot:' in line:
+                            screenshot_path = line.split('Screenshot:')[-1].strip()
+                            print(f"📸 Screenshot captured: {screenshot_path}")
+                            return screenshot_path
+                    return "Screenshot captured (path not found in output)"
+                else:
+                    return f"Screenshot failed: {result.stderr}"
+            else:
+                return "Screenshot script not found"
+        except Exception as e:
+            return f"Screenshot error: {e}"
         
     def scan_callback(self, msg):
         """Track laser scan reception"""
@@ -95,6 +130,10 @@ class LaserRotationTestNode(Node):
             
         print(f"✅ Laser scan data detected! ({self.scan_count} messages received)")
         
+        # Capture initial screenshot
+        print(f"📸 Capturing initial RViz state...")
+        screenshot = self.capture_screenshot("laser_initial")
+        
         # Check for map frame (needed for transform verification)
         print("\nChecking for map frame establishment...")
         try:
@@ -143,6 +182,7 @@ class LaserRotationTestNode(Node):
         # Track scan behavior during rotation
         initial_scan_count = self.scan_count
         last_report_time = time.time()
+        screenshot_taken = False
         
         while self.total_rotation < self.target_rotation:
             self.cmd_pub.publish(cmd)
@@ -154,6 +194,12 @@ class LaserRotationTestNode(Node):
                 scans_per_sec = (self.scan_count - initial_scan_count) / (current_time - rotation_start)
                 print(f"  Rotation: {rotation_degrees:.1f}° | Laser scan rate: {scans_per_sec:.1f} Hz")
                 last_report_time = current_time
+                
+                # Capture mid-rotation screenshot (only once around 180°)
+                if not screenshot_taken and rotation_degrees > 180:
+                    print("📸 Capturing mid-rotation RViz state...")
+                    screenshot = self.capture_screenshot("laser_mid_rotation")
+                    screenshot_taken = True
                 
             time.sleep(0.1)
             
@@ -186,6 +232,11 @@ class LaserRotationTestNode(Node):
             return False
             
         print("✅ Robot successfully rotated 360° with active laser scanning")
+        
+        # Capture final screenshot
+        print("📸 Capturing final RViz state...")
+        screenshot = self.capture_screenshot("laser_final")
+        
         return True
 
 def run_comprehensive_test():
