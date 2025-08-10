@@ -27,8 +27,10 @@ class DemoBasedRegression(Node):
         # Simple publisher - no special QoS, just like keyboard control
         self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)
         
-        # Screenshot setup
+        # Screenshot setup (same as regression_rotation.py)
+        self.script_dir = Path(__file__).parent
         self.screenshot_dir = Path(__file__).parent.parent / "regression" / "screenshots"
+        self.capture_script = self.script_dir / "capture_and_analyze.py"
         self.screenshot_dir.mkdir(exist_ok=True)
         
         # Test parameters
@@ -40,19 +42,25 @@ class DemoBasedRegression(Node):
         self.get_logger().info(f"   Angular speed: {self.angular_speed} rad/s")
 
     def capture_screenshot(self, name):
-        """Simple screenshot capture"""
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        screenshot_path = self.screenshot_dir / f"rotation_{name}_{timestamp}.png"
-        
-        # Use import which works reliably
-        result = subprocess.run([
-            "import", "-window", "root", str(screenshot_path)
-        ], capture_output=True, text=True, timeout=10)
-        
-        if result.returncode == 0:
-            self.get_logger().info(f"📸 Screenshot: {name}")
-            return True
-        return False
+        """Screenshot capture - identical to regression_rotation.py"""
+        try:
+            self.screenshot_dir.mkdir(exist_ok=True)
+            
+            if self.capture_script.exists():
+                result = subprocess.run(
+                    ["python3", str(self.capture_script), "--name", f"rotation_{name}", 
+                     "--output-dir", str(self.screenshot_dir), "--wait-for-rviz"],
+                    capture_output=True, text=True, timeout=15
+                )
+                if result.returncode == 0:
+                    self.get_logger().info(f"📸 Screenshot captured: {name}")
+                    return True
+                else:
+                    self.get_logger().warn(f"Screenshot failed: {result.stderr}")
+            return False
+        except Exception as e:
+            self.get_logger().error(f"Screenshot error: {e}")
+            return False
 
     def run_rotation_test(self):
         """Run the 360 degree rotation test"""
