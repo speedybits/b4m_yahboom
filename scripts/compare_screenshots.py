@@ -132,6 +132,70 @@ class ScreenshotComparator:
             print(f"   Warning: Template matching failed: {e}")
             return 0.0
     
+    def calculate_laser_scan_similarity(self, img1, img2):
+        """Calculate similarity focusing on laser scan points (magenta pixels)"""
+        try:
+            # Define magenta color range for laser scans (255,0,255)
+            # Be more precise about magenta detection
+            magenta_lower = np.array([240, 0, 240])  # BGR format - more precise
+            magenta_upper = np.array([255, 30, 255])  # Tighter range
+            
+            # Extract magenta pixels from both images
+            mask1 = cv2.inRange(img1, magenta_lower, magenta_upper)
+            mask2 = cv2.inRange(img2, magenta_lower, magenta_upper)
+            
+            # Count magenta pixels
+            laser_pixels1 = np.sum(mask1 > 0)
+            laser_pixels2 = np.sum(mask2 > 0)
+            
+            # If no laser pixels in either image, return high similarity (both empty)
+            if laser_pixels1 == 0 and laser_pixels2 == 0:
+                return 1.0
+            
+            # If one has laser pixels and other doesn't, low similarity
+            if (laser_pixels1 == 0) != (laser_pixels2 == 0):
+                return 0.0
+            
+            # Calculate direct pixel overlap (most reliable for position comparison)
+            overlap = np.sum((mask1 > 0) & (mask2 > 0))
+            union = np.sum((mask1 > 0) | (mask2 > 0))
+            
+            if union == 0:
+                return 1.0
+            
+            # Jaccard similarity (intersection over union) 
+            jaccard_similarity = overlap / union
+            
+            # Also calculate normalized correlation for pattern matching
+            if mask1.sum() > 0 and mask2.sum() > 0:
+                # Normalize masks to [0,1]
+                mask1_norm = mask1.astype(np.float32) / 255.0
+                mask2_norm = mask2.astype(np.float32) / 255.0
+                
+                # Calculate normalized cross-correlation
+                mean1 = np.mean(mask1_norm)
+                mean2 = np.mean(mask2_norm)
+                
+                num = np.sum((mask1_norm - mean1) * (mask2_norm - mean2))
+                den = np.sqrt(np.sum((mask1_norm - mean1)**2) * np.sum((mask2_norm - mean2)**2))
+                
+                if den > 0:
+                    correlation = num / den
+                    correlation = max(0, correlation)  # Only positive correlations
+                else:
+                    correlation = 0.0
+            else:
+                correlation = 0.0
+            
+            # Combine Jaccard and correlation - emphasize overlap for position accuracy
+            laser_similarity = 0.7 * jaccard_similarity + 0.3 * correlation
+            
+            return min(1.0, max(0.0, laser_similarity))
+            
+        except Exception as e:
+            print(f"   Warning: Laser scan similarity failed: {e}")
+            return 0.0
+    
     def compare_images(self, actual_path, reference_path, comparison_name="comparison"):
         """Compare two images using multiple methods and return weighted similarity score"""
         print(f"\n🔍 Comparing {comparison_name}:")
@@ -148,16 +212,19 @@ class ScreenshotComparator:
         ssim_sim = self.calculate_ssim_similarity(img1, img2)
         feature_sim = self.calculate_feature_similarity(img1, img2)
         template_sim = self.calculate_template_matching(img1, img2)
+        laser_sim = self.calculate_laser_scan_similarity(img1, img2)
         
-        # Weighted average (SSIM and histogram are most important for our use case)
+        # Weighted average (laser scan similarity is most important for regression)
         weights = {
-            'histogram': 0.3,   # Color distribution
-            'ssim': 0.4,        # Structural similarity
-            'features': 0.2,    # Feature matching
-            'template': 0.1     # Overall template match
+            'laser_scan': 0.6,  # Focus on laser scan point positions
+            'histogram': 0.2,   # Color distribution (reduced)
+            'ssim': 0.15,       # Structural similarity (reduced)
+            'features': 0.05,   # Feature matching (minimal)
+            'template': 0.0     # Disabled for laser focus
         }
         
         weighted_similarity = (
+            laser_sim * weights['laser_scan'] +
             hist_sim * weights['histogram'] +
             ssim_sim * weights['ssim'] +
             feature_sim * weights['features'] +
@@ -166,6 +233,7 @@ class ScreenshotComparator:
         
         # Store detailed results (ensure all types are JSON serializable)
         details = {
+            'laser_scan_similarity': float(laser_sim),
             'histogram_similarity': float(hist_sim),
             'ssim_similarity': float(ssim_sim),
             'feature_similarity': float(feature_sim),
@@ -176,6 +244,7 @@ class ScreenshotComparator:
         }
         
         # Print results
+        print(f"   🎯 Laser scan similarity: {laser_sim:.3f}")
         print(f"   Histogram similarity: {hist_sim:.3f}")
         print(f"   SSIM similarity: {ssim_sim:.3f}")
         print(f"   Feature similarity: {feature_sim:.3f}")
