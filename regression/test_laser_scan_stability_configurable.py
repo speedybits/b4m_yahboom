@@ -440,6 +440,18 @@ def test_laser_scan_stability(use_simulation=True):
         
         # Wait for map frame to be established by SLAM
         print(f"  Waiting for map frame to be established by SLAM...")
+        
+        # For Cartographer, we need some initial movement to establish the map
+        print(f"  Performing small initial rotation to help Cartographer establish map frame...")
+        cmd = Twist()
+        cmd.angular.z = 0.3  # Gentle rotation
+        for _ in range(20):  # 2 seconds of gentle rotation
+            node.cmd_pub.publish(cmd)
+            time.sleep(0.1)
+        cmd.angular.z = 0.0
+        node.cmd_pub.publish(cmd)
+        time.sleep(1.0)  # Let the system stabilize
+        
         map_timeout = 30  # 30 seconds max for map frame
         map_start_time = time.time()
         map_frame_available = False
@@ -462,8 +474,9 @@ def test_laser_scan_stability(use_simulation=True):
             print(f"     SLAM may need more laser scan data or environmental features")
             # Continue anyway - the test might still work with some scans
         
-        # 4. Collect data during robot rotation (keyboard teleop speed for ~1.5 full rotations)
+        # 4. Collect data during robot rotation (360+ degrees to verify laser scans don't spin)
         print("\n--- Starting data collection phase ---")
+        print("Rotating robot 360+ degrees to verify laser scans remain fixed in map frame")
         success = node.rotate_robot(duration_seconds=12, angular_velocity=0.81)
         
         if not success:
@@ -545,7 +558,11 @@ def test_laser_scan_stability(use_simulation=True):
             node.destroy_node()
         if 'executor' in locals():
             executor.shutdown()
-        rclpy.shutdown()
+        try:
+            rclpy.shutdown()
+        except Exception as e:
+            # Ignore shutdown errors which can occur if already shutdown
+            pass
         
         # Check if system was already running (for cleanup decision)
         system_already_running = os.environ.get('SYSTEM_ALREADY_RUNNING', '').lower() == 'true'
@@ -566,7 +583,7 @@ def test_laser_scan_stability(use_simulation=True):
                 subprocess.run(['pkill', '-f', 'gzserver'], capture_output=True)
                 subprocess.run(['pkill', '-f', 'gzclient'], capture_output=True)
                 subprocess.run(['pkill', '-f', 'robot_state_publisher'], capture_output=True)
-                subprocess.run(['pkill', '-f', 'slam_toolbox'], capture_output=True)
+                subprocess.run(['pkill', '-f', 'cartographer'], capture_output=True)  # Updated for Cartographer
                 time.sleep(2)
         else:
             print("Regression mode: Leaving system running (cleanup handled by main script)")
