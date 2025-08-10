@@ -372,6 +372,10 @@ if [ "$REGRESSION_MODE" = true ]; then
         pkill -f "gazebo" 2>/dev/null || true
         pkill -f "gzserver" 2>/dev/null || true
         pkill -f "gzclient" 2>/dev/null || true
+        
+        # Run comprehensive shutdown for simulation (no agent to keep)
+        echo "Running comprehensive shutdown..."
+        ./b4m_shutdown.sh > /dev/null 2>&1 || true
     else
         # Kill real robot processes but preserve agent
         [ ! -z "$BRINGUP_PID" ] && kill $BRINGUP_PID 2>/dev/null || true
@@ -382,7 +386,8 @@ if [ "$REGRESSION_MODE" = true ]; then
         pkill -f "rviz2" 2>/dev/null || true
         pkill -f "rviz" 2>/dev/null || true
         
-        # Run our shutdown script to clean up properly
+        # Run our shutdown script to clean up properly (keep agent for real robot)
+        echo "Running comprehensive shutdown (keeping agent)..."
         ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1 || true
     fi
     
