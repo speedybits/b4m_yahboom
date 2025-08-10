@@ -4,13 +4,14 @@
 # This script automates the launch process for the B4M Robot with Home Assistant integration
 # Each step will be launched in a separate terminal with user confirmation
 #
-# Usage: ./b4m_HA_launch.sh [--skip-agent] [--only-agent] [--autotest] [--debug] [--simulation] [--regression] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>]
+# Usage: ./b4m_HA_launch.sh [--skip-agent] [--only-agent] [--autotest] [--debug] [--simulation] [--regression] [--explore] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>]
 #   --skip-agent:                   Skip the Micro-ROS agent launch (Step 1)
 #   --only-agent:                   Launch ONLY the Micro-ROS agent (Step 1) and exit
 #   --autotest:                     Run in automated test mode (non-interactive)
 #   --debug:                        Enable verbose debug logging
 #   --simulation:                   Launch in Gazebo simulation mode instead of real robot
 #   --regression:                   Run comprehensive regression test suite (navigation + laser stability)
+#   --explore:                      Enable autonomous exploration mode with obstacle avoidance
 #   --localization-test:            Enable localization quality and navigation performance testing
 #   --tune-params:                  Enable parameter tuning iterations (requires --localization-test)
 #   --navigation-performance-test:  Execute advanced 1x1m square navigation circuit testing with comprehensive metrics
@@ -23,6 +24,7 @@ AUTOTEST_MODE=false
 DEBUG_MODE=false
 SIMULATION_MODE=false
 REGRESSION_MODE=false
+EXPLORE_MODE=false
 LOCALIZATION_TEST=false
 TUNE_PARAMS=false
 NAVIGATION_PERFORMANCE_TEST=false
@@ -54,6 +56,10 @@ for arg in "$@"; do
             AUTOTEST_MODE=true  # Auto-enable autotest for regression
             shift
             ;;
+        --explore)
+            EXPLORE_MODE=true
+            shift
+            ;;
         --localization-test)
             LOCALIZATION_TEST=true
             shift
@@ -80,6 +86,7 @@ for arg in "$@"; do
             echo "  --debug:                        Enable verbose debug logging"
             echo "  --simulation:                   Launch in Gazebo simulation mode instead of real robot"
             echo "  --regression:                   Run comprehensive regression test suite (navigation + laser stability)"
+            echo "  --explore:                      Enable autonomous exploration mode with obstacle avoidance"
             echo "  --localization-test:            Enable localization quality and navigation performance testing"
             echo "  --tune-params:                  Enable parameter tuning iterations (requires --localization-test)"
             echo "  --navigation-performance-test:  Execute 1x1m square navigation circuit testing"
@@ -104,6 +111,126 @@ mkdir -p "$LOGS_DIR"
 # Generate timestamp for log files
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 MAIN_LOG="$LOGS_DIR/b4m_launch_$TIMESTAMP.log"
+
+# Validate argument combinations
+if [ "$EXPLORE_MODE" = true ] && [ "$REGRESSION_MODE" = true ]; then
+    echo "ERROR: --explore mode is incompatible with --regression mode"
+    echo "Exploration requires manual control while regression runs automated tests"
+    exit 1
+fi
+
+if [ "$EXPLORE_MODE" = true ] && [ "$LOCALIZATION_TEST" = true ]; then
+    echo "ERROR: --explore mode is incompatible with --localization-test mode"  
+    echo "Both modes require different navigation behaviors"
+    exit 1
+fi
+
+if [ "$EXPLORE_MODE" = true ] && [ "$NAVIGATION_PERFORMANCE_TEST" = true ]; then
+    echo "ERROR: --explore mode is incompatible with --navigation-performance-test mode"
+    echo "Both modes require different robot control patterns"
+    exit 1
+fi
+
+# Handle exploration mode
+if [ "$EXPLORE_MODE" = true ]; then
+    echo "🗺️ EXPLORATION MODE"
+    echo "======================================"
+    echo "Launching autonomous exploration with Cartographer mapping"
+    
+    if [ "$SIMULATION_MODE" = true ]; then
+        echo "Mode: Gazebo Classic Simulation with Exploration World"
+        WORLD_NAME="exploration_test_classic"  # Use exploration-specific world
+    else  
+        echo "Mode: Real Robot Autonomous Exploration"
+    fi
+    
+    echo ""
+    echo "This mode will:"
+    echo "- Launch Cartographer for real-time SLAM mapping"
+    echo "- Start autonomous exploration with obstacle avoidance" 
+    echo "- Build a map while navigating safely"
+    echo "- Stop exploration when area is sufficiently mapped"
+    echo ""
+    
+    # Launch exploration sequence
+    echo "🚀 EXPLORATION LAUNCH SEQUENCE"
+    echo "======================================"
+    
+    if [ "$SIMULATION_MODE" = true ]; then
+        # Step 1: Launch Gazebo Classic simulation with exploration world
+        echo "🎮 Step 1: Starting Gazebo Classic simulation with exploration world"
+        ros2 launch yahboomcar_nav gazebo_classic_nav_launch.py world_name:=$WORLD_NAME > "$LOGS_DIR/exploration_gazebo_$TIMESTAMP.log" 2>&1 &
+        GAZEBO_PID=$!
+        echo "   Waiting for simulation initialization..."
+        sleep 8
+        
+        # Step 2: Launch RViz for visualization
+        echo "📊 Step 2: Starting RViz for map visualization"
+        ros2 launch yahboomcar_nav display_launch.py use_sim_time:=true > "$LOGS_DIR/exploration_rviz_$TIMESTAMP.log" 2>&1 &
+        RVIZ_PID=$!
+        sleep 3
+        
+    else
+        echo "   ⚠️  Make sure physical robot is powered on and ready"
+        echo "   ⚠️  Ensure exploration area is safe and obstacle-free"
+        read -p "   Press Enter when robot is ready for exploration..."
+        
+        # Step 1: Launch robot bringup 
+        echo "🤖 Step 1: Starting robot sensor and control systems"
+        ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py > "$LOGS_DIR/exploration_bringup_$TIMESTAMP.log" 2>&1 &
+        BRINGUP_PID=$!
+        echo "   Waiting for sensor initialization..."
+        sleep 8
+        
+        # Step 2: Launch RViz for visualization
+        echo "📊 Step 2: Starting RViz for map visualization"  
+        ros2 launch yahboomcar_nav display_launch.py use_sim_time:=false > "$LOGS_DIR/exploration_rviz_$TIMESTAMP.log" 2>&1 &
+        RVIZ_PID=$!
+        sleep 3
+    fi
+    
+    # Step 3: Launch Cartographer SLAM for real-time mapping
+    echo "🗺️  Step 3: Starting Cartographer SLAM for real-time mapping"
+    if [ "$SIMULATION_MODE" = true ]; then
+        ros2 launch yahboomcar_nav cartographer_launch.py use_sim_time:=true > "$LOGS_DIR/exploration_cartographer_$TIMESTAMP.log" 2>&1 &
+    else
+        ros2 launch yahboomcar_nav cartographer_launch.py use_sim_time:=false > "$LOGS_DIR/exploration_cartographer_$TIMESTAMP.log" 2>&1 &
+    fi
+    CARTOGRAPHER_PID=$!
+    echo "   Waiting for SLAM system initialization..."
+    sleep 5
+    
+    # Step 4: Start autonomous exploration
+    echo "🚀 Step 4: Starting autonomous exploration with obstacle avoidance"
+    cd "$WORKSPACE_ROOT" && . install/setup.bash && python3 "$WORKSPACE_ROOT/scripts/autonomous_exploration.py" > "$LOGS_DIR/exploration_autonomous_$TIMESTAMP.log" 2>&1 &
+    EXPLORATION_PID=$!
+    
+    echo ""
+    echo "✅ EXPLORATION ACTIVE"
+    echo "======================================"
+    echo "🗺️  Robot is now autonomously exploring and mapping"
+    echo "📊 Monitor progress in RViz:"
+    echo "   - Map topic: /map (shows real-time SLAM mapping)"
+    echo "   - Robot position: /tf (robot location on map)"
+    echo "   - Laser scans: /scan (sensor readings)"
+    echo ""
+    echo "🛑 To stop exploration:"
+    echo "   - Press Ctrl+C in this terminal, OR"
+    echo "   - Run: ./b4m_shutdown.sh --keep-agent"
+    echo ""
+    echo "⏳ Let the robot explore for several minutes to build a complete map"
+    echo "   The robot will avoid obstacles and explore systematically"
+    
+    # Wait for user to stop or monitor the exploration
+    trap 'echo "🛑 Stopping exploration..."; [ ! -z "$EXPLORATION_PID" ] && kill $EXPLORATION_PID 2>/dev/null; [ ! -z "$CARTOGRAPHER_PID" ] && kill $CARTOGRAPHER_PID 2>/dev/null; [ ! -z "$RVIZ_PID" ] && kill $RVIZ_PID 2>/dev/null; if [ "$SIMULATION_MODE" = true ]; then [ ! -z "$GAZEBO_PID" ] && kill $GAZEBO_PID 2>/dev/null; else [ ! -z "$BRINGUP_PID" ] && kill $BRINGUP_PID 2>/dev/null; fi; ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1; echo "✅ Exploration stopped"; exit 0' INT
+    
+    # Keep the script running and show periodic status
+    while true; do
+        sleep 30
+        echo "🗺️  Exploration continues... (Ctrl+C to stop)"
+        echo "   Check RViz to see mapping progress"
+    done
+fi
 
 # Handle regression test mode
 if [ "$REGRESSION_MODE" = true ]; then
