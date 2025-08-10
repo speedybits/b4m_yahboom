@@ -15,7 +15,7 @@ from skimage.metrics import structural_similarity as ssim
 import json
 
 class ScreenshotComparator:
-    def __init__(self, similarity_threshold=0.90):
+    def __init__(self, similarity_threshold=0.900):
         self.similarity_threshold = similarity_threshold
         self.comparison_results = {}
         
@@ -214,22 +214,16 @@ class ScreenshotComparator:
         template_sim = self.calculate_template_matching(img1, img2)
         laser_sim = self.calculate_laser_scan_similarity(img1, img2)
         
-        # Weighted average (laser scan similarity is most important for regression)
+        # Use only feature similarity for robust structural comparison
         weights = {
-            'laser_scan': 0.6,  # Focus on laser scan point positions
-            'histogram': 0.2,   # Color distribution (reduced)
-            'ssim': 0.15,       # Structural similarity (reduced)
-            'features': 0.05,   # Feature matching (minimal)
-            'template': 0.0     # Disabled for laser focus
+            'laser_scan': 0.0,  # Disabled
+            'histogram': 0.0,   # Disabled  
+            'ssim': 0.0,        # Disabled
+            'features': 1.0,    # Only feature matching
+            'template': 0.0     # Disabled
         }
         
-        weighted_similarity = (
-            laser_sim * weights['laser_scan'] +
-            hist_sim * weights['histogram'] +
-            ssim_sim * weights['ssim'] +
-            feature_sim * weights['features'] +
-            template_sim * weights['template']
-        )
+        weighted_similarity = feature_sim
         
         # Store detailed results (ensure all types are JSON serializable)
         details = {
@@ -341,8 +335,8 @@ def main():
                        help="Directory containing actual screenshots")
     parser.add_argument("--reference-dir", default=None,
                        help="Directory containing reference screenshots (auto-selected by mode if not specified)")  
-    parser.add_argument("--threshold", type=float, default=0.90,
-                       help="Similarity threshold (0.0-1.0, default: 0.90)")
+    parser.add_argument("--threshold", type=float, default=0.900,
+                       help="Similarity threshold (0.0-1.0, default: 0.900)")
     parser.add_argument("--output", help="Save detailed results to JSON file")
     parser.add_argument("--single", nargs=2, metavar=('ACTUAL', 'REFERENCE'),
                        help="Compare two specific images")
