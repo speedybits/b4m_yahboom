@@ -359,10 +359,14 @@ if [ "$REGRESSION_MODE" = true ]; then
     echo "Shutting down system launched for regression testing..."
     
     if [ "$SIMULATION_MODE" = true ]; then
-        # Kill simulation processes
+        # Kill simulation processes by PID first
         [ ! -z "$GAZEBO_PID" ] && kill $GAZEBO_PID 2>/dev/null || true
         [ ! -z "$RVIZ_PID" ] && kill $RVIZ_PID 2>/dev/null || true  
         [ ! -z "$CARTOGRAPHER_PID" ] && kill $CARTOGRAPHER_PID 2>/dev/null || true
+        
+        # Force kill all RViz processes
+        pkill -f "rviz2" 2>/dev/null || true
+        pkill -f "rviz" 2>/dev/null || true
         
         # Force kill Gazebo processes
         pkill -f "gazebo" 2>/dev/null || true
@@ -373,6 +377,10 @@ if [ "$REGRESSION_MODE" = true ]; then
         [ ! -z "$BRINGUP_PID" ] && kill $BRINGUP_PID 2>/dev/null || true
         [ ! -z "$RVIZ_PID" ] && kill $RVIZ_PID 2>/dev/null || true
         [ ! -z "$CARTOGRAPHER_PID" ] && kill $CARTOGRAPHER_PID 2>/dev/null || true
+        
+        # Force kill all RViz processes
+        pkill -f "rviz2" 2>/dev/null || true
+        pkill -f "rviz" 2>/dev/null || true
         
         # Run our shutdown script to clean up properly
         ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1 || true
