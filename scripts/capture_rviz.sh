@@ -62,6 +62,8 @@ fi
 if [ -z "$METHOD" ]; then
     if command -v import >/dev/null 2>&1; then
         METHOD="import"
+    elif command -v gnome-screenshot >/dev/null 2>&1; then
+        METHOD="gnome-screenshot"
     elif command -v scrot >/dev/null 2>&1; then
         METHOD="scrot"
     elif command -v xwd >/dev/null 2>&1; then
@@ -108,10 +110,39 @@ case "$METHOD" in
         RVIZ_WINDOW=$(find_rviz_window)
         if [ ! -z "$RVIZ_WINDOW" ]; then
             echo "   Target: RViz window (ID: $RVIZ_WINDOW)"
+            echo "   Waiting for RViz render cycle..."
+            sleep 2  # Give RViz time to complete render cycle
+            # Try to refresh the window first
+            if command -v xdotool >/dev/null 2>&1; then
+                echo "   Refreshing RViz window..."
+                xdotool windowactivate "$RVIZ_WINDOW" 2>/dev/null
+                sleep 0.5
+                # Try sending a space key to trigger redraw (non-destructive in RViz)
+                xdotool key --window "$RVIZ_WINDOW" space 2>/dev/null
+                sleep 0.5
+            fi
             import -window "$RVIZ_WINDOW" "$OUTPUT_PATH"
         else
             echo "   Target: Full screen (RViz window not found)"
             import -window root "$OUTPUT_PATH"
+        fi
+        ;;
+        
+    "gnome-screenshot")
+        # GNOME screenshot - try window-specific capture
+        RVIZ_WINDOW=$(find_rviz_window)
+        if [ ! -z "$RVIZ_WINDOW" ]; then
+            echo "   Target: RViz window (ID: $RVIZ_WINDOW)"
+            echo "   Using GNOME screenshot for better rendering capture..."
+            # Focus window first
+            if command -v xdotool >/dev/null 2>&1; then
+                xdotool windowactivate "$RVIZ_WINDOW" 2>/dev/null
+                sleep 1
+            fi
+            gnome-screenshot -w -f "$OUTPUT_PATH"
+        else
+            echo "   Target: Full screen (RViz window not found)"
+            gnome-screenshot -f "$OUTPUT_PATH"
         fi
         ;;
         

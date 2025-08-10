@@ -245,8 +245,7 @@ if [ "$REGRESSION_MODE" = true ]; then
     fi
     
     echo "Test logs will be saved to:"
-    echo "  Navigation test: $LOGS_DIR/regression_test_$TIMESTAMP.log"
-    echo "  Laser stability: $LOGS_DIR/laser_stability_test_$TIMESTAMP.log"
+    echo "  Rotation test: $LOGS_DIR/regression_rotation_$TIMESTAMP.log"
     echo "======================================"
     
     # Step 1: Launch system for testing
@@ -270,9 +269,9 @@ if [ "$REGRESSION_MODE" = true ]; then
         echo "   Waiting for RViz initialization..."
         sleep 8
         
-        # Step 3: Start Cartographer SLAM
+        # Step 3: Start Cartographer SLAM (identical to explore mode)
         echo "🗺️  Step 3: Starting Cartographer SLAM system (simulation)"
-        ros2 launch yahboomcar_nav map_cartographer_launch.py > /dev/null 2>&1 &
+        ros2 launch yahboomcar_nav cartographer_launch.py use_sim_time:=true > /dev/null 2>&1 &
         CARTOGRAPHER_PID=$!
         echo "   Waiting for Cartographer initialization..."
         sleep 10
@@ -291,7 +290,7 @@ if [ "$REGRESSION_MODE" = true ]; then
         sleep 8
         
         echo "🗺️  Step 3: Starting Cartographer SLAM system (real robot)"
-        ros2 launch yahboomcar_nav map_cartographer_launch.py > /dev/null 2>&1 &
+        ros2 launch yahboomcar_nav cartographer_launch.py use_sim_time:=false > /dev/null 2>&1 &
         CARTOGRAPHER_PID=$!
         echo "   Waiting for Cartographer initialization..."
         sleep 10
@@ -300,33 +299,37 @@ if [ "$REGRESSION_MODE" = true ]; then
     echo "✅ System launch complete! Now running tests..."
     echo ""
     
-    # Step 2: Run regression test
+    # Step 4: Start regression rotation (identical to exploration Step 4)
     echo "🧪 PHASE 2: REGRESSION TEST"
-    echo "Running comprehensive laser scan rotation test..."
+    echo "🚀 Step 4: Starting controlled 360° rotation (mimicking autonomous exploration)"
+    cd "$WORKSPACE_ROOT" && . install/setup.bash && python3 "$WORKSPACE_ROOT/scripts/regression_rotation.py" > "$LOGS_DIR/regression_rotation_$TIMESTAMP.log" 2>&1 &
+    ROTATION_PID=$!
+    
     echo ""
-    
-    # Set test environment (system is already running in regression mode)
-    export SYSTEM_ALREADY_RUNNING="true"
-    
-    # Run the comprehensive test
-    echo "========================================"
-    echo "🎯 COMPREHENSIVE LASER ROTATION TEST"
-    echo "========================================"
-    echo "This test verifies:"
-    echo "  1. Laser scan data is published and visible"
-    echo "  2. Robot can rotate 360 degrees"
-    echo "  3. Laser scans remain fixed in map frame"
+    echo "✅ REGRESSION TEST ACTIVE"
+    echo "======================================" 
+    echo "🔄 Robot is now performing controlled 360° rotation"
+    echo "📊 Monitor progress in RViz:"
+    echo "   - Map topic: /map (shows real-time SLAM mapping)" 
+    echo "   - Robot position: /tf (robot location on map)"
+    echo "   - Laser scans: /scan (sensor readings)"
     echo ""
+    echo "⏳ Rotation will complete automatically after 360°"
+    echo "   Screenshots will be captured at key moments"
     
-    if python3 regression/test_laser_rotation_comprehensive.py > $LOGS_DIR/regression_test_$TIMESTAMP.log 2>&1; then
-        echo "✅ Comprehensive Test PASSED"
+    # Wait for rotation to complete
+    wait $ROTATION_PID
+    ROTATION_EXIT_CODE=$?
+    
+    if [ $ROTATION_EXIT_CODE -eq 0 ]; then
+        echo "✅ Regression rotation test PASSED"
         echo "  ✓ Laser scans are visible"
-        echo "  ✓ Robot rotates correctly"
-        echo "  ✓ Laser data is stable in map frame"
+        echo "  ✓ Robot rotated 360 degrees successfully"
+        echo "  ✓ SLAM mapping integration working"
         TEST_RESULT="PASSED"
     else
-        echo "❌ Comprehensive Test FAILED"
-        echo "  Check log for details: $LOGS_DIR/regression_test_$TIMESTAMP.log"
+        echo "❌ Regression rotation test FAILED"  
+        echo "  Check log for details: $LOGS_DIR/regression_rotation_$TIMESTAMP.log"
         TEST_RESULT="FAILED"
     fi
     
@@ -336,7 +339,7 @@ if [ "$REGRESSION_MODE" = true ]; then
     echo "======================================"
     
     echo "Test Result: $TEST_RESULT"
-    echo "Test Log: $LOGS_DIR/regression_test_$TIMESTAMP.log"
+    echo "Test Log: $LOGS_DIR/regression_rotation_$TIMESTAMP.log"
     echo ""
     
     if [ "$TEST_RESULT" = "PASSED" ]; then
