@@ -4,11 +4,13 @@
 # This script automates the launch process for the B4M Robot with Home Assistant integration
 # Each step will be launched in a separate terminal with user confirmation
 #
-# Usage: ./b4m_HA_launch.sh [--skip-agent] [--only-agent] [--autotest] [--debug] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>]
+# Usage: ./b4m_HA_launch.sh [--skip-agent] [--only-agent] [--autotest] [--debug] [--simulation] [--regression] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>]
 #   --skip-agent:                   Skip the Micro-ROS agent launch (Step 1)
 #   --only-agent:                   Launch ONLY the Micro-ROS agent (Step 1) and exit
 #   --autotest:                     Run in automated test mode (non-interactive)
 #   --debug:                        Enable verbose debug logging
+#   --simulation:                   Launch in Gazebo simulation mode instead of real robot
+#   --regression:                   Run comprehensive regression test suite (navigation + laser stability)
 #   --localization-test:            Enable localization quality and navigation performance testing
 #   --tune-params:                  Enable parameter tuning iterations (requires --localization-test)
 #   --navigation-performance-test:  Execute advanced 1x1m square navigation circuit testing with comprehensive metrics
@@ -19,6 +21,8 @@ SKIP_AGENT=false
 ONLY_AGENT=false
 AUTOTEST_MODE=false
 DEBUG_MODE=false
+SIMULATION_MODE=false
+REGRESSION_MODE=false
 LOCALIZATION_TEST=false
 TUNE_PARAMS=false
 NAVIGATION_PERFORMANCE_TEST=false
@@ -41,6 +45,15 @@ for arg in "$@"; do
             DEBUG_MODE=true
             shift
             ;;
+        --simulation)
+            SIMULATION_MODE=true
+            shift
+            ;;
+        --regression)
+            REGRESSION_MODE=true
+            AUTOTEST_MODE=true  # Auto-enable autotest for regression
+            shift
+            ;;
         --localization-test)
             LOCALIZATION_TEST=true
             shift
@@ -60,11 +73,13 @@ for arg in "$@"; do
             shift
             ;;
         -h|--help)
-            echo "Usage: $0 [--skip-agent] [--only-agent] [--autotest] [--debug] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>]"
+            echo "Usage: $0 [--skip-agent] [--only-agent] [--autotest] [--debug] [--simulation] [--regression] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>]"
             echo "  --skip-agent:                   Skip the Micro-ROS agent launch (Step 1)"
             echo "  --only-agent:                   Launch ONLY the Micro-ROS agent (Step 1) and exit"
             echo "  --autotest:                     Run in automated test mode (non-interactive)"
             echo "  --debug:                        Enable verbose debug logging"
+            echo "  --simulation:                   Launch in Gazebo simulation mode instead of real robot"
+            echo "  --regression:                   Run comprehensive regression test suite (navigation + laser stability)"
             echo "  --localization-test:            Enable localization quality and navigation performance testing"
             echo "  --tune-params:                  Enable parameter tuning iterations (requires --localization-test)"
             echo "  --navigation-performance-test:  Execute 1x1m square navigation circuit testing"
@@ -89,6 +104,183 @@ mkdir -p "$LOGS_DIR"
 # Generate timestamp for log files
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 MAIN_LOG="$LOGS_DIR/b4m_launch_$TIMESTAMP.log"
+
+# Handle regression test mode
+if [ "$REGRESSION_MODE" = true ]; then
+    echo "🧪 REGRESSION TEST MODE"
+    echo "======================================"
+    echo "Running comprehensive regression test suite with Cartographer"
+    
+    if [ "$SIMULATION_MODE" = true ]; then
+        echo "Mode: Gazebo Classic Simulation with RViz"
+    else  
+        echo "Mode: Real Robot with RViz"
+    fi
+    
+    echo "Test logs will be saved to:"
+    echo "  Navigation test: $LOGS_DIR/regression_test_$TIMESTAMP.log"
+    echo "  Laser stability: $LOGS_DIR/laser_stability_test_$TIMESTAMP.log"
+    echo "======================================"
+    
+    # Step 1: Launch system for testing
+    echo ""
+    echo "🚀 PHASE 1: SYSTEM LAUNCH"
+    echo "Launching system components for regression testing..."
+    
+    if [ "$SIMULATION_MODE" = true ]; then
+        # Launch Gazebo Classic simulation
+        echo "🎮 Step 1: Starting Gazebo Classic simulation environment"
+        ros2 launch yahboomcar_nav gazebo_classic_nav_launch.py > /dev/null 2>&1 &
+        GAZEBO_PID=$!
+        echo "   Waiting for simulation initialization..."
+        sleep 12
+        
+        # Step 2: Start RViz
+        echo "👁️  Step 2: Starting RViz for visualization" 
+        ros2 launch yahboomcar_nav display_launch.py use_sim_time:=true > /dev/null 2>&1 &
+        RVIZ_PID=$!
+        echo "   Waiting for RViz initialization..."
+        sleep 8
+        
+        # Step 3: Start Cartographer SLAM
+        echo "🗺️  Step 3: Starting Cartographer SLAM system (simulation)"
+        ros2 launch yahboomcar_nav map_cartographer_launch.py > /dev/null 2>&1 &
+        CARTOGRAPHER_PID=$!
+        echo "   Waiting for Cartographer initialization..."
+        sleep 10
+    else
+        # Real robot mode - start bringup, RViz, then Cartographer
+        echo "🤖 Step 1: Starting robot bringup (sensors and odometry)"
+        ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py > /dev/null 2>&1 &
+        BRINGUP_PID=$!
+        echo "   Waiting for sensor initialization..."
+        sleep 8
+        
+        echo "👁️  Step 2: Starting RViz for visualization"
+        ros2 launch yahboomcar_nav display_launch.py use_sim_time:=false > /dev/null 2>&1 &
+        RVIZ_PID=$!
+        echo "   Waiting for RViz initialization..."
+        sleep 8
+        
+        echo "🗺️  Step 3: Starting Cartographer SLAM system (real robot)"
+        ros2 launch yahboomcar_nav map_cartographer_launch.py > /dev/null 2>&1 &
+        CARTOGRAPHER_PID=$!
+        echo "   Waiting for Cartographer initialization..."
+        sleep 10
+    fi
+    
+    echo "✅ System launch complete! Now running tests..."
+    echo ""
+    
+    # Step 2: Run regression tests
+    echo "🧪 PHASE 2: REGRESSION TESTS"
+    echo "Running tests against the launched system..."
+    echo ""
+    
+    # Test 1: Basic Movement Control
+    echo "========================================" 
+    echo "🎯 TEST 1/2: Basic Movement Control"
+    echo "========================================"
+    echo "Verifies robot responds to movement commands"
+    echo ""
+    
+    TEST_MODE="SIMULATION"
+    TEST_MODE_ARG="--simulation"
+    if [ "$SIMULATION_MODE" = false ]; then
+        TEST_MODE="REAL_ROBOT"
+        TEST_MODE_ARG="--real-robot"
+    fi
+    
+    export SYSTEM_ALREADY_RUNNING="true"
+    export TEST_MODE="$TEST_MODE"
+    
+    if python3 tests/integration/test_basic_movement.py $TEST_MODE_ARG > $LOGS_DIR/regression_test_$TIMESTAMP.log 2>&1; then
+        echo "✅ Movement Test PASSED"
+        MOVEMENT_RESULT="PASSED"
+    else
+        echo "❌ Movement Test FAILED"
+        MOVEMENT_RESULT="FAILED"
+    fi
+    
+    echo ""
+    echo "🔄 Keeping system running for next test..."
+    echo ""
+    
+    # Test 2: Laser Scan Stability
+    echo "========================================"
+    echo "🔍 TEST 2/2: Laser Scan Stability"
+    echo "========================================"
+    echo "Verifies laser scans stay fixed in map frame during robot rotation"
+    echo ""
+    
+    if python3 regression/test_laser_scan_stability_configurable.py $TEST_MODE_ARG > $LOGS_DIR/laser_stability_test_$TIMESTAMP.log 2>&1; then
+        echo "✅ Laser Stability Test PASSED"
+        STABILITY_RESULT="PASSED"
+    else
+        echo "❌ Laser Stability Test FAILED"
+        STABILITY_RESULT="FAILED"
+    fi
+    
+    # Step 3: Report results and cleanup
+    echo ""
+    echo "🏁 REGRESSION TEST SUITE RESULTS"
+    echo "======================================"
+    
+    TESTS_PASSED=0
+    if [ "$MOVEMENT_RESULT" = "PASSED" ]; then ((TESTS_PASSED++)); fi
+    if [ "$STABILITY_RESULT" = "PASSED" ]; then ((TESTS_PASSED++)); fi
+    
+    echo "Total Tests: 2"
+    echo "Passed: $TESTS_PASSED"
+    echo "Failed: $((2 - TESTS_PASSED))"
+    echo ""
+    echo "Test Logs:"
+    echo "  Movement Test: $LOGS_DIR/regression_test_$TIMESTAMP.log"
+    echo "  Laser Stability: $LOGS_DIR/laser_stability_test_$TIMESTAMP.log"
+    echo ""
+    
+    if [ $TESTS_PASSED -eq 2 ]; then
+        echo "🎉 ALL REGRESSION TESTS PASSED!"
+        echo "Cartographer SLAM integration is working correctly."
+        FINAL_RESULT=0
+    else
+        echo "💥 REGRESSION TESTS FAILED!"
+        echo "Some tests need to be fixed before merging changes"
+        FINAL_RESULT=1
+    fi
+    
+    echo "======================================"
+    echo ""
+    
+    # Cleanup
+    echo "🧹 CLEANUP"
+    echo "Shutting down system launched for regression testing..."
+    
+    if [ "$SIMULATION_MODE" = true ]; then
+        # Kill simulation processes
+        [ ! -z "$GAZEBO_PID" ] && kill $GAZEBO_PID 2>/dev/null || true
+        [ ! -z "$RVIZ_PID" ] && kill $RVIZ_PID 2>/dev/null || true  
+        [ ! -z "$CARTOGRAPHER_PID" ] && kill $CARTOGRAPHER_PID 2>/dev/null || true
+        
+        # Force kill Gazebo processes
+        pkill -f "gazebo" 2>/dev/null || true
+        pkill -f "gzserver" 2>/dev/null || true
+        pkill -f "gzclient" 2>/dev/null || true
+    else
+        # Kill real robot processes but preserve agent
+        [ ! -z "$BRINGUP_PID" ] && kill $BRINGUP_PID 2>/dev/null || true
+        [ ! -z "$RVIZ_PID" ] && kill $RVIZ_PID 2>/dev/null || true
+        [ ! -z "$CARTOGRAPHER_PID" ] && kill $CARTOGRAPHER_PID 2>/dev/null || true
+        
+        # Run our shutdown script to clean up properly
+        ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1 || true
+    fi
+    
+    sleep 3
+    echo "✅ Regression testing cleanup complete"
+    
+    exit $FINAL_RESULT
+fi
 
 # Setup localization test configuration if enabled
 if [ "$LOCALIZATION_TEST" = true ]; then
