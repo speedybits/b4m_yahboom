@@ -58,7 +58,9 @@ class RegressionRotator(Node):
         # Screenshot setup
         self.script_dir = Path(__file__).parent
         self.screenshot_dir = Path(__file__).parent.parent / "regression" / "screenshots"
+        self.reference_dir = Path(__file__).parent.parent / "regression" / "reference_screenshots"
         self.capture_script = self.script_dir / "capture_and_analyze.py"
+        self.comparison_script = self.script_dir / "compare_screenshots.py"
         self.screenshot_count = 0
         
         # Control timer - runs at 10Hz for smooth control (same as autonomous exploration)
@@ -70,6 +72,8 @@ class RegressionRotator(Node):
         # Test state
         self.test_started = False
         self.test_completed = False
+        self.comparison_completed = False
+        self.comparison_passed = False
         self.rotation_start_time = None
         self.screenshots_taken = {
             'initial': False,
@@ -129,6 +133,41 @@ class RegressionRotator(Node):
         except Exception as e:
             self.get_logger().error(f"Screenshot error: {e}")
             return False
+    
+    def run_screenshot_comparison(self):
+        """Run screenshot comparison with reference images"""
+        try:
+            self.get_logger().info("🔍 Running screenshot comparison with reference images...")
+            
+            if self.comparison_script.exists():
+                result = subprocess.run(
+                    ["python3", str(self.comparison_script), 
+                     "--actual-dir", str(self.screenshot_dir),
+                     "--reference-dir", str(self.reference_dir),
+                     "--threshold", "0.90",
+                     "--output", str(self.screenshot_dir / "comparison_results.json")],
+                    capture_output=True, text=True, timeout=30
+                )
+                
+                # Print comparison output
+                if result.stdout:
+                    print(result.stdout)
+                if result.stderr:
+                    print("Comparison warnings:", result.stderr)
+                    
+                if result.returncode == 0:
+                    self.get_logger().info("✅ Screenshot comparison PASSED (≥90% similarity)")
+                    return True
+                else:
+                    self.get_logger().error("❌ Screenshot comparison FAILED (<90% similarity)")
+                    return False
+            else:
+                self.get_logger().error("❌ Screenshot comparison script not found")
+                return False
+                
+        except Exception as e:
+            self.get_logger().error(f"Screenshot comparison error: {e}")
+            return False
         
     def control_loop(self):
         """Control loop - identical structure to autonomous exploration"""
@@ -166,6 +205,16 @@ class RegressionRotator(Node):
             self.test_completed = True
             return
             
+        # Run comparison after test is complete but before finishing
+        if self.test_completed and not self.comparison_completed:
+            # Give a moment for final screenshot to be saved
+            time.sleep(2)
+            
+            # Run screenshot comparison
+            self.comparison_passed = self.run_screenshot_comparison()
+            self.comparison_completed = True
+            return
+            
         # Continue rotation if not complete
         if self.test_started and not self.test_completed:
             cmd = Twist()
@@ -196,13 +245,23 @@ def main():
     try:
         rotator = RegressionRotator()
         
-        # Keep running until rotation is complete
-        while not rotator.test_completed:
+        # Keep running until rotation and comparison are complete
+        while not (rotator.test_completed and rotator.comparison_completed):
             rclpy.spin_once(rotator, timeout_sec=0.1)
             time.sleep(0.01)  # Small delay to prevent CPU spinning
             
-        print("\n✅ Regression rotation test completed successfully!")
-        return 0
+        print(f"\n📊 REGRESSION TEST RESULTS:")
+        print(f"   Rotation: ✅ Completed 360°")
+        print(f"   Screenshots: ✅ Captured (initial, mid, final)")
+        
+        if rotator.comparison_passed:
+            print(f"   Comparison: ✅ PASSED (≥90% similarity)")
+            print(f"\n🎉 REGRESSION TEST PASSED!")
+            return 0
+        else:
+            print(f"   Comparison: ❌ FAILED (<90% similarity)")
+            print(f"\n❌ REGRESSION TEST FAILED!")
+            return 1
         
     except KeyboardInterrupt:
         print("\n🛑 Rotation test interrupted by user")
