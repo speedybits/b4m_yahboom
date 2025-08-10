@@ -299,64 +299,77 @@ if [ "$REGRESSION_MODE" = true ]; then
     echo "✅ System launch complete! Now running tests..."
     echo ""
     
-    # Step 4: Start regression rotation (identical to exploration Step 4)
-    echo "🧪 PHASE 2: REGRESSION TEST"
-    echo "🚀 Step 4: Starting controlled 360° rotation (mimicking autonomous exploration)"
+    # Step 4: Start comprehensive regression test (rotation + odometry quality)
+    echo "🧪 PHASE 2: COMPREHENSIVE REGRESSION TEST"
+    echo "🚀 Step 4: Starting comprehensive regression with odometry monitoring"
+    echo "   - 360° rotation test with screenshot comparison"
+    echo "   - Real-time odometry quality analysis"
+    echo "   - Navigation system health validation"
     
-    # Set environment variable for simulation/real robot detection
+    # Use unified comprehensive regression test with proper environment variable
     if [ "$SIMULATION_MODE" = true ]; then
-        cd "$WORKSPACE_ROOT" && . install/setup.bash && ROS_USE_SIM_TIME=true python3 "$WORKSPACE_ROOT/scripts/regression_rotation.py" > "$LOGS_DIR/regression_rotation_$TIMESTAMP.log" 2>&1 &
+        cd "$WORKSPACE_ROOT" && . install/setup.bash && ROS_USE_SIM_TIME=true python3 "$WORKSPACE_ROOT/scripts/regression_with_odometry.py" > "$LOGS_DIR/regression_comprehensive_$TIMESTAMP.log" 2>&1 &
     else
-        cd "$WORKSPACE_ROOT" && . install/setup.bash && ROS_USE_SIM_TIME=false python3 "$WORKSPACE_ROOT/scripts/demo_based_regression.py" > "$LOGS_DIR/regression_rotation_$TIMESTAMP.log" 2>&1 &
+        cd "$WORKSPACE_ROOT" && . install/setup.bash && ROS_USE_SIM_TIME=false python3 "$WORKSPACE_ROOT/scripts/regression_with_odometry.py" > "$LOGS_DIR/regression_comprehensive_$TIMESTAMP.log" 2>&1 &
     fi
     ROTATION_PID=$!
     
     echo ""
-    echo "✅ REGRESSION TEST ACTIVE"
+    echo "✅ COMPREHENSIVE REGRESSION TEST ACTIVE"
     echo "======================================" 
-    echo "🔄 Robot is now performing controlled 360° rotation"
+    echo "🔄 Robot performing controlled 360° rotation with odometry monitoring"
     echo "📊 Monitor progress in RViz:"
     echo "   - Map topic: /map (shows real-time SLAM mapping)" 
     echo "   - Robot position: /tf (robot location on map)"
     echo "   - Laser scans: /scan (sensor readings)"
+    echo "   - Odometry: /odom (position quality tracking)"
     echo ""
-    echo "⏳ Rotation will complete automatically after 360°"
-    echo "   Screenshots will be captured at key moments"
+    echo "⏳ Test phases will complete automatically:"
+    echo "   Phase 1: Stationary baseline measurement (5s)"
+    echo "   Phase 2: 360° rotation with quality monitoring (20s)"
+    echo "   Phase 3: Post-movement settling analysis (5s)"
+    echo "   Screenshots captured at: initial, mid-rotation, final"
     
     # Wait for rotation to complete
     wait $ROTATION_PID
     ROTATION_EXIT_CODE=$?
     
     if [ $ROTATION_EXIT_CODE -eq 0 ]; then
-        echo "✅ Regression rotation test PASSED"
-        echo "  ✓ Laser scans are visible"
+        echo "✅ Comprehensive regression test PASSED"
+        echo "  ✓ Screenshot comparison passed"
+        echo "  ✓ Odometry quality assessment passed"
         echo "  ✓ Robot rotated 360 degrees successfully"
-        echo "  ✓ SLAM mapping integration working"
+        echo "  ✓ Navigation system health validated"
         TEST_RESULT="PASSED"
     else
-        echo "❌ Regression rotation test FAILED"  
-        echo "  Check log for details: $LOGS_DIR/regression_rotation_$TIMESTAMP.log"
+        echo "❌ Comprehensive regression test FAILED"  
+        echo "  Check log for details: $LOGS_DIR/regression_comprehensive_$TIMESTAMP.log"
         TEST_RESULT="FAILED"
     fi
     
     # Step 3: Report results and cleanup
     echo ""
-    echo "🏁 REGRESSION TEST RESULTS"
+    echo "🏁 COMPREHENSIVE REGRESSION TEST RESULTS"
     echo "======================================"
     
     echo "Test Result: $TEST_RESULT"
-    echo "Test Log: $LOGS_DIR/regression_rotation_$TIMESTAMP.log"
+    echo "Test Log: $LOGS_DIR/regression_comprehensive_$TIMESTAMP.log"
+    echo "Screenshot Results: $WORKSPACE_ROOT/regression/screenshots/comparison_results.json"
+    echo "Odometry Analysis: $WORKSPACE_ROOT/regression/screenshots/comprehensive_results_*.json"
     echo ""
     
     if [ "$TEST_RESULT" = "PASSED" ]; then
-        echo "🎉 REGRESSION TEST PASSED!"
-        echo "✅ Laser scans are published and visible in RViz"
+        echo "🎉 COMPREHENSIVE REGRESSION TEST PASSED!"
+        echo "✅ Visual regression: Screenshots match reference images"
+        echo "✅ Odometry quality: Position tracking within acceptable limits"
+        echo "✅ Navigation health: All systems functioning correctly"
         echo "✅ Robot can rotate 360 degrees successfully"
         echo "✅ Cartographer SLAM integration is working correctly"
         FINAL_RESULT=0
     else
-        echo "💥 REGRESSION TEST FAILED!"
-        echo "Please check the test log for details"
+        echo "💥 COMPREHENSIVE REGRESSION TEST FAILED!"
+        echo "❌ Either screenshot comparison or odometry quality test failed"
+        echo "Please check the detailed logs and JSON results for analysis"
         FINAL_RESULT=1
     fi
     
