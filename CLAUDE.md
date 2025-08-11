@@ -26,6 +26,12 @@ The regression test now includes automated image comparison that validates RViz 
 - Test fails if screenshots differ by more than 10% from reference images
 - Automatically detects simulation vs real robot mode and uses correct reference directory
 
+**Important**: The regression test now:
+- Cleans up at the START (not end) to ensure clean state
+- Leaves system running after tests for debugging
+- Uses filtered `/odom` topic (from EKF), not raw `/odom_raw`
+- To manually clean up after debugging: `./b4m_shutdown.sh --keep-agent`
+
 Dependencies required: python3-opencv python3-skimage
 
 ## Running and Shut down
@@ -239,6 +245,15 @@ The B4M system integrates with Home Assistant via MQTT:
 - **LIDAR**: Laser scanner for SLAM and navigation
 - **IMU**: Inertial measurement unit for pose estimation
 - **Camera**: Optional vision processing capabilities
+
+### Odometry Architecture
+The system uses a two-stage odometry pipeline for accurate position tracking:
+1. **Raw Odometry (`/odom_raw`)**: Published by ESP32/micro-ROS with raw encoder data
+2. **Extended Kalman Filter (EKF)**: Fuses `/odom_raw` with IMU data for noise reduction
+3. **Filtered Odometry (`/odom`)**: Clean output from EKF used by navigation stack
+
+**Critical**: The EKF requires ALL workspaces to be sourced (especially `imu_ws`) to function.
+Without proper workspace sourcing, the EKF won't start and `/odom` won't be published.
 
 ### GUI Development
 - **PyQt5**: Primary GUI framework for robot manager
