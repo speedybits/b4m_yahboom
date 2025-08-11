@@ -258,7 +258,7 @@
       <ros>
         <namespace></namespace>
         <remapping>cmd_vel:=cmd_vel</remapping>
-        <remapping>odom:=odom</remapping>
+        <remapping>odom:=odom_raw</remapping>
       </ros>
       <update_rate>30</update_rate>
       <left_joint>left_front_joint</left_joint>

@@ -16,6 +16,9 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 print("---------------------robot_type = x3---------------------")
 def generate_launch_description():
+    # Declare use_sim_time argument
+    use_sim_time = LaunchConfiguration('use_sim_time')
+    
     imu_filter_config = os.path.join(              
         get_package_share_directory('yahboomcar_bringup'),
         'param',
@@ -40,7 +43,7 @@ def generate_launch_description():
         executable='ekf_node',
         name='ekf_filter_node',
         output='screen',
-        parameters=[ekf_config],
+        parameters=[ekf_config, {'use_sim_time': use_sim_time}],
         remappings=[('/odometry/filtered','/odom')]
     )
     
@@ -60,6 +63,11 @@ def generate_launch_description():
     ) 
     
     return LaunchDescription([
+        DeclareLaunchArgument(
+            'use_sim_time',
+            default_value='false',
+            description='Use simulation (Gazebo) clock if true'
+        ),
         imu_filter_node,
         ekf_node,
         base_link_to_imu_tf_node,
