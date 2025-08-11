@@ -128,6 +128,21 @@ Install additional ROS2 packages required for the robot's functionality:
 sudo apt install ros-humble-imu-complementary-filter ros-humble-imu-filter-madgwick ros-humble-imu-tools ros-humble-robot-localization ros-humble-joint-state-publisher ros-humble-joint-state-publisher-gui ros-humble-xacro ros-humble-nav2-bringup ros-humble-cartographer-ros
 ```
 
+### Install Gazebo Classic and Simulation Dependencies
+
+Install Gazebo Classic for robot simulation:
+
+```bash
+# Install Gazebo Classic for robot simulation
+sudo apt install gazebo-11 ros-humble-gazebo-ros-pkgs ros-humble-gazebo-ros2-control
+
+# Verify Gazebo Classic installation
+gazebo --version
+# Should show Gazebo multi-robot simulator, version 11.10.2 or later
+```
+
+**Note:** Gazebo Classic 11.10.2 is the primary simulation platform used for development, testing, and regression validation. The simulation environment provides reliable sensor data for SLAM and integrated robot spawning capabilities.
+
 ## 5. Configure Environment
 
 ### Manual Sourcing
@@ -195,6 +210,15 @@ sudo apt install python3-pyqt5 python3-pyqt5.qtsvg
 sudo apt install python3-pip python3-serial
 pip3 install pillow numpy pyserial paho-mqtt
 ```
+
+### Image Analysis Dependencies (for Regression Testing)
+
+```bash
+# Install OpenCV and scikit-image for screenshot comparison
+sudo apt install python3-opencv python3-skimage
+```
+
+**Note:** These packages are required for the automated regression testing system that compares RViz screenshots to ensure consistent laser scan visualization and SLAM mapping functionality.
 
 ### Network Analysis Tools (for troubleshooting)
 

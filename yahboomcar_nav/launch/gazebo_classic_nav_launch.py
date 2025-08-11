@@ -97,13 +97,13 @@ def generate_launch_description():
             ]
         ),
         
-        # Static transform publisher for laser frame (if needed for compatibility)
+        # Static transform publisher for laser frame (connects Gazebo 'laser' to expected 'laser_frame')
         Node(
             package='tf2_ros',
             executable='static_transform_publisher',
             name='laser_tf_publisher',
             output='screen',
-            arguments=['0.04', '0', '0.05', '0', '0', '0', 'base_link', 'laser'],
+            arguments=['0', '0', '0', '0', '0', '0', 'laser', 'laser_frame'],
             parameters=[
                 {'use_sim_time': use_sim_time}
             ],
