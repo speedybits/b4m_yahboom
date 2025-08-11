@@ -135,12 +135,12 @@ ekf_filter_node:
         odom0_pose_rejection_threshold: 20.0
         odom0_twist_rejection_threshold: 1.542
 
-        imu0: /imu
-        imu0_config: [false, false, false,
-                      false, false, true ,
-                      false, false, false,
-                      false, false, true,
-                      false, false, false]
+        # imu0: /imu  # DISABLED: IMU not providing valid orientation data
+        # imu0_config: [false, false, false,
+        #               false, false, false,
+        #               false, false, false,
+        #               false, false, false,
+        #               false, false, false]
 
         #        [x_pos   , y_pos    , z_pos,
         #         roll    , pitch    , yaw,
@@ -148,17 +148,17 @@ ekf_filter_node:
         #         roll_vel, pitch_vel, yaw_vel,
         #         x_accel , y_accel  , z_accel]
         
-        imu0_nodelay: false
-        imu0_differential: false
-        imu0_relative: true
-        imu0_queue_size: 10
-        imu0_pose_rejection_threshold: 20.0                 # Note the difference in parameter names     # 0.8
-        imu0_twist_rejection_threshold: 1.542               # 0.8
-        imu0_linear_acceleration_rejection_threshold: 10.0  #
+        # imu0_nodelay: false  # DISABLED: IMU parameters not needed
+        # imu0_differential: false
+        # imu0_relative: true
+        # imu0_queue_size: 10
+        # imu0_pose_rejection_threshold: 20.0                 # Note the difference in parameter names     # 0.8
+        # imu0_twist_rejection_threshold: 1.542               # 0.8
+        # imu0_linear_acceleration_rejection_threshold: 10.0  #
 
 # [ADVANCED] Some IMUs automatically remove acceleration due to gravity, and others don't. If yours doesn't, please set
 # this to true, and *make sure* your data conforms to REP-103, specifically, that the data is in ENU frame.
-        imu0_remove_gravitational_acceleration: true
+        # imu0_remove_gravitational_acceleration: true  # DISABLED
 
 # [ADVANCED]  The EKF and UKF models follow a standard predict/correct cycle. During prediction, if there is no
 # acceleration reference, the velocity at time t+1 is simply predicted to be the same as the velocity at time t. During

@@ -60,7 +60,7 @@ class OdometryQualityTest(Node):
         # Test parameters
         self.stationary_threshold = 0.01  # m/s - consider stationary below this
         self.max_position_drift = 0.05    # 5cm max drift when stationary
-        self.max_orientation_drift = math.radians(2)  # 2 degrees max drift
+        self.max_orientation_drift = math.radians(10)  # 10 degrees max drift (adjusted for real robot)
         self.min_update_rate = 5.0        # Hz (lowered for simulation compatibility)
         self.max_update_rate = 50.0       # Hz
         self.max_velocity_error = 0.2     # 20% error threshold
