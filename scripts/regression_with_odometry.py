@@ -10,12 +10,14 @@ visual regression and navigation system health.
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry
 import time
 import subprocess
 from pathlib import Path
 import os
 import threading
 import json
+import math
 
 # Import our custom modules
 import sys
@@ -29,9 +31,19 @@ class RegressionWithOdometry(Node):
         # Publisher for robot movement
         self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)
         
+        # Note: We'll get odometry data through the odometry_test instead of a separate subscriber
+        
         # Test parameters
-        self.rotation_duration = 20.0
+        self.max_rotation_duration = 30.0  # Safety timeout (increased from 20s)
         self.angular_speed = 0.3
+        
+        # Rotation tracking variables
+        self.initial_yaw = None
+        self.current_yaw = 0.0
+        self.total_rotation = 0.0
+        self.target_rotation = 2 * math.pi  # Exactly 360 degrees
+        self.actively_rotating = False
+        self.rotation_complete = False
         
         # Screenshot and logging setup
         self.script_dir = Path(__file__).parent
@@ -49,8 +61,45 @@ class RegressionWithOdometry(Node):
         
         self.get_logger().info("🔄 Enhanced Regression Test with Odometry Monitoring")
         self.get_logger().info(f"   {mode_str}")
-        self.get_logger().info(f"   Duration: {self.rotation_duration}s")
+        self.get_logger().info(f"   Target rotation: 360° (true odometry-based)")
         self.get_logger().info(f"   Angular speed: {self.angular_speed} rad/s")
+        self.get_logger().info(f"   Safety timeout: {self.max_rotation_duration}s")
+
+    def update_rotation_tracking(self):
+        """Update rotation tracking using data from odometry test"""
+        # Get the latest odometry data from the test
+        if not self.odometry_test.odom_data:
+            return
+            
+        latest_odom = self.odometry_test.odom_data[-1]
+        yaw = latest_odom['orientation']
+        
+        if self.initial_yaw is None:
+            self.initial_yaw = yaw
+            self.current_yaw = yaw
+            self.get_logger().info(f"🧭 Initial yaw set: {math.degrees(yaw):.1f}°")
+            return
+            
+        # Only track rotation when we're actively commanding it
+        if self.actively_rotating and not self.rotation_complete:
+            # Track total rotation (handle angle wraparound)
+            delta_yaw = yaw - self.current_yaw
+            if delta_yaw > math.pi:
+                delta_yaw -= 2 * math.pi
+            elif delta_yaw < -math.pi:
+                delta_yaw += 2 * math.pi
+            
+            if abs(delta_yaw) > 0.005:  # Lower threshold, use info instead of debug
+                self.get_logger().info(f"🧭 Yaw change: {math.degrees(delta_yaw):.2f}°, Total: {math.degrees(self.total_rotation):.1f}°")
+                
+            self.total_rotation += abs(delta_yaw)
+            
+            # Check if rotation is complete
+            if self.total_rotation >= self.target_rotation:
+                self.rotation_complete = True
+                self.get_logger().info(f"🎯 360° rotation complete! Total: {math.degrees(self.total_rotation):.1f}°")
+                
+        self.current_yaw = yaw
 
     def capture_screenshot(self, name):
         """Capture screenshot using the proven method"""
@@ -120,45 +169,84 @@ class RegressionWithOdometry(Node):
         # Take initial screenshot
         screenshot_success = self.capture_screenshot("initial")
         
-        # Phase 2: Rotation test (20 seconds) with odometry monitoring
-        self.get_logger().info("📊 Phase 2: Rotation test with odometry monitoring")
-        self.odometry_test.start_test_phase("rotation_phase", self.rotation_duration)
+        # Phase 2: True 360° rotation test with odometry monitoring
+        self.get_logger().info("📊 Phase 2: True 360° rotation test with odometry monitoring")
+        self.odometry_test.start_test_phase("rotation_phase", self.max_rotation_duration)
         
-        # Start rotation
-        self.get_logger().info("🔄 Starting 360° rotation...")
+        # Wait for initial odometry reading
+        self.get_logger().info("🧭 Waiting for initial odometry reading...")
+        while self.initial_yaw is None:
+            rclpy.spin_once(self.odometry_test, timeout_sec=0.1)
+            self.update_rotation_tracking()
+            time.sleep(0.1)
+        
+        # Ensure robot is stopped first
+        stop_cmd = Twist()
+        for _ in range(5):
+            self.cmd_pub.publish(stop_cmd)
+            time.sleep(0.1)
+        
+        # Start rotation tracking and movement
+        self.get_logger().info("🔄 Starting true 360° rotation (odometry-based)...")
+        self.get_logger().info(f"   Angular speed: {self.angular_speed} rad/s")
+        self.actively_rotating = True
         start_time = time.time()
+        last_progress_time = 0
+        mid_screenshot_taken = False
         
         # Create rotation command
         rotate_cmd = Twist()
         rotate_cmd.linear.x = 0.0
         rotate_cmd.angular.z = self.angular_speed
         
-        # Rotate for specified duration
-        while time.time() - start_time < self.rotation_duration:
+        self.get_logger().info(f"   Rotation command: linear.x={rotate_cmd.linear.x}, angular.z={rotate_cmd.angular.z}")
+        
+        # Rotate until completion or timeout
+        while not self.rotation_complete and (time.time() - start_time) < self.max_rotation_duration:
             self.cmd_pub.publish(rotate_cmd)
             
-            # Progress updates
+            # Process callbacks to get odometry updates and update rotation tracking
+            rclpy.spin_once(self.odometry_test, timeout_sec=0.01)
+            self.update_rotation_tracking()
+            
+            # Progress updates based on actual rotation
             elapsed = time.time() - start_time
-            if int(elapsed) % 5 == 0 and elapsed - int(elapsed) < 0.1:
-                progress = (elapsed / self.rotation_duration) * 360
-                self.get_logger().info(f"🔄 Progress: ~{progress:.0f}° ({elapsed:.1f}s)")
+            if elapsed - last_progress_time >= 3.0:  # Every 3 seconds
+                actual_degrees = math.degrees(self.total_rotation)
+                completion_percent = (self.total_rotation / self.target_rotation) * 100
+                self.get_logger().info(f"🔄 Progress: {actual_degrees:.0f}° ({completion_percent:.1f}% complete, {elapsed:.1f}s)")
+                last_progress_time = elapsed
             
-            # Mid-rotation screenshot
-            if elapsed > self.rotation_duration / 2 and elapsed < (self.rotation_duration / 2 + 0.2):
+            # Mid-rotation screenshot (at ~180°)
+            if not mid_screenshot_taken and self.total_rotation >= (self.target_rotation * 0.5):
                 self.capture_screenshot("mid")
+                mid_screenshot_taken = True
+                self.get_logger().info("📸 Mid-rotation screenshot captured at ~180°")
             
-            # Process odometry callbacks
-            rclpy.spin_once(self.odometry_test, timeout_sec=0.05)
             time.sleep(0.05)
         
-        # Stop rotation
+        # Check for timeout
+        if not self.rotation_complete:
+            self.get_logger().error(f"❌ TIMEOUT: Rotation incomplete after {self.max_rotation_duration}s")
+            self.get_logger().error(f"   Completed: {math.degrees(self.total_rotation):.1f}° of 360°")
+        
+        # Stop rotation tracking and movement
+        self.actively_rotating = False
         stop_cmd = Twist()
         for _ in range(10):
             self.cmd_pub.publish(stop_cmd)
             time.sleep(0.05)
         
         self.odometry_test.end_test_phase("rotation_phase")
-        self.get_logger().info("✅ Rotation completed")
+        
+        # Report final rotation results
+        if self.rotation_complete:
+            actual_degrees = math.degrees(self.total_rotation)
+            self.get_logger().info(f"✅ True 360° rotation completed!")
+            self.get_logger().info(f"   Final rotation: {actual_degrees:.1f}°")
+            self.get_logger().info(f"   Target achieved: {(actual_degrees/360)*100:.1f}%")
+        else:
+            self.get_logger().info("⚠️ Rotation ended due to timeout")
         
         # Phase 3: Post-movement settling (5 seconds)
         self.get_logger().info("📊 Phase 3: Post-movement settling analysis")
