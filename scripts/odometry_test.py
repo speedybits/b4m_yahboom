@@ -29,7 +29,7 @@ class OdometryQualityTest(Node):
     def __init__(self):
         super().__init__('odometry_quality_test')
         
-        # Odometry subscriber
+        # Odometry subscriber - always use /odom (filtered output from EKF)
         self.odom_sub = self.create_subscription(
             Odometry,
             '/odom',

@@ -177,7 +177,8 @@ if [ "$EXPLORE_MODE" = true ]; then
         
         # Step 1: Launch robot bringup 
         echo "🤖 Step 1: Starting robot sensor and control systems"
-        ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py > "$LOGS_DIR/exploration_bringup_$TIMESTAMP.log" 2>&1 &
+        # Must source ALL workspaces including IMU for EKF to work properly
+        cd "$WORKSPACE_ROOT" && . source_workspaces.sh && ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py > "$LOGS_DIR/exploration_bringup_$TIMESTAMP.log" 2>&1 &
         BRINGUP_PID=$!
         echo "   Waiting for sensor initialization..."
         sleep 8
@@ -248,6 +249,33 @@ if [ "$REGRESSION_MODE" = true ]; then
     echo "  Rotation test: $LOGS_DIR/regression_rotation_$TIMESTAMP.log"
     echo "======================================"
     
+    # CLEANUP BEFORE STARTING NEW TEST
+    echo ""
+    echo "🧹 PRE-TEST CLEANUP"
+    echo "Ensuring clean system state before regression test..."
+    
+    if [ "$SIMULATION_MODE" = true ]; then
+        # Kill any existing simulation processes
+        pkill -f "rviz2" 2>/dev/null || true
+        pkill -f "rviz" 2>/dev/null || true
+        pkill -f "gazebo" 2>/dev/null || true
+        pkill -f "gzserver" 2>/dev/null || true
+        pkill -f "gzclient" 2>/dev/null || true
+        
+        # Run comprehensive shutdown for simulation
+        ./b4m_shutdown.sh > /dev/null 2>&1 || true
+    else
+        # Kill any existing real robot processes but preserve agent
+        pkill -f "rviz2" 2>/dev/null || true
+        pkill -f "rviz" 2>/dev/null || true
+        
+        # Run shutdown script to clean up properly (keep agent for real robot)
+        ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1 || true
+    fi
+    
+    sleep 3
+    echo "✅ Pre-test cleanup complete"
+    
     # Step 1: Launch system for testing
     echo ""
     echo "🚀 PHASE 1: SYSTEM LAUNCH"
@@ -278,7 +306,8 @@ if [ "$REGRESSION_MODE" = true ]; then
     else
         # Real robot mode - start bringup, RViz, then Cartographer
         echo "🤖 Step 1: Starting robot bringup (sensors and odometry)"
-        ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py > /dev/null 2>&1 &
+        # Must source ALL workspaces including IMU for EKF to work properly
+        cd "$WORKSPACE_ROOT" && . source_workspaces.sh && ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py > /dev/null 2>&1 &
         BRINGUP_PID=$!
         echo "   Waiting for sensor initialization..."
         sleep 8
@@ -322,7 +351,7 @@ if [ "$REGRESSION_MODE" = true ]; then
     echo "   - Map topic: /map (shows real-time SLAM mapping)" 
     echo "   - Robot position: /tf (robot location on map)"
     echo "   - Laser scans: /scan (sensor readings)"
-    echo "   - Odometry: /odom (position quality tracking)"
+    echo "   - Odometry: /odom (filtered position from EKF)"
     echo ""
     echo "⏳ Test phases will complete automatically:"
     echo "   Phase 1: Stationary baseline measurement (5s)"
@@ -376,45 +405,23 @@ if [ "$REGRESSION_MODE" = true ]; then
     echo "======================================"
     echo ""
     
-    # Cleanup
-    echo "🧹 CLEANUP"
-    echo "Shutting down system launched for regression testing..."
-    
+    # NO CLEANUP - Leave system running for debugging
+    echo "🔍 SYSTEM LEFT RUNNING FOR DEBUGGING"
+    echo "======================================"
+    echo "The system has been left running so you can inspect:"
+    echo "  - RViz visualization"
+    echo "  - Running ROS2 nodes: ros2 node list"
+    echo "  - Active topics: ros2 topic list"
+    echo "  - Raw odometry: ros2 topic echo /odom_raw"
+    echo "  - Filtered odometry: ros2 topic echo /odom"
+    echo ""
+    echo "To clean up manually when done debugging:"
     if [ "$SIMULATION_MODE" = true ]; then
-        # Kill simulation processes by PID first
-        [ ! -z "$GAZEBO_PID" ] && kill $GAZEBO_PID 2>/dev/null || true
-        [ ! -z "$RVIZ_PID" ] && kill $RVIZ_PID 2>/dev/null || true  
-        [ ! -z "$CARTOGRAPHER_PID" ] && kill $CARTOGRAPHER_PID 2>/dev/null || true
-        
-        # Force kill all RViz processes
-        pkill -f "rviz2" 2>/dev/null || true
-        pkill -f "rviz" 2>/dev/null || true
-        
-        # Force kill Gazebo processes
-        pkill -f "gazebo" 2>/dev/null || true
-        pkill -f "gzserver" 2>/dev/null || true
-        pkill -f "gzclient" 2>/dev/null || true
-        
-        # Run comprehensive shutdown for simulation (no agent to keep)
-        echo "Running comprehensive shutdown..."
-        ./b4m_shutdown.sh > /dev/null 2>&1 || true
+        echo "  ./b4m_shutdown.sh"
     else
-        # Kill real robot processes but preserve agent
-        [ ! -z "$BRINGUP_PID" ] && kill $BRINGUP_PID 2>/dev/null || true
-        [ ! -z "$RVIZ_PID" ] && kill $RVIZ_PID 2>/dev/null || true
-        [ ! -z "$CARTOGRAPHER_PID" ] && kill $CARTOGRAPHER_PID 2>/dev/null || true
-        
-        # Force kill all RViz processes
-        pkill -f "rviz2" 2>/dev/null || true
-        pkill -f "rviz" 2>/dev/null || true
-        
-        # Run our shutdown script to clean up properly (keep agent for real robot)
-        echo "Running comprehensive shutdown (keeping agent)..."
-        ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1 || true
+        echo "  ./b4m_shutdown.sh --keep-agent"
     fi
-    
-    sleep 3
-    echo "✅ Regression testing cleanup complete"
+    echo "======================================"
     
     exit $FINAL_RESULT
 fi
@@ -2123,7 +2130,7 @@ fi
 
 # Step 3: Launch the Car's Underlying Data Processing
 launch_in_terminal "Starting the car's underlying data processing for sensor integration" \
-    "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py" \
+    "cd \"$WORKSPACE_ROOT\" && . source_workspaces.sh && ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py" \
     "3"
 
 # Step 4: Start RViz for Visualization
