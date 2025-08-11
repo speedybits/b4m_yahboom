@@ -24,9 +24,8 @@
       </camera>
     </gui>
     
-    <!-- Simple navigation test environment -->
-    <!-- No obstacles needed for basic 1-meter square navigation test -->
-    <!-- The robot should be able to navigate freely in a 2x2 meter area -->
+    <!-- Enhanced navigation test environment with walls for laser detection -->
+    <!-- Walls provide clear features for SLAM mapping and laser scan detection -->
     
     <!-- Optional: Add reference markers at corners of 1-meter square for visual validation -->
     <!-- Corner marker 1: (0.5, 0.5) -->
@@ -46,6 +45,14 @@
             <diffuse>1.0 0.0 0.0 1</diffuse>
           </material>
         </visual>
+        <collision name="collision">
+          <geometry>
+            <cylinder>
+              <radius>0.05</radius>
+              <length>0.02</length>
+            </cylinder>
+          </geometry>
+        </collision>
       </link>
     </model>
     
@@ -66,6 +73,14 @@
             <diffuse>0.0 1.0 0.0 1</diffuse>
           </material>
         </visual>
+        <collision name="collision">
+          <geometry>
+            <cylinder>
+              <radius>0.05</radius>
+              <length>0.02</length>
+            </cylinder>
+          </geometry>
+        </collision>
       </link>
     </model>
     
@@ -86,6 +101,14 @@
             <diffuse>0.0 0.0 1.0 1</diffuse>
           </material>
         </visual>
+        <collision name="collision">
+          <geometry>
+            <cylinder>
+              <radius>0.05</radius>
+              <length>0.02</length>
+            </cylinder>
+          </geometry>
+        </collision>
       </link>
     </model>
     
@@ -106,6 +129,14 @@
             <diffuse>1.0 1.0 0.0 1</diffuse>
           </material>
         </visual>
+        <collision name="collision">
+          <geometry>
+            <cylinder>
+              <radius>0.05</radius>
+              <length>0.02</length>
+            </cylinder>
+          </geometry>
+        </collision>
       </link>
     </model>
     
@@ -126,6 +157,119 @@
             <diffuse>1.0 1.0 1.0 1</diffuse>
           </material>
         </visual>
+        <collision name="collision">
+          <geometry>
+            <cylinder>
+              <radius>0.03</radius>
+              <length>0.02</length>
+            </cylinder>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    
+    <!-- Walls for laser detection and SLAM mapping -->
+    <!-- North wall -->
+    <model name="north_wall">
+      <pose>0 2 0.5 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>5 0.1 1</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.7 0.7 0.7 1</ambient>
+            <diffuse>0.7 0.7 0.7 1</diffuse>
+          </material>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>5 0.1 1</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    
+    <!-- South wall -->
+    <model name="south_wall">
+      <pose>0 -2 0.5 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>5 0.1 1</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.7 0.7 0.7 1</ambient>
+            <diffuse>0.7 0.7 0.7 1</diffuse>
+          </material>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>5 0.1 1</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    
+    <!-- East wall -->
+    <model name="east_wall">
+      <pose>2.5 0 0.5 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.1 4 1</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.7 0.7 0.7 1</ambient>
+            <diffuse>0.7 0.7 0.7 1</diffuse>
+          </material>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.1 4 1</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+    
+    <!-- West wall -->
+    <model name="west_wall">
+      <pose>-2.5 0 0.5 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.1 4 1</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.7 0.7 0.7 1</ambient>
+            <diffuse>0.7 0.7 0.7 1</diffuse>
+          </material>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.1 4 1</size>
+            </box>
+          </geometry>
+        </collision>
       </link>
     </model>
     

@@ -217,11 +217,44 @@ class AutonomousExplorer(Node):
         # Check if minimum turn time has elapsed
         min_turn_elapsed = turn_duration >= self.min_turn_time
         
-        # Update clear readings count
-        if self.path_clear:
-            self.clear_readings_count += 1
+        # Calculate front-only clearance for stuck situations
+        ranges = np.array(self.laser_data.ranges)
+        ranges[np.isinf(ranges)] = self.laser_data.range_max
+        ranges[np.isnan(ranges)] = self.laser_data.range_max
+        
+        num_readings = len(ranges)
+        angle_range = self.laser_data.angle_max - self.laser_data.angle_min
+        angle_increment_actual = angle_range / (num_readings - 1) if num_readings > 1 else self.laser_data.angle_increment
+        front_center_index = int((0.0 - self.laser_data.angle_min) / angle_increment_actual)
+        front_angle_rad = math.radians(5)  # ±5 degrees
+        front_half_width = int(front_angle_rad / angle_increment_actual)
+        front_start = max(0, front_center_index - front_half_width)
+        front_end = min(num_readings - 1, front_center_index + front_half_width)
+        front_ranges = ranges[front_start:front_end + 1]
+        min_front_distance = np.min(front_ranges)
+        
+        # Front-only clearance check (ignore sides when stuck)
+        front_only_clear = min_front_distance > self.safe_distance
+        
+        # If turning for too long (>15 seconds), use front-only clearance
+        if turn_duration > 15.0:
+            # Emergency escape: only require front clearance if turning too long
+            if front_only_clear:
+                self.clear_readings_count += 1
+            else:
+                self.clear_readings_count = 0
+            
+            path_check = front_only_clear
+            escape_mode = True
         else:
-            self.clear_readings_count = 0  # Reset if path is not clear
+            # Normal operation: require both front and side clearance
+            if self.path_clear:
+                self.clear_readings_count += 1
+            else:
+                self.clear_readings_count = 0  # Reset if path is not clear
+            
+            path_check = self.path_clear
+            escape_mode = False
         
         # Check if we have enough consecutive clear readings
         enough_clear_readings = self.clear_readings_count >= self.required_clear_readings
@@ -230,7 +263,10 @@ class AutonomousExplorer(Node):
         if min_turn_elapsed and enough_clear_readings:
             # Both minimum turn time elapsed AND sufficient clear readings
             self.exploration_state = "forward"
-            self.get_logger().info(f"✅ Path clear after {turn_duration:.1f}s turn with {self.clear_readings_count} clear readings - resuming forward")
+            if escape_mode:
+                self.get_logger().info(f"🚨 ESCAPE MODE: Front clear after {turn_duration:.1f}s turn (front: {min_front_distance:.2f}m) - resuming forward")
+            else:
+                self.get_logger().info(f"✅ Path clear after {turn_duration:.1f}s turn with {self.clear_readings_count} clear readings - resuming forward")
             return
         
         # Log status while turning (every 2 seconds)
@@ -260,6 +296,11 @@ class AutonomousExplorer(Node):
                     status_msg += f" (need {self.min_turn_time:.1f}s min)"
                 if not enough_clear_readings:
                     status_msg += f" (clear: {self.clear_readings_count}/{self.required_clear_readings})"
+                
+                # Add escape mode indicator
+                if turn_duration > 15.0:
+                    status_msg += " [ESCAPE MODE: front-only]"
+                
                 status_msg += f" - front: {min_distance:.2f}m"
                 
                 self.get_logger().info(status_msg)
