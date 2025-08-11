@@ -90,6 +90,7 @@ class AutonomousExplorer(Node):
         # Handle infinite values
         ranges[np.isinf(ranges)] = msg.range_max
         ranges[np.isnan(ranges)] = msg.range_max
+        ranges[ranges == 0.0] = msg.range_max  # Handle 0.0 as invalid reading
         
         # Calculate actual laser parameters dynamically
         num_readings = len(ranges)
@@ -132,12 +133,22 @@ class AutonomousExplorer(Node):
         if len(right_side_ranges) > 0:
             min_side_distance = min(min_side_distance, np.min(right_side_ranges))
         
-        # Enhanced obstacle detection: stop if EITHER front or sides are too close
-        close_side_threshold = 0.25  # Stop if sides are within 25cm (10 inches)
+        # Enhanced obstacle detection: prioritize front path when clear
+        close_side_threshold = 0.25  # Side obstacle threshold: 25cm (10 inches)
         side_obstacle_close = min_side_distance <= close_side_threshold
         
-        self.obstacle_close = (min_front_distance <= self.stop_distance) or side_obstacle_close
-        self.path_clear = (min_front_distance > self.safe_distance) and (min_side_distance > 0.35)
+        # IMPROVED: Only stop for side obstacles if front path is also blocked
+        front_obstacle_close = min_front_distance <= self.stop_distance
+        
+        # Allow forward movement through tight spaces when front is clear
+        if min_front_distance > self.safe_distance:  # Front path clear (>40cm)
+            self.obstacle_close = False  # Ignore side obstacles, prioritize forward movement
+        else:
+            self.obstacle_close = front_obstacle_close or side_obstacle_close  # Stop for any obstacle when front blocked
+        
+        # FIXED: Prioritize forward movement when front is clear, ignore side obstacles for path decisions
+        self.front_clear = min_front_distance > self.safe_distance  # Front-only clearance check
+        self.path_clear = self.front_clear  # Use front-only clearance for movement decisions
         
         # Log detailed debug info more frequently when near obstacles
         if hasattr(self, '_last_debug_time'):
@@ -152,7 +163,7 @@ class AutonomousExplorer(Node):
         self._last_debug_time = time.time()
         self.get_logger().info(f"🔍 LASER DEBUG: Front: {min_front_distance:.2f}m, Sides: {min_side_distance:.2f}m")
         self.get_logger().info(f"   Front sector (10°): {[f'{r:.2f}' for r in front_ranges]}")
-        self.get_logger().info(f"   State: {self.exploration_state}, Stop: {self.obstacle_close}, Clear: {self.path_clear}")
+        self.get_logger().info(f"   State: {self.exploration_state}, Stop: {self.obstacle_close}, Front Clear: {self.front_clear}")
         if min_front_distance <= self.stop_distance:
             self.get_logger().warn(f"   ⚠️  FRONT STOP: {min_front_distance:.2f}m ≤ {self.stop_distance:.2f}m")
         if side_obstacle_close:
@@ -221,6 +232,7 @@ class AutonomousExplorer(Node):
         ranges = np.array(self.laser_data.ranges)
         ranges[np.isinf(ranges)] = self.laser_data.range_max
         ranges[np.isnan(ranges)] = self.laser_data.range_max
+        ranges[ranges == 0.0] = self.laser_data.range_max  # Handle 0.0 as invalid reading
         
         num_readings = len(ranges)
         angle_range = self.laser_data.angle_max - self.laser_data.angle_min
@@ -233,28 +245,17 @@ class AutonomousExplorer(Node):
         front_ranges = ranges[front_start:front_end + 1]
         min_front_distance = np.min(front_ranges)
         
-        # Front-only clearance check (ignore sides when stuck)
+        # FIXED: Always use front-only clearance for movement decisions
         front_only_clear = min_front_distance > self.safe_distance
         
-        # If turning for too long (>15 seconds), use front-only clearance
-        if turn_duration > 15.0:
-            # Emergency escape: only require front clearance if turning too long
-            if front_only_clear:
-                self.clear_readings_count += 1
-            else:
-                self.clear_readings_count = 0
-            
-            path_check = front_only_clear
-            escape_mode = True
+        # Count consecutive clear readings (front-only)
+        if front_only_clear:
+            self.clear_readings_count += 1
         else:
-            # Normal operation: require both front and side clearance
-            if self.path_clear:
-                self.clear_readings_count += 1
-            else:
-                self.clear_readings_count = 0  # Reset if path is not clear
-            
-            path_check = self.path_clear
-            escape_mode = False
+            self.clear_readings_count = 0  # Reset if front is not clear
+        
+        path_check = front_only_clear
+        escape_mode = False  # No longer needed since we always use front-only logic
         
         # Check if we have enough consecutive clear readings
         enough_clear_readings = self.clear_readings_count >= self.required_clear_readings
@@ -263,10 +264,7 @@ class AutonomousExplorer(Node):
         if min_turn_elapsed and enough_clear_readings:
             # Both minimum turn time elapsed AND sufficient clear readings
             self.exploration_state = "forward"
-            if escape_mode:
-                self.get_logger().info(f"🚨 ESCAPE MODE: Front clear after {turn_duration:.1f}s turn (front: {min_front_distance:.2f}m) - resuming forward")
-            else:
-                self.get_logger().info(f"✅ Path clear after {turn_duration:.1f}s turn with {self.clear_readings_count} clear readings - resuming forward")
+            self.get_logger().info(f"✅ Front clear after {turn_duration:.1f}s turn (front: {min_front_distance:.2f}m) with {self.clear_readings_count} clear readings - resuming forward")
             return
         
         # Log status while turning (every 2 seconds)
@@ -276,6 +274,7 @@ class AutonomousExplorer(Node):
                 ranges = np.array(self.laser_data.ranges)
                 ranges[np.isinf(ranges)] = self.laser_data.range_max
                 ranges[np.isnan(ranges)] = self.laser_data.range_max
+                ranges[ranges == 0.0] = self.laser_data.range_max  # Handle 0.0 as invalid reading
                 # Calculate front sector for debug (same method as main callback)
                 num_readings = len(ranges)
                 angle_range = self.laser_data.angle_max - self.laser_data.angle_min
@@ -297,9 +296,8 @@ class AutonomousExplorer(Node):
                 if not enough_clear_readings:
                     status_msg += f" (clear: {self.clear_readings_count}/{self.required_clear_readings})"
                 
-                # Add escape mode indicator
-                if turn_duration > 15.0:
-                    status_msg += " [ESCAPE MODE: front-only]"
+                # Note: Using front-only clearance for all decisions
+                status_msg += " [front-only clearance]"
                 
                 status_msg += f" - front: {min_distance:.2f}m"
                 
@@ -314,6 +312,7 @@ class AutonomousExplorer(Node):
             ranges = np.array(self.laser_data.ranges)
             ranges[np.isinf(ranges)] = self.laser_data.range_max
             ranges[np.isnan(ranges)] = self.laser_data.range_max
+            ranges[ranges == 0.0] = self.laser_data.range_max  # Handle 0.0 as invalid reading
             
             # Calculate front sector distance (same as used for decisions)
             num_readings = len(ranges)
@@ -337,7 +336,7 @@ class AutonomousExplorer(Node):
             self.get_logger().info(f"   Front path distance: {min_front_distance:.2f}m")
             self.get_logger().info(f"   Closest obstacle (any direction): {min_overall_distance:.2f}m") 
             self.get_logger().info(f"   Obstacle close (≤1ft): {self.obstacle_close}")
-            self.get_logger().info(f"   Path clear (>40cm): {self.path_clear}")
+            self.get_logger().info(f"   Front path clear (>40cm): {self.front_clear}")
             self.get_logger().info(f"   Laser readings: {len(ranges)} points")
         else:
             self.get_logger().warn("   No laser data received")
@@ -360,7 +359,8 @@ def main():
         
     print()
     print("Starting autonomous exploration with 1-foot stop distance")
-    print("Robot will stop when obstacles are ≤1 foot away, turn randomly until clear")
+    print("Robot will stop when obstacles are ≤1 foot away, turn until front path is clear")
+    print("IMPROVED: Robot prioritizes forward movement when front is clear (ignores side obstacles)")
     print("Press Ctrl+C to stop exploration")
     print()
     
@@ -372,7 +372,7 @@ def main():
         print("✅ Autonomous explorer initialized")
         print("🚀 Starting exploration loop...")
         print("   Use RViz to monitor the robot and SLAM mapping")
-        print("   Robot stops at 1 foot, turns in place until path is clear")
+        print("   Robot stops at 1 foot, turns in place until front path is clear (ignores side walls)")
         print()
         
         rclpy.spin(explorer)
