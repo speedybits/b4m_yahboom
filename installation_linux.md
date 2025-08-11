@@ -112,6 +112,21 @@ This checklist provides step-by-step instructions to install ROS2 Humble on nati
   sudo apt install ros-humble-imu-complementary-filter ros-humble-imu-filter-madgwick ros-humble-imu-tools ros-humble-robot-localization ros-humble-joint-state-publisher ros-humble-joint-state-publisher-gui ros-humble-xacro ros-humble-nav2-bringup ros-humble-cartographer-ros
   ```
 
+### Install Gazebo Classic and Simulation Dependencies
+
+- [ ] Install Gazebo Classic for robot simulation:
+  ```bash
+  sudo apt install gazebo-11 ros-humble-gazebo-ros-pkgs ros-humble-gazebo-ros2-control
+  ```
+
+- [ ] Verify Gazebo Classic installation:
+  ```bash
+  gazebo --version
+  # Should show Gazebo multi-robot simulator, version 11.10.2 or later
+  ```
+
+**Note:** Gazebo Classic 11.10.2 is the primary simulation platform used for development, testing, and regression validation. The simulation environment provides reliable sensor data for SLAM and integrated robot spawning capabilities.
+
 ## 4. Configure Environment
 
 ### Manual Sourcing
