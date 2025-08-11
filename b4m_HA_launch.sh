@@ -290,15 +290,23 @@ if [ "$REGRESSION_MODE" = true ]; then
         echo "   Waiting for simulation initialization..."
         sleep 12
         
-        # Step 2: Start RViz
-        echo "👁️  Step 2: Starting RViz for visualization" 
+        # Step 2: Start robot bringup for simulation (EKF and sensor integration)
+        echo "🤖 Step 2: Starting robot bringup for simulation (sensors and EKF odometry)"
+        # Must source ALL workspaces including IMU for EKF to work properly
+        cd "$WORKSPACE_ROOT" && . source_workspaces.sh && ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py use_sim_time:=true > /dev/null 2>&1 &
+        BRINGUP_PID=$!
+        echo "   Waiting for sensor and EKF initialization..."
+        sleep 8
+        
+        # Step 3: Start RViz
+        echo "👁️  Step 3: Starting RViz for visualization" 
         ros2 launch yahboomcar_nav display_launch.py use_sim_time:=true > /dev/null 2>&1 &
         RVIZ_PID=$!
         echo "   Waiting for RViz initialization..."
         sleep 8
         
-        # Step 3: Start Cartographer SLAM (identical to explore mode)
-        echo "🗺️  Step 3: Starting Cartographer SLAM system (simulation)"
+        # Step 4: Start Cartographer SLAM (identical to explore mode)
+        echo "🗺️  Step 4: Starting Cartographer SLAM system (simulation)"
         ros2 launch yahboomcar_nav map_cartographer_launch.py use_sim_time:=true > /dev/null 2>&1 &
         CARTOGRAPHER_PID=$!
         echo "   Waiting for Cartographer initialization..."
