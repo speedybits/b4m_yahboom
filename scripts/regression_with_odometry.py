@@ -97,7 +97,8 @@ class RegressionWithOdometry(Node):
             # Check if rotation is complete
             if self.total_rotation >= self.target_rotation:
                 self.rotation_complete = True
-                self.get_logger().info(f"🎯 360° rotation complete! Total: {math.degrees(self.total_rotation):.1f}°")
+                actual_degrees = math.degrees(self.total_rotation)
+                self.get_logger().info(f"🎯 360° rotation complete! Total: {actual_degrees:.1f}°")
                 
         self.current_yaw = yaw
 
