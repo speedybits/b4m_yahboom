@@ -213,7 +213,7 @@ When enabled, adds these automated testing steps:
 ### Manual Navigation Tests
 ```bash
 # Test 1-meter square navigation with Gazebo Classic
-python3 test_square_corners.py
+python3 tests/navigation/test_square_corners.py
 ```
 
 ### Automated Navigation Tests
@@ -434,7 +434,7 @@ ros2 service list | grep slam_toolbox
 tail -f logs/b4m_launch_*.log
 
 # Test SLAM functionality
-python3 test_slam_working.py
+python3 tests/integration/test_slam_working.py
 
 # Gazebo Classic simulation debugging
 pgrep -f gazebo  # Check for Gazebo Classic processes

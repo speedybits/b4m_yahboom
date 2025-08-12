@@ -8,11 +8,11 @@ echo "Starting automated tests..."
 echo ""
 
 # Make all scripts executable
-chmod +x test_*.py test_*.sh
+chmod +x tests/*/*.py test_*.sh
 
 # Test 1: Model Geometry
 echo "Test 1: Validating URDF geometry..."
-python3 test_model_geometry.py
+python3 tests/simulation/test_model_geometry.py
 if [ $? -eq 0 ]; then
     echo "✓ Model geometry valid"
 else
@@ -23,7 +23,7 @@ echo ""
 
 # Test 2: Spawn Position
 echo "Test 2: Testing spawn position..."
-python3 test_spawn_position.py
+python3 tests/simulation/test_spawn_position.py
 if [ $? -eq 0 ]; then
     echo "✓ Spawn position correct"
 else
@@ -34,7 +34,7 @@ echo ""
 
 # Test 3: Wheel Contact
 echo "Test 3: Testing wheel ground contact..."
-./test_wheel_contact.sh
+./tests/archived/test_wheel_contact.sh
 if [ $? -eq 0 ]; then
     echo "✓ Wheel contact verified"
 else
@@ -45,7 +45,7 @@ echo ""
 
 # Test 4: Motor Control
 echo "Test 4: Testing motor-wheel connection..."
-python3 test_motor_control.py
+python3 tests/hardware/test_motor_control.py
 if [ $? -eq 0 ]; then
     echo "✓ Motor control working"
 else
@@ -56,7 +56,7 @@ echo ""
 
 # Test 5: Physics
 echo "Test 5: Testing physics behavior..."
-python3 test_physics.py
+python3 tests/simulation/test_physics.py
 if [ $? -eq 0 ]; then
     echo "✓ Physics behavior correct"
 else
@@ -67,7 +67,7 @@ echo ""
 
 # Test 6: Square Navigation
 echo "Test 6: Testing 1-meter square navigation..."
-python3 test_square_navigation.py
+python3 tests/navigation/test_square_navigation.py
 if [ $? -eq 0 ]; then
     echo "✓ Square navigation successful"
 else
