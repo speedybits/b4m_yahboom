@@ -169,7 +169,7 @@ def test_basic_movement(use_simulation=True):
             print("Waiting for simulation initialization...")
             time.sleep(12)
         else:
-            # For real robot, assume system is already running with b4m_HA_launch.sh
+            # For real robot, assume system is already running with b4m_launch.sh
             print("\nUsing real robot - assuming system is already initialized")
             print("Make sure the robot is powered on and connected")
             time.sleep(3)
@@ -305,7 +305,7 @@ if __name__ == "__main__":
             print("  --real-robot: Run test on real robot (system must be running)")
             sys.exit(0)
     
-    # Check environment variable as alternative (for b4m_HA_launch.sh integration)
+    # Check environment variable as alternative (for b4m_launch.sh integration)
     if os.environ.get('TEST_MODE') == 'REAL_ROBOT':
         use_sim = False
     elif os.environ.get('TEST_MODE') == 'SIMULATION':

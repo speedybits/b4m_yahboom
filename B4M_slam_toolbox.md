@@ -9,7 +9,7 @@ Get slam_toolbox running in **Gazebo simulation**, **RViz visualization**, and o
 
 ## Launch and Shutdown Methods
 
-**Primary Launch Method**: `./b4m_HA_launch.sh`
+**Primary Launch Method**: `./b4m_launch.sh`
 - Use `--simulation` flag for Gazebo testing
 - Handles all startup sequences automatically
 - Provides proper validation for each step
@@ -56,7 +56,7 @@ sudo apt install ros-humble-slam-toolbox ros-humble-nav2-bringup
 
 ### Current System Configuration
 
-- **Launch Script**: `b4m_HA_launch.sh` coordinates the entire system
+- **Launch Script**: `b4m_launch.sh` coordinates the entire system
 - **Navigation**: Currently uses AMCL with pre-built maps
 - **Hardware**: ESP32 via Micro-ROS providing odometry, IMU, and laser data
 - **Sensor Fusion**: EKF combines IMU and odometry data
@@ -81,7 +81,7 @@ Remove AMCL configuration from navigation parameters.
 
 ### Step 5: Update Launch Script
 
-Modify b4m_HA_launch.sh to use slam_toolbox instead of AMCL/gmapping.
+Modify b4m_launch.sh to use slam_toolbox instead of AMCL/gmapping.
 
 ### Step 6: Gazebo Integration
 
@@ -93,7 +93,7 @@ Create simulation-specific configuration for running slam_toolbox in Gazebo.
 
 ```bash
 # Launch the full system with SLAM
-./b4m_HA_launch.sh --autotest --debug
+./b4m_launch.sh --autotest --debug
 
 # When finished, shutdown (preserving hardware connection)
 ./b4m_shutdown.sh --keep-agent
@@ -103,7 +103,7 @@ Create simulation-specific configuration for running slam_toolbox in Gazebo.
 
 ```bash
 # Launch in simulation mode
-./b4m_HA_launch.sh --simulation --autotest --debug
+./b4m_launch.sh --simulation --autotest --debug
 
 # When finished, shutdown
 ./b4m_shutdown.sh 
@@ -144,8 +144,8 @@ Create simulation-specific configuration for running slam_toolbox in Gazebo.
 1. Install slam_toolbox package
 2. Create configuration files for both real robot and Gazebo
 3. Update launch files to replace AMCL with slam_toolbox
-4. Test using `./b4m_HA_launch.sh --simulation` for Gazebo
-5. Test using `./b4m_HA_launch.sh` for real robot
+4. Test using `./b4m_launch.sh --simulation` for Gazebo
+5. Test using `./b4m_launch.sh` for real robot
 6. Always shutdown with `./b4m_shutdown.sh --keep-agent`
 
 This guide ensures slam_toolbox works across all three environments:

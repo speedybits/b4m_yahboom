@@ -1,8 +1,8 @@
-# B4M Robot Automated Test Plan for b4m_HA_launch.sh
+# B4M Robot Automated Test Plan for b4m_launch.sh
 
 ## Overview
 
-This document outlines the automated regression test plan for the `b4m_HA_launch.sh` script. The goal is to create a fully automated test that validates the robot launch sequence starting from Step 2 (after Micro-ROS Agent), detecting failures early and providing comprehensive logging for debugging.
+This document outlines the automated regression test plan for the `b4m_launch.sh` script. The goal is to create a fully automated test that validates the robot launch sequence starting from Step 2 (after Micro-ROS Agent), detecting failures early and providing comprehensive logging for debugging.
 
 **Note**: Testing begins after Step 1 (Micro-ROS Agent Launch) as this requires human intervention to power-on or reset the physical robot. We assume the Micro-ROS agent is already running and the robot is connected.
 
@@ -145,7 +145,7 @@ Start Test → Step 2 → Validate → Step 3 → Validate → ... → Step 7 �
 
 ```bash
 #!/bin/bash
-# Automated test runner for b4m_HA_launch.sh
+# Automated test runner for b4m_launch.sh
 
 # Configuration
 WORKSPACE_ROOT=$(cd "$(dirname "$0")" && pwd)
@@ -288,7 +288,7 @@ Recommended Actions:
 ## Integration with Existing Scripts
 
 The automated test will:
-1. **Reuse Logic**: Leverage existing `b4m_HA_launch.sh` command structure
+1. **Reuse Logic**: Leverage existing `b4m_launch.sh` command structure
 2. **Non-Interactive**: Execute commands without user prompts
 3. **Cleanup Integration**: Use `b4m_shutdown.sh --keep-agent` for proper cleanup while preserving robot connection
 4. **Log Compatibility**: Use same logging format and directory structure
@@ -332,7 +332,7 @@ This automated test plan ensures robust validation of the B4M robot launch seque
 ## Implementation Checklist
 
 ### Phase 1: Core Infrastructure
-- [ ] **Modify b4m_HA_launch.sh argument parsing**
+- [ ] **Modify b4m_launch.sh argument parsing**
   - [ ] Add `--autotest` flag support
   - [ ] Add `--debug` flag for verbose logging
   - [ ] Update help text and usage documentation
@@ -431,7 +431,7 @@ This automated test plan ensures robust validation of the B4M robot launch seque
 
 ### Phase 6: Documentation and Polish
 - [ ] **Update existing documentation**
-  - [ ] Update `b4m_HA_launch.sh` help text
+  - [ ] Update `b4m_launch.sh` help text
   - [ ] Add autotest usage examples
   - [ ] Document validation criteria
 
@@ -446,4 +446,4 @@ This automated test plan ensures robust validation of the B4M robot launch seque
 **PLANNING COMPLETE** ✅  
 **IMPLEMENTATION PENDING** ⏳
 
-Next step: Begin Phase 1 implementation by modifying `b4m_HA_launch.sh` to support `--autotest` mode.
+Next step: Begin Phase 1 implementation by modifying `b4m_launch.sh` to support `--autotest` mode.

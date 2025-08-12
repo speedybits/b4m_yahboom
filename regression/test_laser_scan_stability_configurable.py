@@ -387,7 +387,7 @@ def test_laser_scan_stability(use_simulation=True):
         else:
             # For real robot, assume system is already running
             print("\n--- Using real robot ---")
-            print("Assuming system is already initialized with b4m_HA_launch.sh")
+            print("Assuming system is already initialized with b4m_launch.sh")
             print("Make sure:")
             print("  1. Robot is powered on and connected")
             print("  2. Navigation system is running")
@@ -604,7 +604,7 @@ if __name__ == "__main__":
             print("  --real-robot: Run test on real robot (system must be running)")
             sys.exit(0)
     
-    # Check environment variable as alternative (for b4m_HA_launch.sh integration)
+    # Check environment variable as alternative (for b4m_launch.sh integration)
     if os.environ.get('TEST_MODE') == 'REAL_ROBOT':
         use_sim = False
     elif os.environ.get('TEST_MODE') == 'SIMULATION':

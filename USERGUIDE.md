@@ -2,7 +2,7 @@
 
 ## Overview
 
-The B4M Robot is an autonomous navigation system built on ROS2 with Home Assistant integration. This guide covers how to use the `b4m_HA_launch.sh` script to launch and operate the robot system with SLAM (Simultaneous Localization and Mapping) capabilities using Gazebo Classic for simulation.
+The B4M Robot is an autonomous navigation system built on ROS2 with MQTT/Home Assistant integration. This guide covers how to use the `b4m_launch.sh` script to launch and operate the robot system with SLAM (Simultaneous Localization and Mapping) capabilities using Gazebo Classic for simulation.
 
 ## Prerequisites
 
@@ -15,19 +15,19 @@ The B4M Robot is an autonomous navigation system built on ROS2 with Home Assista
 
 ### Basic Interactive Launch
 ```bash
-./b4m_HA_launch.sh
+./b4m_launch.sh
 ```
 Launches the full system with user prompts for each step.
 
 ### Simulation Mode
 ```bash
-./b4m_HA_launch.sh --simulation
+./b4m_launch.sh --simulation
 ```
 Runs the robot in Gazebo Classic simulation instead of using physical hardware.
 
 ### Automated Testing
 ```bash
-./b4m_HA_launch.sh --simulation --autotest
+./b4m_launch.sh --simulation --autotest
 ```
 Runs all steps automatically for testing and validation.
 
@@ -49,15 +49,15 @@ Runs all steps automatically for testing and validation.
 ### 📋 Quick Reference: Real Robot vs Simulation
 | Use Case | Command | What Happens |
 |----------|---------|--------------|
-| **Explore with REAL robot** | `./b4m_HA_launch.sh --explore` | Physical robot explores real environment |
-| **Explore in simulation** | `./b4m_HA_launch.sh --simulation --explore` | Simulated robot explores in Gazebo Classic |
-| **Regular real robot launch** | `./b4m_HA_launch.sh` | Interactive setup with physical robot |
-| **Regular simulation launch** | `./b4m_HA_launch.sh --simulation` | Interactive setup in Gazebo Classic |
+| **Explore with REAL robot** | `./b4m_launch.sh --explore` | Physical robot explores real environment |
+| **Explore in simulation** | `./b4m_launch.sh --simulation --explore` | Simulated robot explores in Gazebo Classic |
+| **Regular real robot launch** | `./b4m_launch.sh` | Interactive setup with physical robot |
+| **Regular simulation launch** | `./b4m_launch.sh --simulation` | Interactive setup in Gazebo Classic |
 
 ### 1. Interactive SLAM Mapping in Simulation
 ```bash
 # Using integrated launch with Gazebo Classic
-./b4m_HA_launch.sh --simulation
+./b4m_launch.sh --simulation
 
 # Or using direct Gazebo Classic launch for SLAM testing
 ros2 launch yahboomcar_nav slam_test_gazebo_classic.py
@@ -70,7 +70,7 @@ Monitor SLAM map generation (69x77 grid) in RViz.
 
 ### 2. Automated System Validation
 ```bash
-./b4m_HA_launch.sh --simulation --autotest --slam-test
+./b4m_launch.sh --simulation --autotest --slam-test
 ```
 Runs full automated test suite including:
 - 1-meter square navigation pattern
@@ -80,19 +80,19 @@ Runs full automated test suite including:
 
 ### 3. Quick System Check
 ```bash
-./b4m_HA_launch.sh --simulation --autotest --debug
+./b4m_launch.sh --simulation --autotest --debug
 ```
 Validates all components with verbose output for troubleshooting.
 
 ### 4. Real Robot Testing
 ```bash
-./b4m_HA_launch.sh --autotest --debug
+./b4m_launch.sh --autotest --debug
 ```
 Tests with physical robot (requires robot to be powered on).
 
 ### 5. Development/Debug Mode
 ```bash
-./b4m_HA_launch.sh --simulation --debug
+./b4m_launch.sh --simulation --debug
 ```
 Interactive mode with verbose logging for development work.
 
@@ -100,13 +100,13 @@ Interactive mode with verbose logging for development work.
 
 #### Real Robot Exploration (Physical Robot)
 ```bash
-./b4m_HA_launch.sh --explore
+./b4m_launch.sh --explore
 ```
 **Physical robot** autonomously explores the real environment with obstacle avoidance while building a SLAM map.
 
 #### Gazebo Classic Simulation Exploration
 ```bash
-./b4m_HA_launch.sh --simulation --explore
+./b4m_launch.sh --simulation --explore
 ```
 **Simulated robot** autonomously explores the Gazebo Classic simulation environment with obstacle avoidance while building a SLAM map.
 
@@ -226,7 +226,7 @@ The Gazebo Classic simulation supports the full automated test suite with naviga
 #### Step 1: Launch SLAM System
 ```bash
 # Launch full system with SLAM in Gazebo Classic
-./b4m_HA_launch.sh --simulation
+./b4m_launch.sh --simulation
 
 # Or launch dedicated SLAM test environment
 ros2 launch yahboomcar_nav slam_test_gazebo_classic.py
@@ -269,7 +269,7 @@ ros2 run nav2_map_server map_saver_cli -f my_simulation_map
 #### Step 1: Launch SLAM System on Real Robot
 ```bash
 # Launch full system on physical robot
-./b4m_HA_launch.sh
+./b4m_launch.sh
 
 # Ensure robot is powered on and Micro-ROS agent is connected
 ```
@@ -513,8 +513,8 @@ For additional help:
 
 | Use Case | Command | What Happens |
 |----------|---------|--------------|
-| **Explore with REAL robot** | `./b4m_HA_launch.sh --explore` | Physical robot explores real environment |
-| **Explore in simulation** | `./b4m_HA_launch.sh --simulation --explore` | Simulated robot explores in Gazebo Classic |
+| **Explore with REAL robot** | `./b4m_launch.sh --explore` | Physical robot explores real environment |
+| **Explore in simulation** | `./b4m_launch.sh --simulation --explore` | Simulated robot explores in Gazebo Classic |
 
 ### Enhanced Simulation Environment
 
@@ -545,24 +545,24 @@ When using `--simulation --explore`, the robot operates in a rich obstacle envir
 #### Quick Start - Real Robot
 ```bash
 # Start exploration on physical robot
-./b4m_HA_launch.sh --explore
+./b4m_launch.sh --explore
 # Robot will explore real environment, stopping at 1-foot distance from obstacles
 ```
 
 #### Quick Start - Enhanced Simulation  
 ```bash
 # Start exploration in Gazebo Classic with rich obstacle environment
-./b4m_HA_launch.sh --simulation --explore
+./b4m_launch.sh --simulation --explore
 # Virtual robot explores complex environment, demonstrating 1-foot stop behavior with obstacles
 ```
 
 #### With Debug Logging
 ```bash
 # Real robot with verbose logging
-./b4m_HA_launch.sh --explore --debug
+./b4m_launch.sh --explore --debug
 
 # Enhanced simulation with verbose logging  
-./b4m_HA_launch.sh --simulation --explore --debug
+./b4m_launch.sh --simulation --explore --debug
 ```
 
 ### ⚠️ Safety Notes

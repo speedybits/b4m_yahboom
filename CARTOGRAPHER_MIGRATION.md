@@ -17,7 +17,7 @@ Successfully migrated from SLAM toolbox back to **Cartographer SLAM** (the origi
 
 ## Key Improvements Ported from slam_toolbox Branch
 
-### 1. ✅ Enhanced Launch Script (`b4m_HA_launch.sh`)
+### 1. ✅ Enhanced Launch Script (`b4m_launch.sh`)
 
 **New Flags Added:**
 - `--simulation`: Launch in Gazebo Classic simulation mode
@@ -26,11 +26,11 @@ Successfully migrated from SLAM toolbox back to **Cartographer SLAM** (the origi
 **Features:**
 ```bash
 # Simulation mode for development/testing
-./b4m_HA_launch.sh --simulation
+./b4m_launch.sh --simulation
 
 # Comprehensive regression testing
-./b4m_HA_launch.sh --simulation --regression
-./b4m_HA_launch.sh --regression  # Real robot
+./b4m_launch.sh --simulation --regression
+./b4m_launch.sh --regression  # Real robot
 ```
 
 ### 2. ✅ Regression Testing Framework
@@ -90,7 +90,7 @@ Robot Hardware → Cartographer Node → Map Building → Navigation
 ### ✅ Successful Tests (Simulation Mode)
 
 ```bash
-./b4m_HA_launch.sh --simulation --regression
+./b4m_launch.sh --simulation --regression
 ```
 
 **Results:**
@@ -150,29 +150,29 @@ Robot Hardware → Cartographer Node → Map Building → Navigation
 ### Quick Start - Simulation
 ```bash
 # Test Cartographer in simulation
-./b4m_HA_launch.sh --simulation --regression
+./b4m_launch.sh --simulation --regression
 
 # Manual simulation mode
-./b4m_HA_launch.sh --simulation
+./b4m_launch.sh --simulation
 ```
 
 ### Real Robot Operation
 ```bash
 # Start Micro-ROS agent first (separate terminal)
-./b4m_HA_launch.sh --only-agent
+./b4m_launch.sh --only-agent
 
 # Then launch full system
-./b4m_HA_launch.sh
+./b4m_launch.sh
 
 # Run regression tests on real robot
-./b4m_HA_launch.sh --regression
+./b4m_launch.sh --regression
 ```
 
 ## File Structure
 
 ```
 b4m_yahboom/
-├── b4m_HA_launch.sh                    # Enhanced launch script ✅
+├── b4m_launch.sh                    # Enhanced launch script ✅
 ├── tests/integration/
 │   └── test_basic_movement.py          # Movement validation ✅
 ├── regression/

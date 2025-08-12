@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# B4M Robot - Home Assistant MQTT Integration Launch Script
-# This script automates the launch process for the B4M Robot with Home Assistant integration
+# B4M Robot Launch Script
+# This script automates the launch process for the B4M Robot 
 # Each step will be launched in a separate terminal with user confirmation
 #
-# Usage: ./b4m_HA_launch.sh [--skip-agent] [--only-agent] [--autotest] [--debug] [--simulation] [--regression] [--explore] [--b4m-lidar] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>]
+# Usage: ./b4m_launch.sh [--skip-agent] [--only-agent] [--autotest] [--debug] [--simulation] [--regression] [--explore] [--b4m-lidar] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>]
 #   --skip-agent:                   Skip the Micro-ROS agent launch (Step 1)
 #   --only-agent:                   Launch ONLY the Micro-ROS agent (Step 1) and exit
 #   --autotest:                     Run in automated test mode (non-interactive)
@@ -498,9 +498,38 @@ if [ "$REGRESSION_MODE" = true ]; then
     echo "   Phase 3: Post-movement settling analysis (5s)"
     echo "   Screenshots captured at: initial, mid-rotation, final"
     
-    # Wait for rotation to complete
-    wait $ROTATION_PID
-    ROTATION_EXIT_CODE=$?
+    # Wait for rotation to complete with 2-minute timeout
+    echo "⏱️  Starting 2-minute timeout for regression test..."
+    
+    # Use timeout command to limit execution time
+    TIMEOUT_SECONDS=120  # 2 minutes
+    START_TIME=$(date +%s)
+    
+    # Monitor the process with timeout
+    while kill -0 $ROTATION_PID 2>/dev/null; do
+        CURRENT_TIME=$(date +%s)
+        ELAPSED=$((CURRENT_TIME - START_TIME))
+        
+        if [ $ELAPSED -ge $TIMEOUT_SECONDS ]; then
+            echo "⏰ TIMEOUT: Regression test exceeded 2 minutes"
+            echo "   Terminating test process..."
+            kill -TERM $ROTATION_PID 2>/dev/null
+            sleep 2
+            kill -KILL $ROTATION_PID 2>/dev/null
+            ROTATION_EXIT_CODE=124  # Standard timeout exit code
+            break
+        fi
+        
+        REMAINING=$((TIMEOUT_SECONDS - ELAPSED))
+        echo "⏳ Regression test running... ${REMAINING}s remaining"
+        sleep 5
+    done
+    
+    # If process completed normally, get its exit code
+    if [ -z "$ROTATION_EXIT_CODE" ]; then
+        wait $ROTATION_PID
+        ROTATION_EXIT_CODE=$?
+    fi
     
     if [ $ROTATION_EXIT_CODE -eq 0 ]; then
         echo "✅ Comprehensive regression test PASSED"
@@ -509,8 +538,15 @@ if [ "$REGRESSION_MODE" = true ]; then
         echo "  ✓ Robot rotated 360 degrees successfully"
         echo "  ✓ Navigation system health validated"
         TEST_RESULT="PASSED"
+    elif [ $ROTATION_EXIT_CODE -eq 124 ]; then
+        echo "⏰ Comprehensive regression test TIMED OUT"
+        echo "  ❌ Test exceeded 2-minute time limit"
+        echo "  ❌ Test was terminated to prevent infinite execution"
+        echo "  Check log for details: $LOGS_DIR/regression_comprehensive_$TIMESTAMP.log"
+        TEST_RESULT="TIMEOUT"
     else
         echo "❌ Comprehensive regression test FAILED"  
+        echo "  ❌ Exit code: $ROTATION_EXIT_CODE"
         echo "  Check log for details: $LOGS_DIR/regression_comprehensive_$TIMESTAMP.log"
         TEST_RESULT="FAILED"
     fi
@@ -534,6 +570,13 @@ if [ "$REGRESSION_MODE" = true ]; then
         echo "✅ Robot can rotate 360 degrees successfully"
         echo "✅ Cartographer SLAM integration is working correctly"
         FINAL_RESULT=0
+    elif [ "$TEST_RESULT" = "TIMEOUT" ]; then
+        echo "⏰ COMPREHENSIVE REGRESSION TEST TIMED OUT!"
+        echo "❌ Test exceeded 2-minute execution limit"
+        echo "❌ This may indicate system performance issues or infinite loops"
+        echo "❌ Review system resources and robot responsiveness"
+        echo "Please check the detailed logs for analysis"
+        FINAL_RESULT=1
     else
         echo "💥 COMPREHENSIVE REGRESSION TEST FAILED!"
         echo "❌ Either screenshot comparison or odometry quality test failed"
