@@ -345,10 +345,10 @@ b4m_lidar_navigator:
 ### Launch Command
 ```bash
 # Launch with B4M LiDAR navigation on real robot
-./b4m_HA_launch.sh --b4m-lidar --skip-agent
+./b4m_launch.sh --b4m-lidar --skip-agent
 
 # Launch with debugging enabled
-./b4m_HA_launch.sh --b4m-lidar --skip-agent --debug
+./b4m_launch.sh --b4m-lidar --skip-agent --debug
 ```
 
 The `--b4m-lidar` flag will:
@@ -361,7 +361,7 @@ The `--b4m-lidar` flag will:
 
 ### Integration with Existing Launch Script
 
-Modify `b4m_HA_launch.sh` to add:
+Modify `b4m_launch.sh` to add:
 ```bash
 B4M_LIDAR=false  # New flag
 
@@ -472,10 +472,10 @@ fi
 ### Starting the System
 ```bash
 # On real robot
-./b4m_HA_launch.sh --b4m-lidar --skip-agent
+./b4m_launch.sh --b4m-lidar --skip-agent
 
 # In Gazebo Classic simulation
-./b4m_HA_launch.sh --b4m-lidar --simulation
+./b4m_launch.sh --b4m-lidar --simulation
 
 # Monitor status
 ros2 topic echo /b4m_lidar/status

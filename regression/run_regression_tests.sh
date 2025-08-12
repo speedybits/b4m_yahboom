@@ -166,8 +166,8 @@ check_prerequisites() {
     print_header "Checking Prerequisites"
     
     # Check if we're in the right directory
-    if [ ! -f "b4m_HA_launch.sh" ]; then
-        print_status $RED "Error: Must run from project root directory (where b4m_HA_launch.sh is located)"
+    if [ ! -f "b4m_launch.sh" ]; then
+        print_status $RED "Error: Must run from project root directory (where b4m_launch.sh is located)"
         exit 1
     fi
     
@@ -288,7 +288,7 @@ show_usage() {
     echo "  transforms          Test TF chain integrity"
     echo "  laser_scan          Test laser scan data and obstacle detection"
     echo "  map_building        Test real-time map building"
-    echo "  integrated_launch   Test b4m_HA_launch.sh integration"
+    echo "  integrated_launch   Test b4m_launch.sh integration"
     echo
 }
 
@@ -359,7 +359,7 @@ main() {
         ["transforms"]="test_transforms.py|Test TF chain integrity"
         ["laser_scan"]="test_laser_scan.py|Test laser scan data and obstacle detection"
         ["map_building"]="test_map_building.py|Test real-time map building (SLOW)"
-        ["integrated_launch"]="test_integrated_launch.py|Test b4m_HA_launch.sh integration (SLOW)"
+        ["integrated_launch"]="test_integrated_launch.py|Test b4m_launch.sh integration (SLOW)"
     )
     
     # Quick tests (fast, core functionality)

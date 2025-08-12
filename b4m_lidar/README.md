@@ -12,18 +12,18 @@ LiDAR-based intelligent navigation system using B4M API for turn direction decis
 
 ## Usage
 
-### Launch with b4m_HA_launch.sh (Recommended)
+### Launch with b4m_launch.sh (Recommended)
 
 ```bash
 # For real robot
-./b4m_HA_launch.sh --b4m-lidar --skip-agent
+./b4m_launch.sh --b4m-lidar --skip-agent
 
 # For simulation (Gazebo Classic)
-./b4m_HA_launch.sh --b4m-lidar --simulation
+./b4m_launch.sh --b4m-lidar --simulation
 
 # With debug output
-./b4m_HA_launch.sh --b4m-lidar --skip-agent --debug
-./b4m_HA_launch.sh --b4m-lidar --simulation --debug
+./b4m_launch.sh --b4m-lidar --skip-agent --debug
+./b4m_launch.sh --b4m-lidar --simulation --debug
 ```
 
 ### Manual Launch
@@ -136,7 +136,7 @@ Enable verbose debug logging:
 ros2 run b4m_lidar b4m_lidar_navigator --ros-args -p debug_mode:=true
 
 # Via launch script
-./b4m_HA_launch.sh --b4m-lidar --simulation --debug
+./b4m_launch.sh --b4m-lidar --simulation --debug
 ```
 
 Debug mode logs:

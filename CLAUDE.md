@@ -4,8 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commits
 Only commit files if the regression test has passed:
-- For simulation development: ./b4m_HA_launch.sh --simulation --regression
-- For real robot deployment: ./b4m_HA_launch.sh --regression
+- For simulation development: ./b4m_launch.sh --simulation --regression
+- For real robot deployment: ./b4m_launch.sh --regression
 
 ## Get help running important commands
 If you are unable to run a command that you need to run, please stop and tell me what you need me to run. For example, if you can't run a 'sudo' command, please stop and tell me.
@@ -15,8 +15,8 @@ After any changes that involve user interaction, please make sure the USERGUIDE.
 
 ## Regression testing
 Before commiting any code that is not documentation, we must be able to pass the regression test:
-- For simulation: ./b4m_HA_launch.sh --simulation --regression  
-- For real robot: ./b4m_HA_launch.sh --regression
+- For simulation: ./b4m_launch.sh --simulation --regression  
+- For real robot: ./b4m_launch.sh --regression
 
 The regression test now includes automated image comparison that validates RViz visualization:
 - Captures screenshots at 3 key moments: initial, mid-rotation (180°), and final (360°)
@@ -35,7 +35,7 @@ The regression test now includes automated image comparison that validates RViz 
 Dependencies required: python3-opencv python3-skimage
 
 ## Running and Shut down
-Always use b4m_HA_launch to run tests. Use the --simulation switch for Gazebo Classic simulation tests
+Always use b4m_launch to run tests. Use the --simulation switch for Gazebo Classic simulation tests
 If not running a simulation, always use the --skip-agent switch
 Always use b4m_shutdown to stop all running processes when appropriate
 If not running a simulation, always use b4m_shutdown --keep-agent
@@ -160,7 +160,7 @@ This repository contains a complex ROS2 system with multiple workspaces:
 6. **Integration Layer**: MQTT integration for Home Assistant, GUI tools
 
 ### Launch Sequence
-The system follows a specific startup sequence (automated in `b4m_HA_launch.sh`):
+The system follows a specific startup sequence (automated in `b4m_launch.sh`):
 1. Start Micro-ROS agent for ESP32 communication
 2. Power on physical robot
 3. Launch robot bringup (sensor integration)
@@ -206,7 +206,7 @@ The system supports multi-robot configurations:
 - `*.rviz`: RViz visualization configurations
 
 ### Scripts & Utilities
-- `b4m_HA_launch.sh`: Automated launch sequence for Home Assistant integration
+- `b4m_launch.sh`: Automated launch sequence for MQTT/Home Assistant integration
 - `source_workspaces.sh`: Environment setup for all workspaces
 - `setup_env.sh`: Simplified environment setup
 - `map_selector.sh`: Map selection utility
@@ -271,7 +271,7 @@ The B4M Robot Manager serves as the central application for system control, inte
 **Control Panel Features:**
 - **Three primary buttons**: Rebuild, Start, Stop
 - **Smart state management**: Buttons are enabled/disabled based on system state
-- **Launch sequence integration**: Executes b4m_HA_launch.sh steps programmatically
+- **Launch sequence integration**: Executes b4m_launch.sh steps programmatically
 - **Shutdown integration**: Executes b4m_shutdown.sh sequence when stopping
 - **Status display**: Shows current step in launch sequence below control buttons
 - **Parameter protection**: Navigation parameters become read-only during active system operation
@@ -282,7 +282,7 @@ The B4M Robot Manager serves as the central application for system control, inte
 - **Parameter changes**: "Rebuild" becomes enabled when GUI changes require colcon build
 - **Active system**: Navigation parameters section becomes read-only (browsable but not editable)
 
-**Launch Sequence Steps (from b4m_HA_launch.sh):**
+**Launch Sequence Steps (from b4m_launch.sh):**
 1. Start Micro-ROS Agent (Docker container)
 2. Power on physical robot (manual confirmation)
 3. Launch car's underlying data processing (sensor integration)
@@ -311,9 +311,9 @@ The B4M Robot Manager serves as the central application for system control, inte
 The system uses **Gazebo Classic 11.10.2** as the primary simulation platform:
 
 ### Simulation Launch
-- **Primary command**: `./b4m_HA_launch.sh --simulation`
-- **Test mode**: `./b4m_HA_launch.sh --simulation --autotest`
-- **SLAM testing**: `./b4m_HA_launch.sh --simulation --slam-test`
+- **Primary command**: `./b4m_launch.sh --simulation`
+- **Test mode**: `./b4m_launch.sh --simulation --autotest`
+- **SLAM testing**: `./b4m_launch.sh --simulation --slam-test`
 
 ### Gazebo Classic Features
 - **Integrated robot spawning**: Robot model is automatically spawned in `gazebo_classic_nav_launch.py`

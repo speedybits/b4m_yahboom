@@ -2,14 +2,14 @@
 """
 Test Integrated Launch System
 
-This test validates that the b4m_HA_launch.sh script works correctly
+This test validates that the b4m_launch.sh script works correctly
 with SLAM toolbox in simulation mode, including all integration steps.
 
 Validates checklist items:
-- Integrated Launch Test: ./b4m_HA_launch.sh --simulation --autotest --debug
+- Integrated Launch Test: ./b4m_launch.sh --simulation --autotest --debug
 - Full System Validation: Complete automated testing through launch script
 - Manual Launch Test: SLAM system successfully launched with Ignition Gazebo
-- b4m_HA_launch.sh Integration: Successfully updated to use Ignition Gazebo
+- b4m_launch.sh Integration: Successfully updated to use Ignition Gazebo
 """
 
 import unittest
@@ -187,7 +187,7 @@ class TestIntegratedLaunch(unittest.TestCase):
         """Kill any existing processes"""
         kill_patterns = [
             'ign gazebo', 'ignition gazebo', 'gazebo',
-            'slam_toolbox', 'ros2', 'rviz2', 'b4m_HA_launch'
+            'slam_toolbox', 'ros2', 'rviz2', 'b4m_launch'
         ]
         
         for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
@@ -204,15 +204,15 @@ class TestIntegratedLaunch(unittest.TestCase):
     
     def test_01_launch_script_exists(self):
         """Test that launch script exists and is executable"""
-        script_path = '/home/mike/projects/b4m_yahboom/b4m_HA_launch.sh'
+        script_path = '/home/mike/projects/b4m_yahboom/b4m_launch.sh'
         
-        self.assertTrue(os.path.exists(script_path), "b4m_HA_launch.sh not found")
-        self.assertTrue(os.access(script_path, os.X_OK), "b4m_HA_launch.sh not executable")
+        self.assertTrue(os.path.exists(script_path), "b4m_launch.sh not found")
+        self.assertTrue(os.access(script_path, os.X_OK), "b4m_launch.sh not executable")
     
     def test_02_launch_script_help(self):
         """Test that launch script shows help information"""
         result = subprocess.run(
-            ['./b4m_HA_launch.sh', '--help'],
+            ['./b4m_launch.sh', '--help'],
             capture_output=True,
             text=True,
             cwd='/home/mike/projects/b4m_yahboom',
@@ -228,7 +228,7 @@ class TestIntegratedLaunch(unittest.TestCase):
     def test_03_integrated_launch_simulation(self):
         """Test full integrated launch in simulation mode"""
         # Launch the integrated system
-        cmd = ['./b4m_HA_launch.sh', '--simulation', '--autotest', '--debug']
+        cmd = ['./b4m_launch.sh', '--simulation', '--autotest', '--debug']
         
         self.__class__.launch_process = subprocess.Popen(
             cmd,

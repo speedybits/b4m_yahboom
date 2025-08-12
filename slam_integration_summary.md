@@ -36,7 +36,7 @@ The SLAM integration commits did not modify any of the files we fixed:
 ## What Was Added
 
 ### From SLAM Integration (b59d445):
-1. **Enhanced b4m_HA_launch.sh**:
+1. **Enhanced b4m_launch.sh**:
    - Added `--slam-test` flag for automated SLAM testing
    - Supports both simulation and real robot modes
    - Steps 8-10 for automated square movement, map validation, and MQTT navigation
@@ -77,12 +77,12 @@ python3 test_square_corners.py
 
 ### Run Full SLAM Testing (Simulation)
 ```bash
-./b4m_HA_launch.sh --simulation --autotest --debug --slam-test
+./b4m_launch.sh --simulation --autotest --debug --slam-test
 ```
 
 ### Run Full SLAM Testing (Real Robot)
 ```bash
-./b4m_HA_launch.sh --autotest --debug --slam-test
+./b4m_launch.sh --autotest --debug --slam-test
 ```
 
 ## Notes

@@ -10,12 +10,12 @@ The regression test system performs a controlled 360° rotation while capturing 
 
 ### Simulation Testing
 ```bash
-./b4m_HA_launch.sh --simulation --regression
+./b4m_launch.sh --simulation --regression
 ```
 
 ### Real Robot Testing
 ```bash
-./b4m_HA_launch.sh --regression
+./b4m_launch.sh --regression
 ```
 
 Both commands will:
@@ -137,13 +137,13 @@ sudo apt install python3-opencv python3-skimage
 If system improvements require new reference images:
 
 **For Simulation:**
-1. Run successful test: `./b4m_HA_launch.sh --simulation --regression`
+1. Run successful test: `./b4m_launch.sh --simulation --regression`
 2. Copy new screenshots from `regression/screenshots/` to `regression/reference_screenshots_simulation/`
 3. Rename to `reference_initial.png`, `reference_mid.png`, `reference_final.png`
 4. Commit updated references
 
 **For Real Robot:**
-1. Run successful test: `./b4m_HA_launch.sh --regression` (on real robot)
+1. Run successful test: `./b4m_launch.sh --regression` (on real robot)
 2. Copy new screenshots from `regression/screenshots/` to `regression/reference_screenshots_real/`
 3. Rename to `reference_initial.png`, `reference_mid.png`, `reference_final.png`
 4. Commit updated references
@@ -155,12 +155,12 @@ Always run regression test before committing non-documentation changes:
 
 **For simulation development:**
 ```bash
-./b4m_HA_launch.sh --simulation --regression
+./b4m_launch.sh --simulation --regression
 ```
 
 **For real robot deployment:**
 ```bash
-./b4m_HA_launch.sh --regression
+./b4m_launch.sh --regression
 ```
 
 ### Continuous Integration

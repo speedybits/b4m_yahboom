@@ -75,8 +75,8 @@ Replace the current AMCL/gmapping setup with slam_toolbox to:
 
 ## ⚙️ Launch Script Integration
 
-### ✅ b4m_HA_launch.sh Updates (Simplified)
-- [x] **Primary Launch Method**: Use `./b4m_HA_launch.sh` as main launcher
+### ✅ b4m_launch.sh Updates (Simplified)
+- [x] **Primary Launch Method**: Use `./b4m_launch.sh` as main launcher
   - [x] Use `--simulation` flag for Gazebo testing
   - [x] Automatic startup sequence validation
   - [x] Proper step-by-step execution
@@ -115,7 +115,7 @@ Replace the current AMCL/gmapping setup with slam_toolbox to:
   - [x] SLAM toolbox processing laser scan data and generating occupancy grids
 
 ### ⚠️ **Real Robot Testing**
-- [ ] **Launch Test**: `./b4m_HA_launch.sh --autotest --debug`
+- [ ] **Launch Test**: `./b4m_launch.sh --autotest --debug`
 - [ ] **Automated Movement Script**: Create scripted robot movement for real robot SLAM mapping
   - [ ] Develop automated cmd_vel publisher script for 1-meter square perimeter traversal on real robot
   - [ ] Implement precise square movement pattern: 1m forward, 90° turn, repeat 4 times
@@ -281,14 +281,14 @@ Replace the current AMCL/gmapping setup with slam_toolbox to:
 
 1. ✅ **Configuration Complete**: SLAM toolbox parameter files created
 2. ✅ **Launch Files Complete**: SLAM-based navigation launch implemented  
-3. ✅ **Launch Script Complete**: b4m_HA_launch.sh simplified and ready
+3. ✅ **Launch Script Complete**: b4m_launch.sh simplified and ready
 4. ✅ **Test Gazebo Integration**: Complete SLAM system working with Gazebo Classic
 5. ✅ **Develop Automated SLAM Testing**: Create 1-meter square movement script and obstacle detection
-6. ✅ **Add --slam-test Flag**: Extend b4m_HA_launch.sh with Steps 8-10 for automated SLAM testing
+6. ✅ **Add --slam-test Flag**: Extend b4m_launch.sh with Steps 8-10 for automated SLAM testing
 7. ✅ **Test Automated Map Building**: 1-meter square traversal with obstacle detection validation
 8. ✅ **Test Automated Navigation**: MQTT-based navigation with SLAM integration
 9. ✅ **Gazebo Classic SLAM**: Complete integration with working sensor data
-10. ⚠️ **Test Real Robot**: `./b4m_HA_launch.sh --autotest --debug`
+10. ⚠️ **Test Real Robot**: `./b4m_launch.sh --autotest --debug`
 11. ⚠️ **Validate All Environments**: Complete SLAM workflow across Gazebo + Real Robot
 
 ## 🚀 Implementation Summary
@@ -329,7 +329,7 @@ yahboomcar_nav/scripts/mqtt_navigation_test.py        [NEW] - Automated MQTT Nav
 # Updated Files
 yahboomcar_description/urdf/yahboomcar_robot2_gazebo.urdf [MODIFIED] - Direct Differential Drive Plugin
 regression/test_slam_launch.py                        [MODIFIED] - ✅ Updated for Gazebo Classic
-b4m_HA_launch.sh                                      [MODIFIED] - Added --slam-test with Steps 8-10
+b4m_launch.sh                                      [MODIFIED] - Added --slam-test with Steps 8-10
 
 # Documentation and Migration Planning
 FUTURE_GAZEBO_CLASSIC_MIGRATION.md                   [NEW] - Navigation migration roadmap
@@ -340,7 +340,7 @@ FUTURE_GAZEBO_CLASSIC_MIGRATION.md                   [NEW] - Navigation migratio
 **For Real Robot Testing:**
 ```bash
 # Launch with SLAM
-./b4m_HA_launch.sh --autotest --debug
+./b4m_launch.sh --autotest --debug
 
 # Shutdown preserving hardware connection
 ./b4m_shutdown.sh --keep-agent
@@ -362,11 +362,11 @@ python3 test_slam_working.py
 ```bash
 # GAZEBO SIMULATION MODE:
 # Launch complete SLAM system with extended autotest in Gazebo
-./b4m_HA_launch.sh --simulation --autotest --debug --slam-test
+./b4m_launch.sh --simulation --autotest --debug --slam-test
 
 # REAL ROBOT MODE:
 # Launch complete SLAM system with extended autotest on real robot
-./b4m_HA_launch.sh --autotest --debug --slam-test
+./b4m_launch.sh --autotest --debug --slam-test
 
 # The --slam-test flag adds Steps 8-10 (BOTH modes):
 # Step 8: Automated 1-meter square movement with SLAM mapping
@@ -388,14 +388,14 @@ python3 test_slam_working.py
 # - map_validation.py: Automated map saving and quality assessment
 # - mqtt_navigation_test.py: Automated MQTT waypoint navigation testing
 # - slam_test_world.sdf: Gazebo world with 2 detectable obstacles
-# - Enhanced b4m_HA_launch.sh with --slam-test flag and Steps 8-10 validation
+# - Enhanced b4m_launch.sh with --slam-test flag and Steps 8-10 validation
 
 # CURRENT CAPABILITY TESTING:
 # Gazebo simulation
-./b4m_HA_launch.sh --simulation --autotest --debug
+./b4m_launch.sh --simulation --autotest --debug
 
 # Real robot
-./b4m_HA_launch.sh --autotest --debug
+./b4m_launch.sh --autotest --debug
 
 # Then verify SLAM readiness (BOTH modes):
 # - Check /map topic publishes valid occupancy grid
@@ -484,23 +484,23 @@ The Gazebo Classic SLAM system is fully operational for map generation. The syst
 ### 🔀 **Dual-Environment Testing Approach**:
 **CRITICAL REQUIREMENT**: All Automated SLAM Testing items must work in BOTH environments:
 
-1. **Gazebo Simulation Mode**: Use `./b4m_HA_launch.sh --simulation --autotest --debug`
+1. **Gazebo Simulation Mode**: Use `./b4m_launch.sh --simulation --autotest --debug`
    - Tests SLAM functionality in Ignition Gazebo with simulated sensors
    - Validates automated movement scripts with ROS-Gazebo bridge
    - Ensures MQTT navigation works in simulation environment
 
-2. **Real Robot Mode**: Use `./b4m_HA_launch.sh --autotest --debug`
+2. **Real Robot Mode**: Use `./b4m_launch.sh --autotest --debug`
    - Tests SLAM functionality with physical robot hardware
    - Validates automated movement scripts with real ESP32 sensors
    - Ensures MQTT navigation works with actual robot movement
 
-**Environment-Agnostic Design**: The same automated SLAM testing scripts and validation logic must work seamlessly with both the `--simulation` flag (Gazebo) and without it (real robot), leveraging the existing environment detection in `b4m_HA_launch.sh`.
+**Environment-Agnostic Design**: The same automated SLAM testing scripts and validation logic must work seamlessly with both the `--simulation` flag (Gazebo) and without it (real robot), leveraging the existing environment detection in `b4m_launch.sh`.
 
 ### 🎯 **Current Integration Status**:
 - ✅ **Hardware Support**: SLAM toolbox + EKF + Micro-ROS integration designed
 - ✅ **Navigation Stack**: Complete Nav2 integration without AMCL
 - ✅ **MQTT Compatibility**: Existing waypoint navigation preserved
-- ✅ **Launch Script**: Simplified b4m_HA_launch.sh ready for testing
+- ✅ **Launch Script**: Simplified b4m_launch.sh ready for testing
 - ✅ **Gazebo Testing Complete**: SLAM system operational in Ignition Gazebo
 - ⚠️ **Real Robot Testing**: Ready for validation with actual hardware
 
@@ -513,7 +513,7 @@ The Gazebo Classic SLAM system is fully operational for map generation. The syst
 - ✅ **System Integration**: Complete launch pipeline with `slam_test_gazebo_classic.py`
 - ✅ **Regression Testing**: SLAM tests integrated and passing
 - ✅ **Future Planning**: Navigation migration roadmap documented
-- ⚠️ **Real Robot**: Ready for testing with `./b4m_HA_launch.sh` 
+- ⚠️ **Real Robot**: Ready for testing with `./b4m_launch.sh` 
 - ✅ **15 SLAM Services**: Full SLAM toolbox service suite available
 
 **Current System Status**: **SLAM SYSTEM OPERATIONAL** - Complete SLAM mapping functionality working in Gazebo Classic simulation. Ready for real robot deployment.
@@ -579,12 +579,12 @@ The Gazebo Classic SLAM system is fully operational for map generation. The syst
 
 ---
 
-## 🎮 b4m_HA_launch.sh Integration Requirements
+## 🎮 b4m_launch.sh Integration Requirements
 
 ### ⚠️ **Missing Integration Step**
-The current manual testing approach bypasses the integrated `b4m_HA_launch.sh` system. However, the launch script has full support for simulation mode and needs to be validated:
+The current manual testing approach bypasses the integrated `b4m_launch.sh` system. However, the launch script has full support for simulation mode and needs to be validated:
 
-**Key Challenge**: The `b4m_HA_launch.sh --simulation` mode currently uses:
+**Key Challenge**: The `b4m_launch.sh --simulation` mode currently uses:
 - `gazebo --verbose -s libgazebo_ros_init.so -s libgazebo_ros_factory.so worlds/empty.world` (Gazebo Classic)
 - `ros2 launch yahboomcar_nav spawn_robot_with_controllers_gazebo.py` (ros2_control approach)
 
@@ -594,13 +594,13 @@ The current manual testing approach bypasses the integrated `b4m_HA_launch.sh` s
 
 ### 📋 **Integration Tasks Required**:
 
-1. **Update b4m_HA_launch.sh simulation mode**:
+1. **Update b4m_launch.sh simulation mode**:
    - Replace Gazebo Classic with Ignition Gazebo commands
    - Replace ros2_control robot spawning with direct plugin approach  
    - Update step validation for Ignition Gazebo instead of Gazebo Classic
 
 2. **Test integrated launch**:
-   - Verify `./b4m_HA_launch.sh --simulation --autotest --debug` works end-to-end
+   - Verify `./b4m_launch.sh --simulation --autotest --debug` works end-to-end
    - Ensure all 7 steps complete successfully with new approach
    - Validate automated step verification works with Ignition Gazebo
 
@@ -612,4 +612,4 @@ The current manual testing approach bypasses the integrated `b4m_HA_launch.sh` s
 ### 🎯 **Integration Status**:
 - ✅ **Manual SLAM Testing**: ✅ Working (Ignition Gazebo + direct plugins)
 - ✅ **Integrated Launch Script**: ✅ Successfully updated for Ignition Gazebo  
-- ✅ **Full System Test**: ✅ `./b4m_HA_launch.sh --simulation --autotest --debug` PASSES
+- ✅ **Full System Test**: ✅ `./b4m_launch.sh --simulation --autotest --debug` PASSES

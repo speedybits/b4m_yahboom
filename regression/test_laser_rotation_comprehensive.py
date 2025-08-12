@@ -275,7 +275,7 @@ def run_comprehensive_test():
         print("✅ Using already-running simulation (regression mode)")
     else:
         print("⚠️  This test expects the simulation to be already running")
-        print("   Launch with: ./b4m_HA_launch.sh --simulation --regression")
+        print("   Launch with: ./b4m_launch.sh --simulation --regression")
         
     # Initialize ROS2
     rclpy.init()

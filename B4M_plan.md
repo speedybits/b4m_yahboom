@@ -95,7 +95,7 @@ The Robot Manager has been implemented as a standalone Python-based GUI applicat
    - System status display shows current launch step and overall system state
 
 3. **Automated Launch Sequence**
-   The Start button executes the following sequence (derived from b4m_HA_launch.sh):
+   The Start button executes the following sequence (derived from b4m_launch.sh):
    - Step 1: Start sensor integration (`yahboomcar_bringup_launch.py`)
    - Step 2: Start RViz visualization (`display_launch.py`)
    - Step 3: Start navigation system (`waypoint_navigation_launch.py`)

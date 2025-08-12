@@ -50,11 +50,11 @@ This directory contains AMCL parameter configurations for systematic localizatio
 
 ## Usage with Testing Framework
 
-These parameter files are used with the navigation testing framework in `b4m_HA_launch.sh`:
+These parameter files are used with the navigation testing framework in `b4m_launch.sh`:
 
 ```bash
 # Test with specific parameter set
-./b4m_HA_launch.sh --navigation-performance-test --parameter-set indoor_optimized
+./b4m_launch.sh --navigation-performance-test --parameter-set indoor_optimized
 
 # Available parameter sets:
 # - baseline (default)
