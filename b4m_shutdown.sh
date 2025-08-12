@@ -78,6 +78,10 @@ echo "$initial_nodes" | while read -r node; do
             pkill -f "$node_name" 2>/dev/null
             # Also try killing by the full node path
             pkill -f "$node" 2>/dev/null
+            # For nodes like autonomous_explorer, also try variants
+            if [[ "$node_name" == *"autonomous_explorer"* ]]; then
+                pkill -f "autonomous_exploration" 2>/dev/null
+            fi
         fi
     fi
 done
@@ -133,10 +137,12 @@ shutdown_log "Step 3: Stopping waypoint navigation, robot manager, and autonomou
 pkill -f "b4m_waypoint_nav" 2>/dev/null
 pkill -f "b4m_robot_manager" 2>/dev/null
 pkill -f "autonomous_explorer" 2>/dev/null
+pkill -f "autonomous_exploration" 2>/dev/null
 sleep 2
 pkill -9 -f "b4m_waypoint_nav" 2>/dev/null
 pkill -9 -f "b4m_robot_manager" 2>/dev/null
 pkill -9 -f "autonomous_explorer" 2>/dev/null
+pkill -9 -f "autonomous_exploration" 2>/dev/null
 
 # Step 4: Stop Micro-ROS agent Docker container (if not keeping it)
 if [ "$KEEP_AGENT" = true ]; then
