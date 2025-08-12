@@ -4,10 +4,9 @@
 # This script automates the launch process for the B4M Robot 
 # Each step will be launched in a separate terminal with user confirmation
 #
-# Usage: ./b4m_launch.sh [--skip-agent] [--only-agent] [--autotest] [--debug] [--simulation] [--regression] [--explore] [--b4m-lidar] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>]
+# Usage: ./b4m_launch.sh [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--b4m-lidar] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>]
 #   --skip-agent:                   Skip the Micro-ROS agent launch (Step 1)
 #   --only-agent:                   Launch ONLY the Micro-ROS agent (Step 1) and exit
-#   --autotest:                     Run in automated test mode (non-interactive)
 #   --debug:                        Enable verbose debug logging
 #   --simulation:                   Launch in Gazebo simulation mode instead of real robot
 #   --regression:                   Run comprehensive regression test suite (navigation + laser stability)
@@ -21,7 +20,6 @@
 # Parse command line arguments
 SKIP_AGENT=false
 ONLY_AGENT=false
-AUTOTEST_MODE=false
 DEBUG_MODE=false
 SIMULATION_MODE=false
 REGRESSION_MODE=false
@@ -41,10 +39,6 @@ for arg in "$@"; do
             ONLY_AGENT=true
             shift
             ;;
-        --autotest)
-            AUTOTEST_MODE=true
-            shift
-            ;;
         --debug)
             DEBUG_MODE=true
             shift
@@ -55,7 +49,6 @@ for arg in "$@"; do
             ;;
         --regression)
             REGRESSION_MODE=true
-            AUTOTEST_MODE=true  # Auto-enable autotest for regression
             shift
             ;;
         --explore)
@@ -85,10 +78,9 @@ for arg in "$@"; do
             shift
             ;;
         -h|--help)
-            echo "Usage: $0 [--skip-agent] [--only-agent] [--autotest] [--debug] [--simulation] [--regression] [--explore] [--b4m-lidar] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>]"
+            echo "Usage: $0 [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--b4m-lidar] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>]"
             echo "  --skip-agent:                   Skip the Micro-ROS agent launch (Step 1)"
             echo "  --only-agent:                   Launch ONLY the Micro-ROS agent (Step 1) and exit"
-            echo "  --autotest:                     Run in automated test mode (non-interactive)"
             echo "  --debug:                        Enable verbose debug logging"
             echo "  --simulation:                   Launch in Gazebo simulation mode instead of real robot"
             echo "  --regression:                   Run comprehensive regression test suite (navigation + laser stability)"
@@ -714,35 +706,30 @@ check_existing_processes() {
         echo "  - Topic/service conflicts"
         echo ""
         
-        if [ "$AUTOTEST_MODE" = true ]; then
-            echo "🤖 AUTOTEST MODE: Automatically forcing full cleanup..."
-            force_complete_system_cleanup
-        else
-            echo "Options:"
-            echo "  c) Force complete cleanup (RECOMMENDED)"
-            echo "  q) Quit and investigate manually"
-            echo ""
-            read -p "Choose [c/q]: " choice
-            
-            case $choice in
-                c|C)
-                    echo "🧹 Forcing complete system cleanup..."
-                    force_complete_system_cleanup
-                    ;;
-                q|Q)
-                    echo "Exiting. Investigate duplicate nodes manually."
-                    echo "Commands to investigate:"
-                    echo "  ros2 node list"
-                    echo "  ps aux | grep ros2"
-                    echo "  ./b4m_shutdown.sh --force"
-                    exit 1
-                    ;;
-                *)
-                    echo "Invalid choice. Exiting for safety."
-                    exit 1
-                    ;;
-            esac
-        fi
+        echo "Options:"
+        echo "  c) Force complete cleanup (RECOMMENDED)"
+        echo "  q) Quit and investigate manually"
+        echo ""
+        read -p "Choose [c/q]: " choice
+        
+        case $choice in
+            c|C)
+                echo "🧹 Forcing complete system cleanup..."
+                force_complete_system_cleanup
+                ;;
+            q|Q)
+                echo "Exiting. Investigate duplicate nodes manually."
+                echo "Commands to investigate:"
+                echo "  ros2 node list"
+                echo "  ps aux | grep ros2"
+                echo "  ./b4m_shutdown.sh --force"
+                exit 1
+                ;;
+            *)
+                echo "Invalid choice. Exiting for safety."
+                exit 1
+                ;;
+        esac
         
         # Re-check after cleanup
         local post_cleanup_nodes=$(ros2 node list | wc -l 2>/dev/null || echo "0")
@@ -768,16 +755,7 @@ check_existing_processes() {
         echo ""
         echo "These processes can cause conflicts during launch."
         
-        if [ "$AUTOTEST_MODE" = true ]; then
-            echo "🤖 AUTOTEST MODE: Cleaning up robot processes..."
-            pkill -f "ekf_node" 2>/dev/null || true
-            pkill -f "robot_localization" 2>/dev/null || true  
-            pkill -f "yahboomcar" 2>/dev/null || true
-            sleep 2
-            echo "✅ Robot process cleanup completed"
-        else
-            echo "Run './b4m_shutdown.sh --keep-agent' to clean up these processes."
-        fi
+        echo "Run './b4m_shutdown.sh --keep-agent' to clean up these processes."
         echo ""
     fi
     
@@ -792,35 +770,30 @@ check_existing_processes() {
         echo "  - Test failures and unpredictable behavior"
         echo ""
         
-        if [ "$AUTOTEST_MODE" = true ]; then
-            echo "🤖 AUTOTEST MODE: Automatically cleaning up..."
-            cleanup_existing_processes
-        else
-            echo "Options:"
-            echo "  c) Clean up automatically (recommended)"
-            echo "  f) Force continue anyway (not recommended)" 
-            echo "  q) Quit and clean up manually"
-            echo ""
-            read -p "Choose [c/f/q]: " choice
-            
-            case $choice in
-                c|C)
-                    echo "🧹 Cleaning up existing processes..."
-                    cleanup_existing_processes
-                    ;;
-                f|F)
-                    echo "⚠️  Forcing launch with existing processes - this may cause issues!"
-                    ;;
-                q|Q)
-                    echo "Exiting. Run './b4m_shutdown.sh' to clean up manually."
-                    exit 0
-                    ;;
-                *)
-                    echo "Invalid choice. Exiting for safety."
-                    exit 1
-                    ;;
-            esac
-        fi
+        echo "Options:"
+        echo "  c) Clean up automatically (recommended)"
+        echo "  f) Force continue anyway (not recommended)" 
+        echo "  q) Quit and clean up manually"
+        echo ""
+        read -p "Choose [c/f/q]: " choice
+        
+        case $choice in
+            c|C)
+                echo "🧹 Cleaning up existing processes..."
+                cleanup_existing_processes
+                ;;
+            f|F)
+                echo "⚠️  Forcing launch with existing processes - this may cause issues!"
+                ;;
+            q|Q)
+                echo "Exiting. Run './b4m_shutdown.sh' to clean up manually."
+                exit 0
+                ;;
+            *)
+                echo "Invalid choice. Exiting for safety."
+                exit 1
+                ;;
+        esac
         
     elif [ "$navigation_nodes" -gt 0 ]; then
         echo ""
@@ -828,17 +801,12 @@ check_existing_processes() {
         echo "Detected: $(ros2 node list 2>/dev/null | grep -E '(amcl|nav2_container)' | tr '\n' ' ')"
         echo ""
         
-        if [ "$AUTOTEST_MODE" = true ]; then
-            echo "🤖 AUTOTEST MODE: Automatically cleaning up navigation nodes..."
-            cleanup_existing_processes
-        else
-            echo "This usually means another robot session is active."
-            echo "Continue anyway? (y/N): "
-            read continue_choice
-            if [[ ! "$continue_choice" =~ ^[Yy]$ ]]; then
-                echo "Exiting. Use './b4m_shutdown.sh' to clean up first."
-                exit 0
-            fi
+        echo "This usually means another robot session is active."
+        echo "Continue anyway? (y/N): "
+        read continue_choice
+        if [[ ! "$continue_choice" =~ ^[Yy]$ ]]; then
+            echo "Exiting. Use './b4m_shutdown.sh' to clean up first."
+            exit 0
         fi
     elif [ "$hardware_nodes" -gt 0 ]; then
         echo ""
@@ -905,9 +873,9 @@ force_complete_system_cleanup() {
     fi
 }
 
-# Function to perform comprehensive cleanup after autotest failures
-perform_autotest_cleanup() {
-    echo "🧹 AUTOTEST CLEANUP: Preserving only YB_Car_Node and micro-ros-agent"
+# Function to perform comprehensive cleanup after test failures
+perform_regression_cleanup() {
+    echo "🧹 REGRESSION CLEANUP: Preserving only YB_Car_Node and micro-ros-agent"
     echo "=================================================================="
     
     # Step 1: Kill all ROS2 launch processes immediately
@@ -951,7 +919,7 @@ perform_autotest_cleanup() {
         echo "✅ $remaining_nodes nodes remaining (should include YB_Car_Node)"
     fi
     
-    echo "🎯 AUTOTEST CLEANUP COMPLETED"
+    echo "🎯 REGRESSION CLEANUP COMPLETED"
     echo "=========================="
 }
 
@@ -985,16 +953,14 @@ cleanup_existing_processes() {
     echo ""
 }
 
-# Autotest mode timeout (seconds)
-AUTOTEST_TIMEOUT=10
+# Default timeouts (seconds)
+DEFAULT_TIMEOUT=10
 NAVIGATION_TIMEOUT=30  # Navigation needs more time
 
-# Step validation functions for autotest mode
-# Step 1 verification removed - always assume Micro-ROS agent is running correctly
-
+# Step validation functions
 validate_step_success() {
     local step_num=$1
-    local timeout=${2:-$AUTOTEST_TIMEOUT}
+    local timeout=${2:-$DEFAULT_TIMEOUT}
     local step_log=$3
     
     debug_log "Validating Step $step_num (timeout: ${timeout}s)"
@@ -1998,7 +1964,7 @@ handle_test_failure() {
     echo "Time: $(date)"
     echo ""
     
-    log_message "AUTOTEST FAILED at Step $failed_step: $error_message"
+    log_message "VALIDATION FAILED at Step $failed_step: $error_message"
     
     # Capture debug snapshot
     echo "Capturing debug information..."
@@ -2011,7 +1977,7 @@ handle_test_failure() {
     
     # Run cleanup preserving Micro-ROS agent
     echo "Running cleanup with --keep-agent..."
-    perform_autotest_cleanup
+    ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1 || true
     
     echo ""
     echo "Test logs saved to: $MAIN_LOG"
@@ -2036,65 +2002,7 @@ launch_in_terminal() {
     echo "  $command"
     echo ""
     
-    # In autotest mode, skip user confirmation and use direct execution
-    if [ "$AUTOTEST_MODE" = true ]; then
-        echo "🤖 AUTOTEST MODE: Executing automatically..."
-        echo "📁 Log file location: $step_log"
-        echo ""
-        
-        log_message "AUTOTEST STEP $step_num: $description"
-        log_message "Log file: $step_log"
-        
-        # Execute command directly in background
-        cd "$WORKSPACE_ROOT"
-        if [ -f 'install/setup.bash' ]; then
-            source install/setup.bash
-            debug_log "Workspace sourced successfully"
-        else
-            echo "⚠️  WARNING: install/setup.bash not found!"
-        fi
-        
-        echo "Starting: $description" | tee "$step_log"
-        echo "Command: $command" | tee -a "$step_log"
-        echo "Started at: $(date)" | tee -a "$step_log"
-        echo "=====================================" | tee -a "$step_log"
-        
-        # Handle display requirements for RViz in autotest mode
-        if [[ "$command" == *"rviz"* ]] && [ -z "$DISPLAY" ]; then
-            echo "RViz detected in autotest mode without display - setting up virtual display" | tee -a "$step_log"
-            export DISPLAY=:99
-            # Start Xvfb if not already running
-            if ! pgrep -f "Xvfb :99" > /dev/null; then
-                Xvfb :99 -screen 0 1024x768x24 -ac +extension GLX +render -noreset &
-                sleep 2
-                debug_log "Started virtual display Xvfb :99"
-            fi
-        fi
-        
-        # Execute command in background
-        eval "$command" >> "$step_log" 2>&1 &
-        local cmd_pid=$!
-        
-        # Wait a moment for process to start
-        sleep 2
-        
-        # Validate step success - use longer timeout for navigation (Step 5)
-        local step_timeout="$AUTOTEST_TIMEOUT"
-        if [ "$step_num" = "5" ]; then
-            step_timeout="$NAVIGATION_TIMEOUT"
-        fi
-        
-        if validate_step_success "$step_num" "$step_timeout" "$step_log"; then
-            echo "✅ Step $step_num validation passed"
-            log_message "AUTOTEST STEP $step_num: PASSED"
-        else
-            handle_test_failure "$step_num" "Step validation failed"
-        fi
-        
-        return
-    fi
-    
-    # Interactive mode (original behavior)
+    # Interactive mode
     if [ "$ONLY_AGENT" = true ]; then
         echo "🎯 ONLY-AGENT MODE: Executing automatically..."
     else
@@ -2206,17 +2114,8 @@ EOF
 
 echo "B4M Robot - Home Assistant MQTT Integration Launch Script"
 
-if [ "$AUTOTEST_MODE" = true ]; then
-    echo "🤖 AUTOMATED TEST MODE ENABLED"
-    echo "This script will run all steps automatically without user interaction."
-    echo "Steps will be validated with $AUTOTEST_TIMEOUT second timeouts."
-    echo "Test will abort on first failure and run cleanup automatically."
-    echo ""
-    echo "ℹ️  Assuming Micro-ROS agent is running and robot is connected (Step 1)"
-else
-    echo "This script will guide you through launching all components of the B4M Robot system."
-    echo "Each step will open in a separate terminal window."
-fi
+echo "This script will guide you through launching all components of the B4M Robot system."
+echo "Each step will open in a separate terminal window."
 
 echo "Logs will be saved to: $LOGS_DIR"
 echo "Main log file: $MAIN_LOG"
@@ -2248,11 +2147,7 @@ fi
 
 echo ""
 
-if [ "$AUTOTEST_MODE" = true ]; then
-    log_message "B4M Robot AUTOTEST launch script started"
-else
-    log_message "B4M Robot launch script started"
-fi
+log_message "B4M Robot launch script started"
 
 # Special handling for --only-agent mode: clean up existing connections
 if [ "$ONLY_AGENT" = true ]; then
@@ -2324,18 +2219,8 @@ echo "====================================================="
 echo "STEP 2: Power on the physical Yahboom Robot"
 echo "====================================================="
 
-if [ "$AUTOTEST_MODE" = true ]; then
-    echo "🤖 AUTOTEST MODE: Assuming robot is already powered on and connected"
-    log_message "AUTOTEST STEP 2: Robot connection verification"
-    
-    # Validate robot connection
-    if validate_step_success "2" "$AUTOTEST_TIMEOUT"; then
-        echo "✅ Step 2 validation passed"
-        log_message "AUTOTEST STEP 2: PASSED"
-    else
-        handle_test_failure "2" "Robot connection verification failed"
-    fi
-else
+if [ "$SIMULATION_MODE" = true ]; then
+    echo "🎮 SIMULATION MODE: Skipping physical robot power on (using simulation)"
     echo "Manual step required:"
     echo "  1. Turn on the physical robot's power switch"
     echo "  2. Wait for the robot to boot up and connect to the Micro-ROS agent"
@@ -2382,56 +2267,36 @@ if [ "$LOCALIZATION_TEST" = true ]; then
     echo "STEP 8: Localization Quality Assessment"
     echo "======================================================"
     
-    if [ "$AUTOTEST_MODE" = true ]; then
-        log_message "AUTOTEST STEP 8: Localization Quality Assessment"
-        if validate_localization_quality; then
-            echo "✅ Step 8 validation passed"
-            log_message "AUTOTEST STEP 8: PASSED"
-        else
-            handle_test_failure "8" "Localization quality assessment failed"
-        fi
+    echo "Running localization quality tests..."
+    if validate_localization_quality; then
+        echo "✅ Localization quality tests passed"
     else
-        echo "Manual mode: Running localization quality tests..."
-        if validate_localization_quality; then
-            echo "✅ Localization quality tests passed"
-        else
-            echo "❌ Localization quality tests failed"
-            echo ""
-            echo "Localization tests must pass before continuing."
-            echo "Check robot connection, sensors, and navigation system."
-            echo "Exiting..."
-            exit 1
-        fi
-        confirm
+        echo "❌ Localization quality tests failed"
+        echo ""
+        echo "Localization tests must pass before continuing."
+        echo "Check robot connection, sensors, and navigation system."
+        echo "Exiting..."
+        exit 1
     fi
+    confirm
     
     # Step 9: Navigation Performance Testing
     echo "======================================================"
     echo "STEP 9: Navigation Performance Testing"
     echo "======================================================"
     
-    if [ "$AUTOTEST_MODE" = true ]; then
-        log_message "AUTOTEST STEP 9: Navigation Performance Testing"
-        if validate_navigation_performance; then
-            echo "✅ Step 9 validation passed"
-            log_message "AUTOTEST STEP 9: PASSED"
-        else
-            handle_test_failure "9" "Navigation performance test failed"
-        fi
+    echo "Running navigation performance tests..."
+    if validate_navigation_performance; then
+        echo "✅ Navigation performance tests passed"
     else
-        echo "Manual mode: Running navigation performance tests..."
-        if validate_navigation_performance; then
-            echo "✅ Navigation performance tests passed"
-        else
-            echo "❌ Navigation performance tests failed"
-            echo ""
-            echo "Navigation performance tests must pass before continuing."
-            echo "Check navigation system, waypoint data, and robot mobility."
-            echo "Exiting..."
-            exit 1
-        fi
-        confirm
+        echo "❌ Navigation performance tests failed"
+        echo ""
+        echo "Navigation performance tests must pass before continuing."
+        echo "Check navigation system, waypoint data, and robot mobility."
+        echo "Exiting..."
+        exit 1
     fi
+    confirm
     
     # Parameter Tuning Mode (if enabled)
     if [ "$TUNE_PARAMS" = true ]; then
@@ -2459,70 +2324,26 @@ if [ "$LOCALIZATION_TEST" = true ]; then
     fi
 fi
 
-# Step 8/10: Start the Robot Manager GUI (skip in autotest mode)
-if [ "$AUTOTEST_MODE" = false ]; then
-    if [ "$LOCALIZATION_TEST" = true ]; then
-        STEP_NUM="10"
-    else
-        STEP_NUM="8"
-    fi
-    launch_in_terminal "Starting the B4M Robot Manager GUI for visual control of waypoints" \
-        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 run b4m_waypoint_nav b4m_robot_manager_node.py" \
-        "$STEP_NUM"
+# Step 8/10: Start the Robot Manager GUI
+if [ "$LOCALIZATION_TEST" = true ]; then
+    STEP_NUM="10"
 else
-    debug_log "Robot Manager GUI skipped in autotest mode"
+    STEP_NUM="8"
 fi
+launch_in_terminal "Starting the B4M Robot Manager GUI for visual control of waypoints" \
+    "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 run b4m_waypoint_nav b4m_robot_manager_node.py" \
+    "$STEP_NUM"
 
 
 log_message "B4M Robot launch script completed"
 
-if [ "$AUTOTEST_MODE" = true ]; then
-    echo ""
-    echo "======================================="
-    echo "B4M Robot Launch Test - PASSED"
-    echo "======================================="
-    echo "Test Run: $(date)"
-    
-    if [ "$LOCALIZATION_TEST" = true ]; then
-        echo "All 9 tested steps completed successfully (including localization tests)"
-    else
-        echo "All 7 tested steps completed successfully"
-    fi
-    
-    echo ""
-    echo "Step Summary:"
-    echo "✅ Step 1: Micro-ROS Agent (assumed running - prerequisite)"
-    echo "✅ Step 2: Robot Connection" 
-    echo "✅ Step 3: Data Processing"
-    echo "✅ Step 4: RViz Launch"
-    echo "✅ Step 5: Navigation System"
-    echo "✅ Step 6: Pose Estimation"
-    echo "✅ Step 7: MQTT Navigation"
-    
-    if [ "$LOCALIZATION_TEST" = true ]; then
-        echo "✅ Step 8: Localization Quality Assessment"
-        echo "✅ Step 9: Navigation Performance Testing"
-    fi
-    
-    echo ""
-    echo "Logs saved to: $MAIN_LOG"
-    
-    if [ "$LOCALIZATION_TEST" = true ]; then
-        echo "Localization test results saved to: $LOCALIZATION_LOG"
-    fi
-    
-    echo "======================================="
-    
-    log_message "AUTOTEST COMPLETED SUCCESSFULLY - ALL STEPS PASSED"
-else
-    echo "====================================================="
-    echo "Launch script completed successfully!"
-    echo "All logs are saved in: $LOGS_DIR"
-    echo "Main log file: $MAIN_LOG"
-    echo ""
-    echo "🧹 CLEANUP REMINDER:"
-    echo "Run './b4m_shutdown.sh' when finished to clean up all processes"
-    echo "====================================================="
-fi
+echo "====================================================="
+echo "Launch script completed successfully!"
+echo "All logs are saved in: $LOGS_DIR"
+echo "Main log file: $MAIN_LOG"
+echo ""
+echo "🧹 CLEANUP REMINDER:"
+echo "Run './b4m_shutdown.sh' when finished to clean up all processes"
+echo "====================================================="
 
 exit 0
