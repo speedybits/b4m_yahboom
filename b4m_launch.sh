@@ -587,22 +587,28 @@ if [ "$REGRESSION_MODE" = true ]; then
     echo "======================================"
     echo ""
     
-    # NO CLEANUP - Leave system running for debugging
-    echo "🔍 SYSTEM LEFT RUNNING FOR DEBUGGING"
+    # CLEANUP AFTER TEST - Run b4m_shutdown.sh at the end
+    echo "🧹 POST-TEST CLEANUP"
     echo "======================================"
-    echo "The system has been left running so you can inspect:"
-    echo "  - RViz visualization"
-    echo "  - Running ROS2 nodes: ros2 node list"
-    echo "  - Active topics: ros2 topic list"
-    echo "  - Raw odometry: ros2 topic echo /odom_raw"
-    echo "  - Filtered odometry: ros2 topic echo /odom"
+    echo "Running b4m_shutdown.sh to clean up test environment..."
     echo ""
-    echo "To clean up manually when done debugging:"
+    
     if [ "$SIMULATION_MODE" = true ]; then
-        echo "  ./b4m_shutdown.sh"
+        # Full shutdown for simulation
+        ./b4m_shutdown.sh > /dev/null 2>&1 || true
+        echo "✅ Simulation environment cleaned up"
     else
-        echo "  ./b4m_shutdown.sh --keep-agent"
+        # Keep agent for real robot
+        ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1 || true
+        echo "✅ Real robot environment cleaned up (agent preserved)"
     fi
+    
+    echo "======================================"
+    echo ""
+    echo "💡 To manually test the system:"
+    echo "  - Start system: ./b4m_launch.sh --simulation"
+    echo "  - Run regression: ./b4m_launch.sh --regression --simulation"
+    echo "  - Clean up: ./b4m_shutdown.sh"
     echo "======================================"
     
     exit $FINAL_RESULT

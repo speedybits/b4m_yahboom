@@ -52,7 +52,7 @@
       </link>
     </model>
     
-    <!-- Wall obstacles to create corridors -->
+    <!-- Wall obstacles to fully enclose the room -->
     <model name="wall_north">
       <pose>0 3.5 0.5 0 0 0</pose>
       <static>true</static>
@@ -60,7 +60,7 @@
         <visual name="visual">
           <geometry>
             <box>
-              <size>4.0 0.2 1.0</size>
+              <size>7.2 0.2 1.0</size>
             </box>
           </geometry>
           <material>
@@ -71,7 +71,7 @@
         <collision name="collision">
           <geometry>
             <box>
-              <size>4.0 0.2 1.0</size>
+              <size>7.2 0.2 1.0</size>
             </box>
           </geometry>
         </collision>
@@ -85,7 +85,7 @@
         <visual name="visual">
           <geometry>
             <box>
-              <size>4.0 0.2 1.0</size>
+              <size>7.2 0.2 1.0</size>
             </box>
           </geometry>
           <material>
@@ -96,7 +96,7 @@
         <collision name="collision">
           <geometry>
             <box>
-              <size>4.0 0.2 1.0</size>
+              <size>7.2 0.2 1.0</size>
             </box>
           </geometry>
         </collision>
@@ -110,7 +110,7 @@
         <visual name="visual">
           <geometry>
             <box>
-              <size>0.2 7.0 1.0</size>
+              <size>0.2 7.2 1.0</size>
             </box>
           </geometry>
           <material>
@@ -121,7 +121,7 @@
         <collision name="collision">
           <geometry>
             <box>
-              <size>0.2 7.0 1.0</size>
+              <size>0.2 7.2 1.0</size>
             </box>
           </geometry>
         </collision>
@@ -135,7 +135,7 @@
         <visual name="visual">
           <geometry>
             <box>
-              <size>0.2 7.0 1.0</size>
+              <size>0.2 7.2 1.0</size>
             </box>
           </geometry>
           <material>
@@ -146,7 +146,7 @@
         <collision name="collision">
           <geometry>
             <box>
-              <size>0.2 7.0 1.0</size>
+              <size>0.2 7.2 1.0</size>
             </box>
           </geometry>
         </collision>
