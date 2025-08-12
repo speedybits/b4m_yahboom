@@ -1,0 +1,27 @@
+b4m_lidar_navigator:
+  ros__parameters:
+    # API Configuration
+    api_endpoint: "https://app.bike4mind.com/api/chat"
+    api_key: "b4m_live_c491719bd23cc716e2db2c5182f4f900"
+    api_timeout: 30.0  # Seconds to wait for API response (includes polling time)
+    api_cooldown: 20.0  # Seconds between API calls (rate limit)
+    
+    # LiDAR Processing
+    scan_rate: 10.0  # Hz - laser scan processing rate
+    stop_distance: 0.3048  # meters (1 foot) - emergency stop distance
+    safe_distance: 0.4  # meters - clear path threshold for resuming movement
+    
+    # Movement Parameters
+    linear_speed: 0.08  # m/s - forward speed (same as explore mode)
+    angular_speed: 0.3  # rad/s - turning speed
+    min_turn_time: 1.0  # seconds - minimum turn duration
+    required_clear_readings: 3  # consecutive clear readings before moving
+    
+    # Behavior Configuration
+    enable_api: true  # Use API for decisions (false = testing mode with random turns)
+    debug_mode: false  # Enable detailed logging
+    
+    # Model Configuration
+    model: "gpt-4o-mini"  # AI model to use
+    temperature: 0.1  # Low temperature for consistent decisions
+    max_tokens: 20  # Only need "left" or "right" response
