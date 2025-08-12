@@ -474,6 +474,9 @@ fi
 # On real robot
 ./b4m_HA_launch.sh --b4m-lidar --skip-agent
 
+# In Gazebo Classic simulation
+./b4m_HA_launch.sh --b4m-lidar --simulation
+
 # Monitor status
 ros2 topic echo /b4m_lidar/status
 

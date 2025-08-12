@@ -4,7 +4,7 @@
 # This script automates the launch process for the B4M Robot with Home Assistant integration
 # Each step will be launched in a separate terminal with user confirmation
 #
-# Usage: ./b4m_HA_launch.sh [--skip-agent] [--only-agent] [--autotest] [--debug] [--simulation] [--regression] [--explore] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>]
+# Usage: ./b4m_HA_launch.sh [--skip-agent] [--only-agent] [--autotest] [--debug] [--simulation] [--regression] [--explore] [--b4m-lidar] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>]
 #   --skip-agent:                   Skip the Micro-ROS agent launch (Step 1)
 #   --only-agent:                   Launch ONLY the Micro-ROS agent (Step 1) and exit
 #   --autotest:                     Run in automated test mode (non-interactive)
@@ -12,6 +12,7 @@
 #   --simulation:                   Launch in Gazebo simulation mode instead of real robot
 #   --regression:                   Run comprehensive regression test suite (navigation + laser stability)
 #   --explore:                      Enable autonomous exploration mode with obstacle avoidance
+#   --b4m-lidar:                    Enable B4M LiDAR-based intelligent navigation with API
 #   --localization-test:            Enable localization quality and navigation performance testing
 #   --tune-params:                  Enable parameter tuning iterations (requires --localization-test)
 #   --navigation-performance-test:  Execute advanced 1x1m square navigation circuit testing with comprehensive metrics
@@ -25,6 +26,7 @@ DEBUG_MODE=false
 SIMULATION_MODE=false
 REGRESSION_MODE=false
 EXPLORE_MODE=false
+B4M_LIDAR=false
 LOCALIZATION_TEST=false
 TUNE_PARAMS=false
 NAVIGATION_PERFORMANCE_TEST=false
@@ -60,6 +62,10 @@ for arg in "$@"; do
             EXPLORE_MODE=true
             shift
             ;;
+        --b4m-lidar)
+            B4M_LIDAR=true
+            shift
+            ;;
         --localization-test)
             LOCALIZATION_TEST=true
             shift
@@ -79,7 +85,7 @@ for arg in "$@"; do
             shift
             ;;
         -h|--help)
-            echo "Usage: $0 [--skip-agent] [--only-agent] [--autotest] [--debug] [--simulation] [--regression] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>]"
+            echo "Usage: $0 [--skip-agent] [--only-agent] [--autotest] [--debug] [--simulation] [--regression] [--explore] [--b4m-lidar] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>]"
             echo "  --skip-agent:                   Skip the Micro-ROS agent launch (Step 1)"
             echo "  --only-agent:                   Launch ONLY the Micro-ROS agent (Step 1) and exit"
             echo "  --autotest:                     Run in automated test mode (non-interactive)"
@@ -87,6 +93,7 @@ for arg in "$@"; do
             echo "  --simulation:                   Launch in Gazebo simulation mode instead of real robot"
             echo "  --regression:                   Run comprehensive regression test suite (navigation + laser stability)"
             echo "  --explore:                      Enable autonomous exploration mode with obstacle avoidance"
+            echo "  --b4m-lidar:                    Enable B4M LiDAR-based intelligent navigation with API"
             echo "  --localization-test:            Enable localization quality and navigation performance testing"
             echo "  --tune-params:                  Enable parameter tuning iterations (requires --localization-test)"
             echo "  --navigation-performance-test:  Execute 1x1m square navigation circuit testing"
@@ -129,6 +136,15 @@ if [ "$EXPLORE_MODE" = true ] && [ "$NAVIGATION_PERFORMANCE_TEST" = true ]; then
     echo "ERROR: --explore mode is incompatible with --navigation-performance-test mode"
     echo "Both modes require different robot control patterns"
     exit 1
+fi
+
+# B4M LiDAR mode incompatibility checks
+if [ "$B4M_LIDAR" = true ]; then
+    if [ "$EXPLORE_MODE" = true ] || [ "$REGRESSION_MODE" = true ] || [ "$LOCALIZATION_TEST" = true ] || [ "$NAVIGATION_PERFORMANCE_TEST" = true ]; then
+        echo "ERROR: --b4m-lidar is incompatible with other navigation modes"
+        echo "B4M LiDAR mode is a dedicated navigation system"
+        exit 1
+    fi
 fi
 
 # Handle exploration mode
@@ -230,6 +246,121 @@ if [ "$EXPLORE_MODE" = true ]; then
         sleep 30
         echo "🗺️  Exploration continues... (Ctrl+C to stop)"
         echo "   Check RViz to see mapping progress"
+    done
+fi
+
+# Handle B4M LiDAR mode
+if [ "$B4M_LIDAR" = true ]; then
+    echo "🤖 B4M LIDAR INTELLIGENT NAVIGATION MODE"
+    echo "=========================================="
+    echo "Launching LiDAR-based navigation with B4M API integration"
+    
+    if [ "$SIMULATION_MODE" = true ]; then
+        echo "Mode: Gazebo Classic Simulation"
+        WORLD_NAME="exploration_test_classic"  # Use exploration world with obstacles
+    else
+        echo "Mode: Real Robot with B4M API"
+    fi
+    
+    echo ""
+    echo "This mode will:"
+    echo "- Use LiDAR to detect obstacles"
+    echo "- Request turn directions from B4M API"
+    echo "- Navigate intelligently based on API decisions"
+    echo "- API cooldown: 20 seconds between requests"
+    echo "- Robot stops during cooldown if obstacles detected"
+    echo ""
+    
+    # Launch B4M LiDAR sequence
+    echo "🚀 B4M LIDAR LAUNCH SEQUENCE"
+    echo "======================================"
+    
+    if [ "$SIMULATION_MODE" = true ]; then
+        # Step 1: Launch Gazebo Classic simulation
+        echo "🎮 Step 1: Starting Gazebo Classic simulation"
+        ros2 launch yahboomcar_nav gazebo_classic_nav_launch.py world_name:=$WORLD_NAME > "$LOGS_DIR/b4m_lidar_gazebo_$TIMESTAMP.log" 2>&1 &
+        GAZEBO_PID=$!
+        echo "   Waiting for simulation initialization..."
+        sleep 8
+        
+        # Step 2: Launch RViz for visualization
+        echo "📊 Step 2: Starting RViz for visualization"
+        ros2 launch yahboomcar_nav display_launch.py use_sim_time:=true > "$LOGS_DIR/b4m_lidar_rviz_$TIMESTAMP.log" 2>&1 &
+        RVIZ_PID=$!
+        sleep 3
+        
+        # Step 3: Start B4M LiDAR Navigator
+        echo "🌐 Step 3: Starting B4M LiDAR Navigator with API integration"
+        echo "   API endpoint: https://app.bike4mind.com/api/chat"
+        echo "   API cooldown: 20 seconds between calls"
+        echo "   Stop distance: 30.48cm (1 foot)"
+        echo "   Using simulation time"
+        
+        cd "$WORKSPACE_ROOT" && . install/setup.bash && ros2 run b4m_lidar b4m_lidar_navigator --ros-args -p use_sim_time:=true > "$LOGS_DIR/b4m_lidar_navigator_$TIMESTAMP.log" 2>&1 &
+        B4M_LIDAR_PID=$!
+        
+    else
+        echo "   ⚠️  Make sure physical robot is powered on and ready"
+        echo "   ⚠️  Ensure exploration area is safe"
+        read -p "   Press Enter when robot is ready..."
+        
+        # Step 1: Launch robot bringup 
+        echo "🤖 Step 1: Starting robot sensor and control systems"
+        cd "$WORKSPACE_ROOT" && . source_workspaces.sh && ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py > "$LOGS_DIR/b4m_lidar_bringup_$TIMESTAMP.log" 2>&1 &
+        BRINGUP_PID=$!
+        echo "   Waiting for sensor initialization..."
+        sleep 8
+        
+        # Step 2: Launch RViz for visualization
+        echo "📊 Step 2: Starting RViz for visualization"
+        ros2 launch yahboomcar_nav display_launch.py use_sim_time:=false > "$LOGS_DIR/b4m_lidar_rviz_$TIMESTAMP.log" 2>&1 &
+        RVIZ_PID=$!
+        sleep 3
+        
+        # Step 3: Start B4M LiDAR Navigator
+        echo "🌐 Step 3: Starting B4M LiDAR Navigator with API integration"
+        echo "   API endpoint: https://app.bike4mind.com/api/chat"
+        echo "   API cooldown: 20 seconds between calls"
+        echo "   Stop distance: 30.48cm (1 foot)"
+        
+        cd "$WORKSPACE_ROOT" && . install/setup.bash && ros2 run b4m_lidar b4m_lidar_navigator > "$LOGS_DIR/b4m_lidar_navigator_$TIMESTAMP.log" 2>&1 &
+        B4M_LIDAR_PID=$!
+    fi
+    
+    echo ""
+    echo "✅ B4M LIDAR NAVIGATION ACTIVE"
+    echo "======================================"
+    echo "🤖 Robot is navigating using LiDAR and B4M API"
+    echo "📊 Monitor in RViz:"
+    echo "   - Laser scans: /scan"
+    echo "   - Movement commands: /cmd_vel"
+    echo "   - Status: /b4m_lidar/status"
+    echo "   - Obstacle info: /b4m_lidar/obstacle_info"
+    echo "   - API cooldown: /b4m_lidar/api_cooldown"
+    echo ""
+    echo "📡 Control commands:"
+    echo "   - Stop: ros2 topic pub -1 /b4m_lidar/command std_msgs/String '{data: stop}'"
+    echo "   - Start: ros2 topic pub -1 /b4m_lidar/command std_msgs/String '{data: start}'"
+    echo "   - Reset: ros2 topic pub -1 /b4m_lidar/command std_msgs/String '{data: reset}'"
+    echo ""
+    echo "🛑 To stop navigation:"
+    echo "   - Press Ctrl+C in this terminal, OR"
+    echo "   - Run: ./b4m_shutdown.sh --keep-agent"
+    echo ""
+    
+    # Wait for user to stop
+    if [ "$SIMULATION_MODE" = true ]; then
+        trap 'echo "🛑 Stopping B4M LiDAR navigation..."; [ ! -z "$B4M_LIDAR_PID" ] && kill $B4M_LIDAR_PID 2>/dev/null; [ ! -z "$RVIZ_PID" ] && kill $RVIZ_PID 2>/dev/null; [ ! -z "$GAZEBO_PID" ] && kill $GAZEBO_PID 2>/dev/null; ./b4m_shutdown.sh > /dev/null 2>&1; echo "✅ B4M LiDAR navigation stopped"; exit 0' INT
+    else
+        trap 'echo "🛑 Stopping B4M LiDAR navigation..."; [ ! -z "$B4M_LIDAR_PID" ] && kill $B4M_LIDAR_PID 2>/dev/null; [ ! -z "$RVIZ_PID" ] && kill $RVIZ_PID 2>/dev/null; [ ! -z "$BRINGUP_PID" ] && kill $BRINGUP_PID 2>/dev/null; ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1; echo "✅ B4M LiDAR navigation stopped"; exit 0' INT
+    fi
+    
+    # Keep the script running and show periodic status
+    while true; do
+        sleep 30
+        echo "🤖 B4M LiDAR navigation continues... (Ctrl+C to stop)"
+        echo "   Check RViz for real-time visualization"
+        echo "   Monitor /b4m_lidar/status for navigation state"
     done
 fi
 
