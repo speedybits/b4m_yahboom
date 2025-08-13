@@ -26,7 +26,8 @@ curl -X POST \
     "message": "Hello! Can you help me with my project?",
     "model": "gpt-4o-mini",
     "temperature": 0.7,
-    "max_tokens": 500
+    "max_tokens": 500,
+    "sessionID": B4M_Robot_Session
   }' \
   https://app.bike4mind.com/api/chat
 
