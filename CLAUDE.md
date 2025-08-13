@@ -47,10 +47,10 @@ Never create code that has mocked components or tests mocked components
 Keep iterating on the code implementation until the unit tests pass
 
 ### Testing Best Practices
-- **Test Real Behavior**: Tests must use actual GUI components, not mocks, to detect real issues
-- **Integration Tests Required**: For GUI features, create tests that exercise the actual PyQt5 widgets and event loop
-- **Mock Only External Dependencies**: Mock ROS, MQTT, subprocess, etc. but never mock the core functionality being tested
-- **Test Failure Scenarios**: Write tests that expose bugs (like modal dialogs blocking event loops)
+- **Test Real Behavior**: Tests must use actual components, not mocks, to detect real issues
+- **Integration Tests Required**: Test MQTT integration with actual message handling
+- **Mock Only External Dependencies**: Mock MQTT broker, ROS services, etc. but test core navigation logic
+- **Test Failure Scenarios**: Write tests that expose bugs in navigation and MQTT handling
 - **Validate Against Real Usage**: If user reports a bug that tests don't catch, the tests are wrong, not the user
 
 ## Build Commands
@@ -59,36 +59,18 @@ Please remember to re-run colcon build whenever necessary after making changes t
 
 **CRITICAL: After rebuilding, you must restart any running ROS2 nodes/processes to load the new code. Python processes do not automatically reload changed modules.**
 
-## PyQt5 GUI Development Best Practices
+## MQTT Integration Development
 
-### Threading and Event Loop
-- **Never use QTimer from Python threading.Thread**: QTimer only works with QThread, not regular Python threads
-- **Use PyQt5 Signals for Cross-Thread Communication**: Signals are thread-safe and properly cross thread boundaries
-- **Avoid Modal Dialogs**: Modal dialogs block the event loop, preventing QTimer callbacks from executing
-- **Process Events in Tests**: Always call `QApplication.processEvents()` in GUI tests to process signals and events
+### MQTT Command Handling
+- **JSON Format**: All MQTT commands use structured JSON format
+- **Topic Structure**: Uses `yahboom/navigation/*` topic hierarchy
+- **Status Updates**: Real-time feedback via status topics
+- **Error Handling**: Comprehensive error reporting via MQTT
 
-### Dialog Management
-- **Use QDialog instead of QMessageBox**: QMessageBox has special closing behavior that interferes with programmatic closing
-- **Make Dialogs Non-Modal**: Use `setModal(False)` and `WindowStaysOnTopHint` instead of modal dialogs
-- **Emit Signals from Background Threads**: Use `pyqtSignal` to communicate from worker threads to main GUI thread
-- **Clean Up Dialog References**: Set dialog to `None` after closing to ensure clean state
-
-### Common PyQt5 Threading Patterns
-```python
-# WRONG - QTimer from Python thread
-def background_task():
-    QTimer.singleShot(0, update_gui)  # Fails!
-
-# CORRECT - Signal from Python thread  
-class MyGUI(QMainWindow):
-    updateSignal = pyqtSignal()
-    
-    def __init__(self):
-        self.updateSignal.connect(self.update_gui)
-    
-    def background_task(self):
-        self.updateSignal.emit()  # Works!
-```
+### Home Assistant Integration
+- **Coordinate-based Commands**: Direct position/orientation specification
+- **Real-time Status**: Live navigation progress updates
+- **Error Reporting**: Detailed error messages for troubleshooting
 
 ### ROS2 Workspace Build
 ```bash
@@ -137,7 +119,7 @@ This repository contains a complex ROS2 system with multiple workspaces:
 - **yahboomcar_bringup**: Core robot launch files and sensor integration
 - **yahboomcar_nav**: Navigation stack including waypoint navigation, mapping, and localization
 - **yahboomcar_ctrl**: Robot control interfaces (joystick, keyboard)
-- **b4m_waypoint_nav**: Advanced waypoint navigation with MQTT integration and GUI
+- **b4m_waypoint_nav**: Advanced waypoint navigation with MQTT integration
 
 #### Hardware Integration
 - **yahboomcar_base_node**: Low-level hardware interface (C++)
@@ -157,7 +139,7 @@ This repository contains a complex ROS2 system with multiple workspaces:
 3. **Sensor Layer**: IMU, LIDAR, camera data processing
 4. **Navigation Layer**: SLAM mapping, localization, path planning
 5. **Control Layer**: Waypoint navigation, teleoperation, autonomous behavior
-6. **Integration Layer**: MQTT integration for Home Assistant, GUI tools
+6. **Integration Layer**: MQTT integration for Home Assistant
 
 ### Launch Sequence
 The system follows a specific startup sequence (automated in `b4m_launch.sh`):
@@ -168,7 +150,7 @@ The system follows a specific startup sequence (automated in `b4m_launch.sh`):
 5. Launch navigation system
 6. Initialize robot pose
 7. Start waypoint navigation with MQTT
-8. Launch GUI tools
+8. System ready for operation
 
 ## Common Development Patterns
 
@@ -182,7 +164,7 @@ The system follows a specific startup sequence (automated in `b4m_launch.sh`):
 ### Waypoint Management System
 - **Single map approach**: All waypoints stored under `yahboom_map` key
 - **Data storage**: JSON format at `/home/yahboom/b4m_yahboom/install/b4m_waypoint_nav/waypoints.json`
-- **GUI tool**: PyQt5-based robot manager with map visualization
+- **MQTT Interface**: Command-based waypoint control via Home Assistant
 - **Coordinate-based navigation**: Direct coordinate sending via MQTT eliminates waypoint lookup
 - **Waypoint structure**: Includes position, orientation, timestamp, and visualization properties
 - **Map format support**: Compatible with both Gmapping and Cartographer maps
@@ -255,15 +237,12 @@ The system uses a two-stage odometry pipeline for accurate position tracking:
 **Critical**: The EKF requires ALL workspaces to be sourced (especially `imu_ws`) to function.
 Without proper workspace sourcing, the EKF won't start and `/odom` won't be published.
 
-### GUI Development
-- **PyQt5**: Primary GUI framework for robot manager
-- **Dependencies**: `python3-pyqt5`, `python3-pyqt5.qtsvg`, `pillow`, `numpy`
-- **Map visualization**: Click-to-place waypoints with zoom/pan support
-- **Error handling**: Terminal-based logging with ROS2 logging mechanisms
-- **Connected mode**: Automatic robot detection and live position updates
-- **Map format handling**: Enhanced support for different image formats (P, L, RGB modes)
-- **Coordinate debugging**: Built-in coordinate conversion testing and validation
-- **View controls**: Reset view, zoom, pan, and proper map centering
+### MQTT Command Development
+- **JSON Validation**: Ensure all MQTT commands follow proper JSON schema
+- **Error Handling**: Comprehensive error reporting via MQTT status topics
+- **Coordinate Validation**: Verify position/orientation data before navigation
+- **Status Reporting**: Real-time progress updates for Home Assistant
+- **Connection Management**: Robust MQTT broker connection handling
 
 #### B4M Robot Manager - Central Launch Control
 The B4M Robot Manager serves as the central application for system control, integrating the launch and shutdown sequences directly into the GUI:

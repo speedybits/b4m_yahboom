@@ -2377,19 +2377,7 @@ if [ "$LOCALIZATION_TEST" = true ]; then
     fi
 fi
 
-# Step 8/10: Start the Robot Manager GUI (if MQTT enabled)
-if [ "$B4M_HA" = true ]; then
-    if [ "$LOCALIZATION_TEST" = true ]; then
-        STEP_NUM="10"
-    else
-        STEP_NUM="8"
-    fi
-    launch_in_terminal "Starting the B4M Robot Manager GUI for visual control of waypoints" \
-        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 run b4m_waypoint_nav b4m_robot_manager_node.py" \
-        "$STEP_NUM"
-else
-    echo "Skipping Robot Manager GUI (requires --b4m-HA for MQTT/Home Assistant features)"
-fi
+# Robot Manager GUI has been removed - MQTT/HA functionality is provided by b4m_waypoint_nav node (Step 7)
 
 
 log_message "B4M Robot launch script completed"
