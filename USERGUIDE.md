@@ -63,14 +63,14 @@ The `--b4m-HA` flag controls whether MQTT and Home Assistant features are enable
 
 ### When --b4m-HA is ENABLED:
 - Step 7 launches the B4M waypoint navigation node with MQTT parameters
-- Step 8 launches the Robot Manager GUI for waypoint management
+- MQTT command interface for remote waypoint management
 - Full Home Assistant integration via MQTT topics
 - Waypoint navigation with coordinate-based commands
 - Real-time status updates to Home Assistant
-- GUI control panel for system management
+- MQTT command interface for system integration
 
 ### When --b4m-HA is NOT provided (default):
-- Steps 7 and 8 are skipped
+- Step 7 is skipped
 - No MQTT connectivity required
 - No Home Assistant integration
 - Basic robot navigation without external control
@@ -223,7 +223,6 @@ The script executes the following steps in sequence:
 5. **Navigation System**: Launches SLAM-based navigation
 6. **SLAM Initialization**: Monitors SLAM system startup
 7. **MQTT Navigation**: Starts waypoint navigation with Home Assistant integration (only if --b4m-HA enabled)
-8. **Robot Manager GUI**: Launches visual control interface (only if --b4m-HA enabled)
 
 ### Simulation Mode (`--simulation`)
 
@@ -236,14 +235,13 @@ Uses Gazebo Classic simulation environment:
 5. **SLAM Navigation**: Launches SLAM toolbox for mapping and localization
 6. **SLAM Initialization**: Verifies SLAM map generation (69x77 grid)
 7. **MQTT Navigation**: Starts waypoint navigation system (only if --b4m-HA enabled)
-8. **Robot Manager GUI**: Visual control interface (only if --b4m-HA enabled)
 
 ### Exploration Mode (`--explore`)
 
 Available in both simulation and real robot modes:
 
 1. **System Launch**: Same as above (steps 1-7)
-2. **Autonomous Explorer**: Launches obstacle-avoiding exploration script instead of GUI
+2. **Autonomous Explorer**: Launches obstacle-avoiding exploration script
    - Robot moves slowly (0.08 m/s) for safety
    - Uses laser scanner for obstacle detection (40cm safe distance)
    - Changes direction randomly every 8-15 seconds for thorough exploration
@@ -403,8 +401,7 @@ ros2 run nav2_map_server map_saver_cli -f my_simulation_map
 # Use keyboard teleop to drive robot
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
 
-# Or use the Robot Manager GUI for manual control
-# GUI provides visual waypoint placement and robot control
+# Manual waypoint control is available via MQTT commands when --b4m-HA is enabled
 ```
 
 **Important mapping tips:**
@@ -587,64 +584,15 @@ Always use the shutdown script when finished:
 
 **Important**: Always use `--keep-agent` flag to preserve hardware connection.
 
-## B4M Robot Manager GUI
+## MQTT Waypoint Management
 
-The B4M Robot Manager provides a centralized graphical interface for controlling the robot system.
+When `--b4m-HA` is enabled, waypoint management is handled via MQTT commands:
 
-### Control Panel Features
-
-The GUI includes three primary control buttons:
-- **Rebuild**: Triggers colcon build when parameter changes require recompilation
-- **Start**: Executes the full b4m_launch.sh sequence programmatically
-- **Stop**: Runs b4m_shutdown.sh --keep-agent to cleanly stop the system
-
-### Smart State Management
-
-- **Initial state**: Only "Start" button is enabled
-- **During launch**: "Start" disabled, "Stop" enabled, status displays current step
-- **Parameter changes**: "Rebuild" becomes enabled when changes require compilation
-- **Active system**: Navigation parameters become read-only (browsable but not editable)
-
-### Launch Integration
-
-The GUI executes the complete launch sequence:
-1. Start Micro-ROS Agent (Docker container)
-2. Power on physical robot (manual confirmation)
-3. Launch sensor integration
-4. Start RViz visualization
-5. Launch navigation with pre-built map
-6. Initial robot positioning
-7. Start B4M Waypoint Navigation with MQTT (if --b4m-HA enabled)
-8. System ready for operation
-
-### Shutdown Integration
-
-The Stop button executes clean shutdown:
-1. Stop all ROS2 nodes
-2. Force kill remaining processes if needed
-3. Stop waypoint navigation and manager processes
-4. Preserve Micro-ROS agent (always uses --keep-agent)
-5. Clean up Python processes
-6. Stop RViz if running
-
-**CRITICAL**: The GUI always preserves the Micro-ROS agent connection to avoid requiring physical robot restart.
-
-### Map Visualization Features
-
-- **Click-to-place waypoints**: Interactive waypoint creation on map
-- **Zoom/pan controls**: Navigate large maps easily
-- **Live position updates**: Real-time robot location when connected
-- **Coordinate debugging**: Built-in conversion testing and validation
-- **Multiple map formats**: Supports P, L, and RGB image modes
-- **Reset view**: Quick return to default map view
-
-### Waypoint Management
-
-- **Visual editing**: Click on map to place/edit waypoints
-- **Coordinate display**: Shows exact position and orientation
-- **MQTT integration**: Sends waypoints directly to navigation system (requires --b4m-HA)
-- **Persistence**: Saves waypoints to JSON for future sessions
-- **Real-time updates**: Live feedback on navigation status
+- **Command format**: JSON messages sent to `yahboom/navigation/command` topic
+- **Status updates**: Real-time feedback via `yahboom/navigation/status` topic  
+- **Coordinate-based**: Direct position/orientation specification
+- **Persistence**: Waypoints saved to JSON for future sessions
+- **Home Assistant integration**: Native HA entity control
 
 ## Integration with Home Assistant
 

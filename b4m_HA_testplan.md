@@ -10,7 +10,7 @@ This document outlines the test plan for the Home Assistant/MQTT integration fea
 
 **Key Changes**: 
 - MQTT/Home Assistant features are now optional, controlled by the `--b4m-HA` flag
-- When `--b4m-HA` is NOT provided, Steps 7 (MQTT Navigation) and 8 (Robot Manager GUI) are skipped
+- When `--b4m-HA` is NOT provided, Step 7 (MQTT Navigation) is skipped
 - When `--b4m-HA` IS provided, full Home Assistant integration is enabled
 - Testing focuses on both modes: with and without `--b4m-HA`
 
@@ -45,10 +45,10 @@ Start → Step 2 → Step 3 → Step 4 → Step 5 → Step 6 → Complete
 
 #### With --b4m-HA:
 ```
-Start → Step 2 → Step 3 → Step 4 → Step 5 → Step 6 → Step 7 → Step 8 → Complete
-         ↓        ↓        ↓        ↓        ↓        ↓        ↓
-      Execute  Execute  Execute  Execute  Execute   MQTT    GUI
-                                                    Nav    Manager
+Start → Step 2 → Step 3 → Step 4 → Step 5 → Step 6 → Step 7 → Complete
+         ↓        ↓        ↓        ↓        ↓        ↓
+      Execute  Execute  Execute  Execute  Execute   MQTT
+                                                    Nav
 ```
 
 ## Test Steps and Validation Criteria
@@ -152,17 +152,8 @@ Start → Step 2 → Step 3 → Step 4 → Step 5 → Step 6 → Step 7 → Step
 **Timeout**: 10 seconds (when enabled)
 **Failure Actions**: Kill process, log errors, abort test (when enabled)
 
-### Step 8: Robot Manager GUI (--b4m-HA only)
-**Command**: `ros2 run b4m_waypoint_nav b4m_robot_manager_node.py`
-**Execution**: Only when `--b4m-HA` flag is provided
-**Validation Criteria when enabled**:
-- GUI process starts successfully
-- PyQt5 interface initializes
-- ROS2 integration established
-- No critical Python/Qt exceptions
-**Validation when disabled**: Step is skipped, validation passes automatically
-**Timeout**: 10 seconds (when enabled)
-**Failure Actions**: Kill process, log errors (when enabled)
+### Robot Manager GUI Removed
+The Robot Manager GUI has been removed from the system. All MQTT/Home Assistant functionality is now provided directly by the b4m_waypoint_nav node in Step 7.
 
 
 ## Test Implementation Details
@@ -272,7 +263,6 @@ Step Summary:
 ✅ Step 5: Navigation System (45s)
 ✅ Step 6: Pose Estimation (8s)
 ✅ Step 7: MQTT Navigation (18s) [only with --b4m-HA]
-✅ Step 8: Robot Manager GUI (5s) [only with --b4m-HA]
 
 Logs archived to: test_results/success_20250724_173015/
 ```
@@ -355,7 +345,7 @@ The `--b4m-HA` integration:
 
 # Test 2: Verify steps 7-8 execute with flag
 ./b4m_launch.sh --simulation --b4m-HA
-# Expected: Full system including MQTT navigation and GUI
+# Expected: Full system including MQTT navigation
 
 # Test 3: Regression without HA (should pass)
 ./b4m_launch.sh --regression --simulation
@@ -396,7 +386,7 @@ This automated test plan ensures robust validation of the B4M robot launch seque
 
 - [x] **Create conditional execution logic**
   - [x] Skip Step 7 (MQTT Navigation) when `--b4m-HA` not provided
-  - [x] Skip Step 8 (Robot Manager GUI) when `--b4m-HA` not provided
+  - [x] Robot Manager GUI removed entirely
   - [x] Update validation to handle skipped steps
 
 - [x] **Implement step validation updates**
@@ -416,10 +406,10 @@ This automated test plan ensures robust validation of the B4M robot launch seque
   - [x] Verify Python process when HA enabled
   - [x] Return success for intentional skip
 
-- [x] **Step 8 Robot Manager GUI - NEW**
-  - [x] Only execute when `--b4m-HA` provided
-  - [x] Skip entirely when HA disabled
-  - [x] Proper step numbering based on mode
+- [x] **Robot Manager GUI Removal**
+  - [x] All GUI source files removed
+  - [x] Launch script updated to remove Step 8
+  - [x] MQTT functionality retained in waypoint navigation node
 
 ### Existing Step Validations (Unchanged)
 - Step 2-6 validations remain the same
@@ -457,10 +447,10 @@ This automated test plan ensures robust validation of the B4M robot launch seque
 
 | Test Case | Command | Expected Result |
 |-----------|---------|----------------|
-| Basic launch (no HA) | `./b4m_launch.sh` | Steps 1-6 execute, 7-8 skipped |
-| Full HA integration | `./b4m_launch.sh --b4m-HA` | All steps 1-8 execute |
-| Simulation (no HA) | `./b4m_launch.sh --simulation` | Simulation without MQTT/GUI |
-| Simulation with HA | `./b4m_launch.sh --simulation --b4m-HA` | Full simulation with MQTT/GUI |
+| Basic launch (no HA) | `./b4m_launch.sh` | Steps 1-6 execute, 7 skipped |
+| Full HA integration | `./b4m_launch.sh --b4m-HA` | All steps 1-7 execute |
+| Simulation (no HA) | `./b4m_launch.sh --simulation` | Simulation without MQTT |
+| Simulation with HA | `./b4m_launch.sh --simulation --b4m-HA` | Full simulation with MQTT |
 | Regression (no HA) | `./b4m_launch.sh --regression` | Tests without MQTT dependencies |
 | Regression with HA | `./b4m_launch.sh --regression --b4m-HA` | Full regression including MQTT |
 
@@ -489,7 +479,7 @@ This automated test plan ensures robust validation of the B4M robot launch seque
 
 2. **Conditional Execution Logic**
    - Step 7 (MQTT Navigation) only runs with `--b4m-HA`
-   - Step 8 (Robot Manager GUI) only runs with `--b4m-HA`
+   - Robot Manager GUI has been removed
    - System works correctly with or without HA
 
 3. **Documentation Updated**
@@ -498,7 +488,7 @@ This automated test plan ensures robust validation of the B4M robot launch seque
    - Test plan reflects new architecture
 
 ### Testing Recommendations:
-1. Run `./b4m_launch.sh` without flag - verify steps 7-8 are skipped
-2. Run `./b4m_launch.sh --b4m-HA` - verify full HA integration
+1. Run `./b4m_launch.sh` without flag - verify step 7 is skipped
+2. Run `./b4m_launch.sh --b4m-HA` - verify MQTT integration works
 3. Test regression mode both ways
 4. Verify exploration and other modes work correctly
