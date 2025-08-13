@@ -2,7 +2,7 @@
 
 ## Overview
 
-The B4M Robot is an autonomous navigation system built on ROS2 with MQTT/Home Assistant integration. This guide covers how to use the `b4m_launch.sh` script to launch and operate the robot system with SLAM (Simultaneous Localization and Mapping) capabilities using Gazebo Classic for simulation.
+The B4M Robot is an autonomous navigation system built on ROS2 with optional MQTT/Home Assistant integration. This guide covers how to use the `b4m_launch.sh` script to launch and operate the robot system with SLAM (Simultaneous Localization and Mapping) capabilities using Gazebo Classic for simulation.
 
 ## Prerequisites
 
@@ -10,6 +10,7 @@ The B4M Robot is an autonomous navigation system built on ROS2 with MQTT/Home As
 - Docker (for Micro-ROS agent)
 - Physical robot or Gazebo Classic simulation environment
 - Built workspace (`colcon build` completed)
+- For regression testing: python3-opencv and python3-skimage (for image comparison)
 
 ## Quick Start
 
@@ -17,7 +18,13 @@ The B4M Robot is an autonomous navigation system built on ROS2 with MQTT/Home As
 ```bash
 ./b4m_launch.sh
 ```
-Launches the full system with user prompts for each step.
+Launches the core robot system without MQTT/Home Assistant features.
+
+### With Home Assistant Integration
+```bash
+./b4m_launch.sh --b4m-HA
+```
+Launches the full system including MQTT and Home Assistant integration.
 
 ### Simulation Mode
 ```bash
@@ -25,11 +32,11 @@ Launches the full system with user prompts for each step.
 ```
 Runs the robot in Gazebo Classic simulation instead of using physical hardware.
 
-### Automated Testing
+### Regression Testing
 ```bash
-./b4m_launch.sh --simulation --autotest
+./b4m_launch.sh --simulation --regression
 ```
-Runs all steps automatically for testing and validation.
+Runs comprehensive regression test suite with automated validation.
 
 ## Command Line Options
 
@@ -37,12 +44,53 @@ Runs all steps automatically for testing and validation.
 |--------|-------------|
 | `--skip-agent` | Skip the Micro-ROS agent launch (Step 1) |
 | `--only-agent` | Launch ONLY the Micro-ROS agent and exit |
-| `--autotest` | Run in automated test mode (non-interactive) |
 | `--debug` | Enable verbose debug logging |
 | `--simulation` | Launch in Gazebo Classic simulation mode |
-| `--slam-test` | Add automated SLAM testing steps (implies --autotest) |
-| `--explore` | Enable autonomous exploration on **REAL ROBOT** (implies --autotest) |
+| `--regression` | Run comprehensive regression test suite (navigation + laser stability) |
+| `--explore` | Enable autonomous exploration mode with obstacle avoidance |
+| `--b4m-lidar` | Enable B4M LiDAR-based intelligent navigation with API |
+| `--b4m-HA` | Enable Home Assistant MQTT integration features |
+| `--b4m-ping` | Test bike4mind API with random obstacle detection messages |
+| `--localization-test` | (Experimental) Enable localization quality and navigation performance testing |
+| `--tune-params` | (Experimental) Enable parameter tuning iterations (requires --localization-test) |
+| `--navigation-performance-test` | (Experimental) Execute 1x1m square navigation circuit testing |
+| `--parameter-set <name>` | (Experimental) Specify parameter set to test (baseline, indoor_optimized, high_precision, balanced, fast_convergence) |
 | `-h, --help` | Show help information |
+
+## Home Assistant Integration (--b4m-HA)
+
+The `--b4m-HA` flag controls whether MQTT and Home Assistant features are enabled:
+
+### When --b4m-HA is ENABLED:
+- Step 7 launches the B4M waypoint navigation node with MQTT parameters
+- Step 8 launches the Robot Manager GUI for waypoint management
+- Full Home Assistant integration via MQTT topics
+- Waypoint navigation with coordinate-based commands
+- Real-time status updates to Home Assistant
+- GUI control panel for system management
+
+### When --b4m-HA is NOT provided (default):
+- Steps 7 and 8 are skipped
+- No MQTT connectivity required
+- No Home Assistant integration
+- Basic robot navigation without external control
+- Suitable for standalone operation or development
+- Reduces system complexity and dependencies
+
+### Example Commands:
+```bash
+# Basic operation without Home Assistant
+./b4m_launch.sh --simulation
+
+# Full Home Assistant integration
+./b4m_launch.sh --simulation --b4m-HA
+
+# Regression testing (doesn't need MQTT)
+./b4m_launch.sh --simulation --regression
+
+# Exploration with Home Assistant monitoring
+./b4m_launch.sh --explore --b4m-HA
+```
 
 ## Usage Scenarios
 
@@ -51,8 +99,10 @@ Runs all steps automatically for testing and validation.
 |----------|---------|--------------|
 | **Explore with REAL robot** | `./b4m_launch.sh --explore` | Physical robot explores real environment |
 | **Explore in simulation** | `./b4m_launch.sh --simulation --explore` | Simulated robot explores in Gazebo Classic |
-| **Regular real robot launch** | `./b4m_launch.sh` | Interactive setup with physical robot |
-| **Regular simulation launch** | `./b4m_launch.sh --simulation` | Interactive setup in Gazebo Classic |
+| **Regular real robot launch** | `./b4m_launch.sh` | Basic robot setup without MQTT |
+| **Real robot with Home Assistant** | `./b4m_launch.sh --b4m-HA` | Full system with MQTT/HA integration |
+| **Regular simulation launch** | `./b4m_launch.sh --simulation` | Basic simulation without MQTT |
+| **Simulation with Home Assistant** | `./b4m_launch.sh --simulation --b4m-HA` | Full simulation with MQTT/HA |
 
 ### 1. Interactive SLAM Mapping in Simulation
 ```bash
@@ -70,25 +120,26 @@ Monitor SLAM map generation (69x77 grid) in RViz.
 
 ### 2. Automated System Validation
 ```bash
-./b4m_launch.sh --simulation --autotest --slam-test
+./b4m_launch.sh --simulation --regression
 ```
-Runs full automated test suite including:
-- 1-meter square navigation pattern
-- SLAM map generation verification (69x77 grid)
-- MQTT waypoint navigation testing
-- 15 SLAM services availability check
+Runs comprehensive regression test suite including:
+- 360-degree rotation test with laser scan stability validation
+- Automated image comparison for RViz visualization
+- SLAM map generation verification
+- Full system health checks
+- Note: MQTT testing only if --b4m-HA is also provided
 
 ### 3. Quick System Check
 ```bash
-./b4m_launch.sh --simulation --autotest --debug
+./b4m_launch.sh --simulation --regression --debug
 ```
-Validates all components with verbose output for troubleshooting.
+Validates all components with verbose output for troubleshooting, including regression tests.
 
 ### 4. Real Robot Testing
 ```bash
-./b4m_launch.sh --autotest --debug
+./b4m_launch.sh --regression --debug
 ```
-Tests with physical robot (requires robot to be powered on).
+Runs regression tests with physical robot (requires robot to be powered on).
 
 ### 5. Development/Debug Mode
 ```bash
@@ -96,7 +147,44 @@ Tests with physical robot (requires robot to be powered on).
 ```
 Interactive mode with verbose logging for development work.
 
-### 6. Autonomous Exploration Mode
+### 6. B4M LiDAR Navigation Mode
+
+#### Real Robot with AI Navigation
+```bash
+./b4m_launch.sh --b4m-lidar
+```
+Physical robot uses bike4mind API for intelligent obstacle navigation.
+
+#### Simulation with AI Navigation
+```bash
+./b4m_launch.sh --simulation --b4m-lidar
+```
+Simulated robot demonstrates API-based navigation in Gazebo.
+
+**B4M LiDAR Features:**
+- **API Integration**: Connects to bike4mind API for obstacle analysis
+- **Natural Language**: Receives navigation suggestions in plain English
+- **Smart Cooldown**: 20-second API rate limiting
+- **Safe Distance**: Maintains 1-foot (30.48cm) minimum distance
+- **Real-time Topics**:
+  - `/b4m_lidar/status` - Current navigation state
+  - `/b4m_lidar/obstacle_info` - Detected obstacles
+  - `/b4m_lidar/api_cooldown` - API availability
+  - `/b4m_lidar/command` - Control interface
+
+**Control Commands:**
+```bash
+# Stop navigation
+ros2 topic pub -1 /b4m_lidar/command std_msgs/String '{data: stop}'
+
+# Resume navigation
+ros2 topic pub -1 /b4m_lidar/command std_msgs/String '{data: start}'
+
+# Reset system
+ros2 topic pub -1 /b4m_lidar/command std_msgs/String '{data: reset}'
+```
+
+### 7. Autonomous Exploration Mode
 
 #### Real Robot Exploration (Physical Robot)
 ```bash
@@ -134,8 +222,8 @@ The script executes the following steps in sequence:
 4. **RViz Visualization**: Starts visualization interface
 5. **Navigation System**: Launches SLAM-based navigation
 6. **SLAM Initialization**: Monitors SLAM system startup
-7. **MQTT Navigation**: Starts waypoint navigation with Home Assistant integration
-8. **Robot Manager GUI**: Launches visual control interface (interactive mode only)
+7. **MQTT Navigation**: Starts waypoint navigation with Home Assistant integration (only if --b4m-HA enabled)
+8. **Robot Manager GUI**: Launches visual control interface (only if --b4m-HA enabled)
 
 ### Simulation Mode (`--simulation`)
 
@@ -147,8 +235,8 @@ Uses Gazebo Classic simulation environment:
 4. **RViz Visualization**: Starts visualization with laser scan display
 5. **SLAM Navigation**: Launches SLAM toolbox for mapping and localization
 6. **SLAM Initialization**: Verifies SLAM map generation (69x77 grid)
-7. **MQTT Navigation**: Starts waypoint navigation system
-8. **Robot Manager GUI**: Visual control interface (if not in autotest mode)
+7. **MQTT Navigation**: Starts waypoint navigation system (only if --b4m-HA enabled)
+8. **Robot Manager GUI**: Visual control interface (only if --b4m-HA enabled)
 
 ### Exploration Mode (`--explore`)
 
@@ -163,13 +251,39 @@ Available in both simulation and real robot modes:
    - Integrates with SLAM for real-time mapping
    - Runs continuously until Ctrl+C
 
-### SLAM Testing Mode (--slam-test)
+### Special Testing Modes
 
-When enabled, adds these automated testing steps:
+#### B4M LiDAR Mode (--b4m-lidar)
+Enables intelligent LiDAR-based navigation with bike4mind API integration:
+- Real-time obstacle detection and classification via API
+- Natural language navigation suggestions
+- API cooldown management (20 seconds between calls)
+- Stop distance: 30.48cm (1 foot) from obstacles
+- Publishes status on `/b4m_lidar/status` and `/b4m_lidar/obstacle_info`
+- Control via `/b4m_lidar/command` topic (stop/start/reset)
+- Works in both simulation and real robot modes
+- Incompatible with other navigation modes
 
-8. **Automated Square Movement**: Robot executes 1-meter square pattern for mapping
-9. **Map Validation**: Saves and validates the generated map
-10. **MQTT Navigation Test**: Tests Home Assistant integration functionality
+#### B4M Ping Mode (--b4m-ping)
+Standalone API testing tool that:
+- Tests bike4mind API connectivity
+- Sends random obstacle detection messages
+- Validates API response handling
+- Incompatible with other modes
+
+#### Localization Test Mode (--localization-test) [Experimental]
+Advanced testing for localization quality:
+- Measures AMCL performance metrics
+- Tests navigation accuracy
+- Can be combined with --tune-params for parameter optimization
+- Can use --parameter-set to test specific AMCL configurations
+
+#### Navigation Performance Test (--navigation-performance-test) [Experimental]
+Executes comprehensive 1x1m square navigation testing:
+- Precise movement patterns
+- Performance metrics collection
+- Automatically enables localization testing
+- Validates navigation stack accuracy
 
 ## Operation Modes
 
@@ -179,12 +293,22 @@ When enabled, adds these automated testing steps:
 - Terminals remain open for monitoring and debugging
 - Ideal for development and troubleshooting
 
-### Autotest Mode (--autotest)
-- All steps execute automatically
+### Regression Mode (--regression)
+- Comprehensive test suite execution
+- Automated laser scan stability validation
+- RViz screenshot comparison against reference images:
+  - Captures screenshots at 3 key moments: initial, mid-rotation (180°), and final (360°)
+  - Compares against mode-appropriate reference screenshots with 90% similarity threshold
+  - Uses multi-method analysis: histogram, SSIM, feature matching, and template matching
+  - Ensures laser scan visualization and SLAM mapping remain consistent
+  - Test fails if screenshots differ by more than 10% from reference
+  - Automatically detects simulation vs real robot mode
 - Built-in validation for each step
-- Automatic cleanup on failure
-- 60-second timeout per step (120s for navigation)
-- Ideal for CI/CD and automated testing
+- Cleanup at START (not end) to ensure clean state
+- System left running after tests for debugging
+- Uses filtered /odom topic from EKF, not raw /odom_raw
+- Manual cleanup available: ./b4m_shutdown.sh --keep-agent
+- Ideal for CI/CD and quality assurance
 
 ## System Requirements
 
@@ -385,7 +509,7 @@ The script includes built-in process monitoring:
 **RViz fails to start**
 - Check DISPLAY environment variable
 - Ensure X11 forwarding if using SSH
-- In autotest mode, virtual display is automatically configured
+- In regression mode, virtual display is automatically configured
 
 **Navigation system doesn't activate**
 - Verify all sensor data is available (`ros2 topic list`)
@@ -453,7 +577,7 @@ ros2 launch yahboomcar_nav slam_test_gazebo_classic.py --show-args
 The script includes automatic cleanup for:
 - Duplicate process detection
 - Failed step recovery
-- Autotest mode failures
+- Regression test failures
 
 ### Manual Cleanup
 Always use the shutdown script when finished:
@@ -463,9 +587,68 @@ Always use the shutdown script when finished:
 
 **Important**: Always use `--keep-agent` flag to preserve hardware connection.
 
+## B4M Robot Manager GUI
+
+The B4M Robot Manager provides a centralized graphical interface for controlling the robot system.
+
+### Control Panel Features
+
+The GUI includes three primary control buttons:
+- **Rebuild**: Triggers colcon build when parameter changes require recompilation
+- **Start**: Executes the full b4m_launch.sh sequence programmatically
+- **Stop**: Runs b4m_shutdown.sh --keep-agent to cleanly stop the system
+
+### Smart State Management
+
+- **Initial state**: Only "Start" button is enabled
+- **During launch**: "Start" disabled, "Stop" enabled, status displays current step
+- **Parameter changes**: "Rebuild" becomes enabled when changes require compilation
+- **Active system**: Navigation parameters become read-only (browsable but not editable)
+
+### Launch Integration
+
+The GUI executes the complete launch sequence:
+1. Start Micro-ROS Agent (Docker container)
+2. Power on physical robot (manual confirmation)
+3. Launch sensor integration
+4. Start RViz visualization
+5. Launch navigation with pre-built map
+6. Initial robot positioning
+7. Start B4M Waypoint Navigation with MQTT (if --b4m-HA enabled)
+8. System ready for operation
+
+### Shutdown Integration
+
+The Stop button executes clean shutdown:
+1. Stop all ROS2 nodes
+2. Force kill remaining processes if needed
+3. Stop waypoint navigation and manager processes
+4. Preserve Micro-ROS agent (always uses --keep-agent)
+5. Clean up Python processes
+6. Stop RViz if running
+
+**CRITICAL**: The GUI always preserves the Micro-ROS agent connection to avoid requiring physical robot restart.
+
+### Map Visualization Features
+
+- **Click-to-place waypoints**: Interactive waypoint creation on map
+- **Zoom/pan controls**: Navigate large maps easily
+- **Live position updates**: Real-time robot location when connected
+- **Coordinate debugging**: Built-in conversion testing and validation
+- **Multiple map formats**: Supports P, L, and RGB image modes
+- **Reset view**: Quick return to default map view
+
+### Waypoint Management
+
+- **Visual editing**: Click on map to place/edit waypoints
+- **Coordinate display**: Shows exact position and orientation
+- **MQTT integration**: Sends waypoints directly to navigation system (requires --b4m-HA)
+- **Persistence**: Saves waypoints to JSON for future sessions
+- **Real-time updates**: Live feedback on navigation status
+
 ## Integration with Home Assistant
 
-The system integrates with Home Assistant via MQTT:
+When enabled with the `--b4m-HA` flag, the system integrates with Home Assistant via MQTT:
 
 ### MQTT Topics
 - `yahboom/navigation/command`: Send navigation commands

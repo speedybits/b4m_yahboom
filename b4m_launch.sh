@@ -4,7 +4,7 @@
 # This script automates the launch process for the B4M Robot 
 # Each step will be launched in a separate terminal with user confirmation
 #
-# Usage: ./b4m_launch.sh [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--b4m-lidar] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>]
+# Usage: ./b4m_launch.sh [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--b4m-lidar] [--b4m-HA] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>]
 #   --skip-agent:                   Skip the Micro-ROS agent launch (Step 1)
 #   --only-agent:                   Launch ONLY the Micro-ROS agent (Step 1) and exit
 #   --debug:                        Enable verbose debug logging
@@ -12,6 +12,7 @@
 #   --regression:                   Run comprehensive regression test suite (navigation + laser stability)
 #   --explore:                      Enable autonomous exploration mode with obstacle avoidance
 #   --b4m-lidar:                    Enable B4M LiDAR-based intelligent navigation with API
+#   --b4m-HA:                       Enable Home Assistant MQTT integration features
 #   --localization-test:            Enable localization quality and navigation performance testing
 #   --tune-params:                  Enable parameter tuning iterations (requires --localization-test)
 #   --navigation-performance-test:  Execute advanced 1x1m square navigation circuit testing with comprehensive metrics
@@ -26,6 +27,7 @@ REGRESSION_MODE=false
 EXPLORE_MODE=false
 B4M_LIDAR=false
 B4M_PING=false
+B4M_HA=false
 LOCALIZATION_TEST=false
 TUNE_PARAMS=false
 NAVIGATION_PERFORMANCE_TEST=false
@@ -64,6 +66,10 @@ for arg in "$@"; do
             B4M_PING=true
             shift
             ;;
+        --b4m-HA)
+            B4M_HA=true
+            shift
+            ;;
         --localization-test)
             LOCALIZATION_TEST=true
             shift
@@ -83,7 +89,7 @@ for arg in "$@"; do
             shift
             ;;
         -h|--help)
-            echo "Usage: $0 [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--b4m-lidar] [--b4m-ping] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>]"
+            echo "Usage: $0 [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--b4m-lidar] [--b4m-HA] [--b4m-ping] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>]"
             echo "  --skip-agent:                   Skip the Micro-ROS agent launch (Step 1)"
             echo "  --only-agent:                   Launch ONLY the Micro-ROS agent (Step 1) and exit"
             echo "  --debug:                        Enable verbose debug logging"
@@ -91,11 +97,12 @@ for arg in "$@"; do
             echo "  --regression:                   Run comprehensive regression test suite (navigation + laser stability)"
             echo "  --explore:                      Enable autonomous exploration mode with obstacle avoidance"
             echo "  --b4m-lidar:                    Enable B4M LiDAR-based intelligent navigation with API"
+	    echo "  --b4m-HA:                       (Experimental) Enable Home Assistant MQTT integration features"
             echo "  --b4m-ping:                     Test bike4mind API with random obstacle detection messages"
-            echo "  --localization-test:            Enable localization quality and navigation performance testing"
-            echo "  --tune-params:                  Enable parameter tuning iterations (requires --localization-test)"
-            echo "  --navigation-performance-test:  Execute 1x1m square navigation circuit testing"
-            echo "  --parameter-set <name>:         Specify parameter set to test (baseline, indoor_optimized, high_precision, balanced, fast_convergence)"
+	    echo "  --localization-test:            (Untested) Enable localization quality and navigation performance testing"
+	    echo "  --tune-params:                  (Untested) Enable parameter tuning iterations (requires --localization-test)"
+	    echo "  --navigation-performance-test:  (Untested) Execute 1x1m square navigation circuit testing"
+	    echo "  --parameter-set <name>:         (Untested) Specify parameter set to test (baseline, indoor_optimized, high_precision, balanced, fast_convergence)"
             exit 0
             ;;
         *)
@@ -1135,14 +1142,19 @@ validate_step_success() {
             return 1
             ;;
         7)
-            # Step 7: MQTT navigation - check for python process
-            sleep 3
-            if pgrep -f "b4m_waypoint_nav.py" > /dev/null; then
-                debug_log "Step 7 validation passed: B4M waypoint navigation process running"
-                return 0
+            # Step 7: MQTT navigation - check for python process (only if B4M_HA enabled)
+            if [ "$B4M_HA" = true ]; then
+                sleep 3
+                if pgrep -f "b4m_waypoint_nav.py" > /dev/null; then
+                    debug_log "Step 7 validation passed: B4M waypoint navigation process running"
+                    return 0
+                else
+                    echo "ERROR: Step 7 validation failed - B4M waypoint navigation process not found"
+                    return 1
+                fi
             else
-                echo "ERROR: Step 7 validation failed - B4M waypoint navigation process not found"
-                return 1
+                debug_log "Step 7 skipped: MQTT/Home Assistant not enabled (--b4m-HA not provided)"
+                return 0
             fi
             ;;
         *)
@@ -2143,8 +2155,14 @@ EOF
     fi
 }
 
-echo "B4M Robot - Home Assistant MQTT Integration Launch Script"
+echo "B4M Robot Launch Script"
 
+if [ "$B4M_HA" = true ]; then
+    echo "Home Assistant MQTT Integration: ENABLED"
+else
+    echo "Home Assistant MQTT Integration: DISABLED (use --b4m-HA to enable)"
+fi
+echo ""
 echo "This script will guide you through launching all components of the B4M Robot system."
 echo "Each step will open in a separate terminal window."
 
@@ -2286,10 +2304,14 @@ launch_in_terminal "Setting automatic pose estimate at map center for testing" \
     "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && python3 \"$WORKSPACE_ROOT/scripts/set_initial_pose.py\"" \
     "6"
 
-# Step 7: Start the B4M Waypoint Navigation Node with MQTT Parameters
-launch_in_terminal "Starting the B4M Waypoint Navigation Node with MQTT integration" \
-    "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && python3 \"$WORKSPACE_ROOT/b4m_waypoint_nav/b4m_waypoint_nav/b4m_waypoint_nav.py\" --ros-args -p mqtt_broker:=192.168.68.111 -p mqtt_port:=1883 -p mqtt_username:=robot -p mqtt_password:=robot123" \
-    "7"
+# Step 7: Start the B4M Waypoint Navigation Node with MQTT Parameters (if enabled)
+if [ "$B4M_HA" = true ]; then
+    launch_in_terminal "Starting the B4M Waypoint Navigation Node with MQTT integration" \
+        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && python3 \"$WORKSPACE_ROOT/b4m_waypoint_nav/b4m_waypoint_nav/b4m_waypoint_nav.py\" --ros-args -p mqtt_broker:=192.168.68.111 -p mqtt_port:=1883 -p mqtt_username:=robot -p mqtt_password:=robot123" \
+        "7"
+else
+    echo "Skipping Step 7: MQTT/Home Assistant integration (use --b4m-HA to enable)"
+fi
 
 # Localization Testing Integration (Steps 8-9)
 if [ "$LOCALIZATION_TEST" = true ]; then
@@ -2355,15 +2377,19 @@ if [ "$LOCALIZATION_TEST" = true ]; then
     fi
 fi
 
-# Step 8/10: Start the Robot Manager GUI
-if [ "$LOCALIZATION_TEST" = true ]; then
-    STEP_NUM="10"
+# Step 8/10: Start the Robot Manager GUI (if MQTT enabled)
+if [ "$B4M_HA" = true ]; then
+    if [ "$LOCALIZATION_TEST" = true ]; then
+        STEP_NUM="10"
+    else
+        STEP_NUM="8"
+    fi
+    launch_in_terminal "Starting the B4M Robot Manager GUI for visual control of waypoints" \
+        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 run b4m_waypoint_nav b4m_robot_manager_node.py" \
+        "$STEP_NUM"
 else
-    STEP_NUM="8"
+    echo "Skipping Robot Manager GUI (requires --b4m-HA for MQTT/Home Assistant features)"
 fi
-launch_in_terminal "Starting the B4M Robot Manager GUI for visual control of waypoints" \
-    "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 run b4m_waypoint_nav b4m_robot_manager_node.py" \
-    "$STEP_NUM"
 
 
 log_message "B4M Robot launch script completed"
