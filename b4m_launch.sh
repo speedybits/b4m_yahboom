@@ -25,6 +25,7 @@ SIMULATION_MODE=false
 REGRESSION_MODE=false
 EXPLORE_MODE=false
 B4M_LIDAR=false
+B4M_PING=false
 LOCALIZATION_TEST=false
 TUNE_PARAMS=false
 NAVIGATION_PERFORMANCE_TEST=false
@@ -59,6 +60,10 @@ for arg in "$@"; do
             B4M_LIDAR=true
             shift
             ;;
+        --b4m-ping)
+            B4M_PING=true
+            shift
+            ;;
         --localization-test)
             LOCALIZATION_TEST=true
             shift
@@ -78,7 +83,7 @@ for arg in "$@"; do
             shift
             ;;
         -h|--help)
-            echo "Usage: $0 [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--b4m-lidar] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>]"
+            echo "Usage: $0 [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--b4m-lidar] [--b4m-ping] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>]"
             echo "  --skip-agent:                   Skip the Micro-ROS agent launch (Step 1)"
             echo "  --only-agent:                   Launch ONLY the Micro-ROS agent (Step 1) and exit"
             echo "  --debug:                        Enable verbose debug logging"
@@ -86,6 +91,7 @@ for arg in "$@"; do
             echo "  --regression:                   Run comprehensive regression test suite (navigation + laser stability)"
             echo "  --explore:                      Enable autonomous exploration mode with obstacle avoidance"
             echo "  --b4m-lidar:                    Enable B4M LiDAR-based intelligent navigation with API"
+            echo "  --b4m-ping:                     Test bike4mind API with random obstacle detection messages"
             echo "  --localization-test:            Enable localization quality and navigation performance testing"
             echo "  --tune-params:                  Enable parameter tuning iterations (requires --localization-test)"
             echo "  --navigation-performance-test:  Execute 1x1m square navigation circuit testing"
@@ -135,6 +141,15 @@ if [ "$B4M_LIDAR" = true ]; then
     if [ "$EXPLORE_MODE" = true ] || [ "$REGRESSION_MODE" = true ] || [ "$LOCALIZATION_TEST" = true ] || [ "$NAVIGATION_PERFORMANCE_TEST" = true ]; then
         echo "ERROR: --b4m-lidar is incompatible with other navigation modes"
         echo "B4M LiDAR mode is a dedicated navigation system"
+        exit 1
+    fi
+fi
+
+# B4M Ping mode incompatibility checks
+if [ "$B4M_PING" = true ]; then
+    if [ "$EXPLORE_MODE" = true ] || [ "$REGRESSION_MODE" = true ] || [ "$LOCALIZATION_TEST" = true ] || [ "$NAVIGATION_PERFORMANCE_TEST" = true ] || [ "$B4M_LIDAR" = true ]; then
+        echo "ERROR: --b4m-ping is incompatible with other modes"
+        echo "B4M Ping is a standalone API testing tool"
         exit 1
     fi
 fi
@@ -354,6 +369,38 @@ if [ "$B4M_LIDAR" = true ]; then
         echo "   Check RViz for real-time visualization"
         echo "   Monitor /b4m_lidar/status for navigation state"
     done
+fi
+
+# Handle B4M Ping test mode
+if [ "$B4M_PING" = true ]; then
+    echo "📡 B4M PING API TEST MODE"
+    echo "================================="
+    echo "Testing bike4mind API with random obstacle detection messages"
+    echo ""
+    echo "This test will:"
+    echo "- Generate random obstacle reports (left/front/right directions)"
+    echo "- Send messages to bike4mind API endpoint"
+    echo "- Display API responses in real-time"
+    echo "- Wait for keypress between messages"
+    echo "- Exit on CTRL+C"
+    echo ""
+    echo "API endpoint: https://app.bike4mind.com/api/chat"
+    echo "API key: b4m_live_c491719bd23cc716e2db2c5182f4f900"
+    echo ""
+    
+    # Make script executable if needed
+    if [ ! -x "$WORKSPACE_ROOT/scripts/b4m_ping_test.py" ]; then
+        chmod +x "$WORKSPACE_ROOT/scripts/b4m_ping_test.py"
+    fi
+    
+    # Run the B4M ping test
+    echo "🚀 Starting B4M Ping Test..."
+    echo "================================="
+    python3 "$WORKSPACE_ROOT/scripts/b4m_ping_test.py"
+    
+    echo ""
+    echo "✅ B4M Ping Test completed"
+    exit 0
 fi
 
 # Handle regression test mode
