@@ -185,13 +185,21 @@ if [ "$EXPLORE_MODE" = true ]; then
         ros2 launch yahboomcar_nav gazebo_classic_nav_launch.py world_name:=$WORLD_NAME > "$LOGS_DIR/exploration_gazebo_$TIMESTAMP.log" 2>&1 &
         GAZEBO_PID=$!
         echo "   Waiting for simulation initialization..."
-        sleep 8
+        sleep 10  # Give Gazebo more time to fully initialize and spawn robot
+        
+        # Verify laser scan is being published
+        echo "   Verifying laser scan topic..."
+        if timeout 5 ros2 topic echo /scan --once > /dev/null 2>&1; then
+            echo "   ✅ Laser scan topic active"
+        else
+            echo "   ⚠️  Warning: Laser scan topic not detected"
+        fi
         
         # Step 2: Launch RViz for visualization
         echo "📊 Step 2: Starting RViz for map visualization"
         ros2 launch yahboomcar_nav display_launch.py use_sim_time:=true > "$LOGS_DIR/exploration_rviz_$TIMESTAMP.log" 2>&1 &
         RVIZ_PID=$!
-        sleep 3
+        sleep 5  # Give RViz more time to connect to topics
         
     else
         echo "   ⚠️  Make sure physical robot is powered on and ready"
@@ -222,7 +230,17 @@ if [ "$EXPLORE_MODE" = true ]; then
     fi
     CARTOGRAPHER_PID=$!
     echo "   Waiting for SLAM system initialization..."
-    sleep 5
+    sleep 10  # Give Cartographer more time to initialize
+    
+    # Verify map topic is being published
+    echo "   Verifying map topic..."
+    if timeout 10 ros2 topic echo /map --once > /dev/null 2>&1; then
+        echo "   ✅ Map topic active"
+    else
+        echo "   ⚠️  Warning: Map topic not detected yet (may appear shortly)"
+        echo "   Checking available topics..."
+        ros2 topic list | grep -E "map|scan|tf" || true
+    fi
     
     # Step 4: Start autonomous exploration
     echo "🚀 Step 4: Starting autonomous exploration with obstacle avoidance"
