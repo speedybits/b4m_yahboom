@@ -233,8 +233,14 @@ if [ "$EXPLORE_MODE" = true ]; then
         sleep 3
     fi
     
-    # Step 4: Launch Cartographer SLAM for real-time mapping
-    echo "🗺️  Step 4: Starting Cartographer SLAM for real-time mapping"
+    # Step 4: Launch TF bridge to connect odom_frame to odom
+    echo "🔗 Step 4: Creating TF bridge between odom_frame and odom"
+    ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 odom_frame odom > "$LOGS_DIR/exploration_tf_bridge_$TIMESTAMP.log" 2>&1 &
+    TF_BRIDGE_PID=$!
+    echo "   Bridge created: odom_frame → odom (connects Cartographer to robot)"
+    
+    # Step 5: Launch Cartographer SLAM for real-time mapping
+    echo "🗺️  Step 5: Starting Cartographer SLAM for real-time mapping"
     if [ "$SIMULATION_MODE" = true ]; then
         ros2 launch yahboomcar_nav map_cartographer_launch.py use_sim_time:=true > "$LOGS_DIR/exploration_cartographer_$TIMESTAMP.log" 2>&1 &
     else
@@ -260,8 +266,8 @@ if [ "$EXPLORE_MODE" = true ]; then
         fi
     fi
     
-    # Step 5: Start autonomous exploration
-    echo "🚀 Step 5: Starting autonomous exploration with obstacle avoidance"
+    # Step 6: Start autonomous exploration
+    echo "🚀 Step 6: Starting autonomous exploration with obstacle avoidance"
     cd "$WORKSPACE_ROOT" && . install/setup.bash && python3 "$WORKSPACE_ROOT/scripts/autonomous_exploration.py" > "$LOGS_DIR/exploration_autonomous_$TIMESTAMP.log" 2>&1 &
     EXPLORATION_PID=$!
     
