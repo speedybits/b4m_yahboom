@@ -18,10 +18,10 @@ find_package(std_msgs REQUIRED)
 ament_python_install_package(${PROJECT_NAME})
 
 # Install Python executables
-install(PROGRAMS
-  scripts/b4m_robot_manager_node.py
-  DESTINATION lib/${PROJECT_NAME}
-)
+# (Robot Manager GUI node removed - functionality integrated into b4m_waypoint_nav.py)
+# install(PROGRAMS
+#   DESTINATION lib/${PROJECT_NAME}
+# )
 
 # Install launch files
 install(DIRECTORY
