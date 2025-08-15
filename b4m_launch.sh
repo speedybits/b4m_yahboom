@@ -181,8 +181,25 @@ if [ "$EXPLORE_MODE" = true ]; then
         echo "   Waiting for simulation initialization..."
         sleep 8
         
-        # Step 2: Launch RViz for visualization
-        echo "📊 Step 2: Starting RViz for map visualization"
+        # Step 2: Launch robot bringup for EKF and sensor processing (CRITICAL FOR SIMULATION)
+        echo "🤖 Step 2: Starting robot sensor and control systems (EKF, IMU, etc.)"
+        echo "   This is required even in simulation to get filtered /odom from EKF"
+        cd "$WORKSPACE_ROOT" && . source_workspaces.sh && ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py use_sim_time:=true > "$LOGS_DIR/exploration_bringup_$TIMESTAMP.log" 2>&1 &
+        BRINGUP_PID=$!
+        echo "   Waiting for sensor initialization and EKF startup..."
+        sleep 12
+        
+        # FIX: Verify that /odom topic is being published before continuing (even in simulation)
+        echo "   Verifying odometry is available..."
+        timeout 10 ros2 topic echo /odom --once > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            echo "   ✅ Odometry topic verified"
+        else
+            echo "   ⚠️  Warning: /odom topic not ready, continuing anyway..."
+        fi
+        
+        # Step 3: Launch RViz for visualization
+        echo "📊 Step 3: Starting RViz for map visualization"
         ros2 launch yahboomcar_nav display_launch.py use_sim_time:=true > "$LOGS_DIR/exploration_rviz_$TIMESTAMP.log" 2>&1 &
         RVIZ_PID=$!
         sleep 3
@@ -216,8 +233,8 @@ if [ "$EXPLORE_MODE" = true ]; then
         sleep 3
     fi
     
-    # Step 3: Launch Cartographer SLAM for real-time mapping
-    echo "🗺️  Step 3: Starting Cartographer SLAM for real-time mapping"
+    # Step 4: Launch Cartographer SLAM for real-time mapping
+    echo "🗺️  Step 4: Starting Cartographer SLAM for real-time mapping"
     if [ "$SIMULATION_MODE" = true ]; then
         ros2 launch yahboomcar_nav map_cartographer_launch.py use_sim_time:=true > "$LOGS_DIR/exploration_cartographer_$TIMESTAMP.log" 2>&1 &
     else
@@ -243,8 +260,8 @@ if [ "$EXPLORE_MODE" = true ]; then
         fi
     fi
     
-    # Step 4: Start autonomous exploration
-    echo "🚀 Step 4: Starting autonomous exploration with obstacle avoidance"
+    # Step 5: Start autonomous exploration
+    echo "🚀 Step 5: Starting autonomous exploration with obstacle avoidance"
     cd "$WORKSPACE_ROOT" && . install/setup.bash && python3 "$WORKSPACE_ROOT/scripts/autonomous_exploration.py" > "$LOGS_DIR/exploration_autonomous_$TIMESTAMP.log" 2>&1 &
     EXPLORATION_PID=$!
     
@@ -265,7 +282,7 @@ if [ "$EXPLORE_MODE" = true ]; then
     echo "   The robot will avoid obstacles and explore systematically"
     
     # Wait for user to stop or monitor the exploration
-    trap 'echo "🛑 Stopping exploration..."; [ ! -z "$EXPLORATION_PID" ] && kill $EXPLORATION_PID 2>/dev/null; [ ! -z "$CARTOGRAPHER_PID" ] && kill $CARTOGRAPHER_PID 2>/dev/null; [ ! -z "$RVIZ_PID" ] && kill $RVIZ_PID 2>/dev/null; if [ "$SIMULATION_MODE" = true ]; then [ ! -z "$GAZEBO_PID" ] && kill $GAZEBO_PID 2>/dev/null; else [ ! -z "$BRINGUP_PID" ] && kill $BRINGUP_PID 2>/dev/null; fi; ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1; echo "✅ Exploration stopped"; exit 0' INT
+    trap 'echo "🛑 Stopping exploration..."; [ ! -z "$EXPLORATION_PID" ] && kill $EXPLORATION_PID 2>/dev/null; [ ! -z "$CARTOGRAPHER_PID" ] && kill $CARTOGRAPHER_PID 2>/dev/null; [ ! -z "$RVIZ_PID" ] && kill $RVIZ_PID 2>/dev/null; [ ! -z "$BRINGUP_PID" ] && kill $BRINGUP_PID 2>/dev/null; if [ "$SIMULATION_MODE" = true ]; then [ ! -z "$GAZEBO_PID" ] && kill $GAZEBO_PID 2>/dev/null; fi; ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1; echo "✅ Exploration stopped"; exit 0' INT
     
     # Keep the script running and show periodic status
     while true; do
