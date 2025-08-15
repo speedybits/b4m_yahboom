@@ -168,6 +168,15 @@ if [ "$EXPLORE_MODE" = true ]; then
     echo "- Stop exploration when area is sufficiently mapped"
     echo ""
     
+    # FIX: Ensure clean state before launching exploration
+    echo "🧹 ENSURING CLEAN STATE FOR EXPLORATION"
+    echo "======================================"
+    echo "Cleaning up any existing ROS2 processes to prevent TF conflicts..."
+    ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1
+    sleep 3
+    echo "✅ System cleanup completed"
+    echo ""
+    
     # Launch exploration sequence
     echo "🚀 EXPLORATION LAUNCH SEQUENCE"
     echo "======================================"
@@ -196,8 +205,17 @@ if [ "$EXPLORE_MODE" = true ]; then
         # Must source ALL workspaces including IMU for EKF to work properly
         cd "$WORKSPACE_ROOT" && . source_workspaces.sh && ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py > "$LOGS_DIR/exploration_bringup_$TIMESTAMP.log" 2>&1 &
         BRINGUP_PID=$!
-        echo "   Waiting for sensor initialization..."
-        sleep 8
+        echo "   Waiting for sensor initialization and EKF startup..."
+        sleep 12
+        
+        # FIX: Verify that /odom topic is being published before continuing
+        echo "   Verifying odometry is available..."
+        timeout 10 ros2 topic echo /odom --once > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            echo "   ✅ Odometry topic verified"
+        else
+            echo "   ⚠️  Warning: /odom topic not ready, continuing anyway..."
+        fi
         
         # Step 2: Launch RViz for visualization
         echo "📊 Step 2: Starting RViz for map visualization"  
@@ -215,7 +233,23 @@ if [ "$EXPLORE_MODE" = true ]; then
     fi
     CARTOGRAPHER_PID=$!
     echo "   Waiting for SLAM system initialization..."
-    sleep 5
+    sleep 8
+    
+    # FIX: Verify TF tree is complete before starting exploration
+    echo "   Verifying TF tree integrity..."
+    timeout 10 ros2 run tf2_ros tf2_echo map base_link > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        echo "   ✅ TF tree verified (map → base_link transform available)"
+    else
+        echo "   ⚠️  TF tree not complete yet, waiting additional time..."
+        sleep 5
+        timeout 5 ros2 run tf2_ros tf2_echo map base_link > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            echo "   ✅ TF tree now ready"
+        else
+            echo "   ⚠️  Warning: TF tree may be incomplete, but continuing..."
+        fi
+    fi
     
     # Step 4: Start autonomous exploration
     echo "🚀 Step 4: Starting autonomous exploration with obstacle avoidance"
