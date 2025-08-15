@@ -40,10 +40,27 @@ shutdown_log() {
 
 echo "B4M Robot - Shutdown Script"
 echo "This script will safely shut down all ROS2 nodes and processes."
+echo "First, it will emergency stop the robot motors for safety."
 echo "Shutdown log: $SHUTDOWN_LOG"
 echo ""
 
 shutdown_log "B4M Robot shutdown script started"
+
+# Step 0: Emergency stop motors first for safety
+shutdown_log "Step 0: Emergency stopping robot motors for safety"
+if [ -f "$WORKSPACE_ROOT/stop_motors.sh" ] && [ -x "$WORKSPACE_ROOT/stop_motors.sh" ]; then
+    shutdown_log "Running stop_motors.sh to halt robot movement"
+    # Run stop_motors.sh in background to avoid blocking, but wait for completion
+    timeout 10 bash "$WORKSPACE_ROOT/stop_motors.sh" 2>&1 | tee -a "$SHUTDOWN_LOG" || {
+        shutdown_log "WARNING: stop_motors.sh timed out or failed, attempting manual motor stop"
+        ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}' 2>&1 | tee -a "$SHUTDOWN_LOG" || true
+    }
+else
+    shutdown_log "WARNING: stop_motors.sh not found or not executable, manually stopping motors"
+    ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}' 2>&1 | tee -a "$SHUTDOWN_LOG" || true
+fi
+sleep 2
+shutdown_log "Motor stop sequence completed"
 
 # Step 1: Stop all ROS2 nodes gracefully (except YB_Car_Node if --keep-agent)
 if [ "$KEEP_AGENT" = true ]; then
@@ -115,8 +132,8 @@ pkill -9 -f "controller_manager/spawner.*diff_drive_controller" 2>/dev/null
 pkill -9 -f "controller_manager/spawner.*joint_state_broadcaster" 2>/dev/null
 pkill -9 -f "controller_manager/spawner" 2>/dev/null
 
-# Kill Python ROS2 scripts but preserve the micro_ros_agent
-ps aux | grep "python.*ros2" | grep -v "micro_ros_agent" | awk '{print $2}' | xargs -r kill -9 2>/dev/null
+# Kill Python ROS2 scripts but preserve the micro_ros_agent and stop_motors.sh
+ps aux | grep "python.*ros2" | grep -v "micro_ros_agent" | grep -v "stop_motors" | awk '{print $2}' | xargs -r kill -9 2>/dev/null
 
 # Force kill common background ROS nodes that persist
 pkill -9 -f "complementary_filter_node" 2>/dev/null
@@ -132,15 +149,13 @@ pkill -9 -f "ekf_node" 2>/dev/null
 pkill -9 -f "robot_localization" 2>/dev/null
 pkill -9 -f "ukf_node" 2>/dev/null
 
-# Step 3: Stop waypoint navigation, robot manager, and autonomous explorer processes
-shutdown_log "Step 3: Stopping waypoint navigation, robot manager, and autonomous explorer processes"
+# Step 3: Stop waypoint navigation and autonomous explorer processes
+shutdown_log "Step 3: Stopping waypoint navigation and autonomous explorer processes"
 pkill -f "b4m_waypoint_nav" 2>/dev/null
-pkill -f "b4m_robot_manager" 2>/dev/null
 pkill -f "autonomous_explorer" 2>/dev/null
 pkill -f "autonomous_exploration" 2>/dev/null
 sleep 2
 pkill -9 -f "b4m_waypoint_nav" 2>/dev/null
-pkill -9 -f "b4m_robot_manager" 2>/dev/null
 pkill -9 -f "autonomous_explorer" 2>/dev/null
 pkill -9 -f "autonomous_exploration" 2>/dev/null
 
@@ -165,8 +180,9 @@ fi
 
 # Step 5: Clean up remaining Python processes related to the robot
 shutdown_log "Step 5: Cleaning up remaining Python processes"
-pkill -f "python.*yahboom" 2>/dev/null
-pkill -f "python.*b4m" 2>/dev/null
+# Kill Python scripts but avoid killing stop_motors.sh
+ps aux | grep "python.*yahboom" | grep -v "stop_motors" | awk '{print $2}' | xargs -r kill -9 2>/dev/null
+ps aux | grep "python.*b4m" | grep -v "stop_motors" | awk '{print $2}' | xargs -r kill -9 2>/dev/null
 
 # Step 6: Stop RViz if running
 shutdown_log "Step 6: Stopping RViz if running"
@@ -240,7 +256,7 @@ fi
 
 # Final status check
 shutdown_log "Checking for any remaining robot-related processes:"
-remaining_processes=$(ps aux | grep -E "(yahboom|b4m|nav2|rviz|gazebo)" | grep -v grep | grep -v "b4m_shutdown" || true)
+remaining_processes=$(ps aux | grep -E "(yahboom|b4m|nav2|rviz|gazebo)" | grep -v grep | grep -v "b4m_shutdown" | grep -v "stop_motors" || true)
 if [ ! -z "$remaining_processes" ]; then
     shutdown_log "WARNING: Some processes may still be running:"
     echo "$remaining_processes" | tee -a "$SHUTDOWN_LOG"
@@ -281,6 +297,7 @@ fi
 shutdown_log "B4M Robot shutdown script completed successfully"
 echo "======================================================"
 echo "Shutdown completed successfully!"
+echo "Robot motors have been stopped for safety"
 if [ "$KEEP_AGENT" = true ]; then
     echo "YB_Car_Node kept running (--keep-agent mode)"
 else

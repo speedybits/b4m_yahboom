@@ -21,12 +21,12 @@ setup(
     zip_safe=True,
     maintainer='yahboom',
     maintainer_email='user@todo.todo',
-    description='B4M Robot Manager with Navigation and Waypoint Control',
+    description='B4M Waypoint Navigation with MQTT/Home Assistant Integration',
     license='Apache License 2.0',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'b4m_robot_manager = b4m_waypoint_nav.b4m_robot_manager:main',
+            # Robot Manager GUI has been removed - use b4m_waypoint_nav.py directly
         ],
     },
 )

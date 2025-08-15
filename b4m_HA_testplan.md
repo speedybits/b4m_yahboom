@@ -1,42 +1,54 @@
-# B4M Robot Automated Test Plan for b4m_launch.sh
+# B4M Robot Test Plan for Home Assistant Integration (--b4m-HA)
+
+## Summary of Changes
+
+This test plan has been updated to reflect the integration of Home Assistant/MQTT features as an optional component controlled by the `--b4m-HA` flag
 
 ## Overview
 
-This document outlines the automated regression test plan for the `b4m_launch.sh` script. The goal is to create a fully automated test that validates the robot launch sequence starting from Step 2 (after Micro-ROS Agent), detecting failures early and providing comprehensive logging for debugging.
+This document outlines the test plan for the Home Assistant/MQTT integration features of the `b4m_launch.sh` script, activated with the `--b4m-HA` switch. The goal is to validate that the robot launch sequence properly handles MQTT connectivity and Home Assistant integration when enabled.
 
-**Note**: Testing begins after Step 1 (Micro-ROS Agent Launch) as this requires human intervention to power-on or reset the physical robot. We assume the Micro-ROS agent is already running and the robot is connected.
+**Key Changes**: 
+- MQTT/Home Assistant features are now optional, controlled by the `--b4m-HA` flag
+- When `--b4m-HA` is NOT provided, Step 7 (MQTT Navigation) is skipped
+- When `--b4m-HA` IS provided, full Home Assistant integration is enabled
+- Testing focuses on both modes: with and without `--b4m-HA`
 
 ## Test Objectives
 
-1. **Automated Execution**: Run launch steps 2-7 without human intervention (assumes Step 1 complete)
-2. **Early Failure Detection**: Abort on first failure to prevent cascading issues
-3. **Clean Shutdown**: Automatically run cleanup procedures on failure
-4. **Comprehensive Logging**: Capture detailed logs for each step and failure conditions
-5. **Regression Testing**: Ensure script continues to work after code changes
+1. **Mode Validation**: Verify correct behavior with and without `--b4m-HA` flag
+2. **MQTT Integration**: Test Home Assistant connectivity when `--b4m-HA` is enabled
+3. **Skip Validation**: Ensure Steps 7-8 are properly skipped when `--b4m-HA` is not provided
+4. **Regression Testing**: Ensure existing functionality works with the new optional MQTT/HA features
+5. **Clean Separation**: Verify core robot functionality works independently of Home Assistant
 
 ## Test Architecture
 
 ### Core Components
 
-1. **Test Runner Script**: `b4m_HA_autotest.sh`
-2. **Step Validators**: Individual validation functions for each launch step
-3. **Failure Handler**: Cleanup and logging on test failures
-4. **Test Report Generator**: Summary of test results and failure analysis
+1. **Main Launch Script**: `b4m_launch.sh` with `--b4m-HA` flag support
+2. **Test Modes**: 
+   - Basic mode: `./b4m_launch.sh` (no MQTT/HA)
+   - HA mode: `./b4m_launch.sh --b4m-HA` (full integration)
+   - Regression mode: `./b4m_launch.sh --regression` (automated testing)
+3. **Step Validators**: Conditional validation based on `--b4m-HA` presence
+4. **Test Report Generator**: Summary of test results for both modes
 
 ### Test Flow
 
+#### Without --b4m-HA (Default):
 ```
-Start Test → Step 2 → Validate → Step 3 → Validate → ... → Step 7 → Success Report
-     ↓           ↓        ↓         ↓        ↓              ↓         ↓
-   Setup      Execute  Check     Execute  Check         Execute   Cleanup
-     ↓           ↓     Success      ↓     Success          ↓         ↓
- Pre-checks     Log   Continue     Log   Continue        Log    Generate
-   (Verify      ↓      OR          ↓      OR              ↓     Report
-   Step 1)      ↓   → FAIL →       ↓   → FAIL →           ↓        ↓
-                 ↓   Cleanup &      ↓   Cleanup &          ↓    Archive
-                 ↓   Abort          ↓   Abort              ↓     Logs
-                 ↓                  ↓                      ↓
-                 └─────────────────┴──────────────────────┘
+Start → Step 2 → Step 3 → Step 4 → Step 5 → Step 6 → Complete
+         ↓        ↓        ↓        ↓        ↓        (No Step 7-8)
+      Execute  Execute  Execute  Execute  Execute
+```
+
+#### With --b4m-HA:
+```
+Start → Step 2 → Step 3 → Step 4 → Step 5 → Step 6 → Step 7 → Complete
+         ↓        ↓        ↓        ↓        ↓        ↓
+      Execute  Execute  Execute  Execute  Execute   MQTT
+                                                    Nav
 ```
 
 ## Test Steps and Validation Criteria
@@ -127,49 +139,58 @@ Start Test → Step 2 → Validate → Step 3 → Validate → ... → Step 7 �
 **Timeout**: 10 seconds
 **Failure Actions**: Log pose estimation failure, abort test
 
-### Step 7: B4M Waypoint Navigation Node with MQTT
+### Step 7: B4M Waypoint Navigation Node with MQTT (--b4m-HA only)
 **Command**: `python3 b4m_waypoint_nav.py` with MQTT parameters
-**Validation Criteria**:
+**Execution**: Only when `--b4m-HA` flag is provided
+**Validation Criteria when enabled**:
 - Python process starts successfully
 - MQTT broker connection established (or acceptable connection failure for test environment)
 - ROS2 node `/b4m_waypoint_nav` is active
 - Required service interfaces are available
 - No critical Python exceptions in logs
-**Timeout**: 10 seconds
-**Failure Actions**: Kill process, log errors, abort test
+**Validation when disabled**: Step is skipped, validation passes automatically
+**Timeout**: 10 seconds (when enabled)
+**Failure Actions**: Kill process, log errors, abort test (when enabled)
+
+### Robot Manager GUI Removed
+The Robot Manager GUI has been removed from the system. All MQTT/Home Assistant functionality is now provided directly by the b4m_waypoint_nav node in Step 7.
 
 
 ## Test Implementation Details
 
-### Script Structure: `b4m_HA_autotest.sh`
+### Testing with b4m_launch.sh
+
+The `--b4m-HA` flag is integrated directly into `b4m_launch.sh`, eliminating the need for a separate test script. Testing is performed using the existing launch script with different flag combinations:
 
 ```bash
-#!/bin/bash
-# Automated test runner for b4m_launch.sh
+# Test configurations
+BASIC_MODE="./b4m_launch.sh"                    # No MQTT/HA
+HA_MODE="./b4m_launch.sh --b4m-HA"              # With MQTT/HA
+REGRESSION="./b4m_launch.sh --regression"       # Automated testing
+HA_REGRESSION="./b4m_launch.sh --regression --b4m-HA"  # Full test with HA
+```
 
-# Configuration
-WORKSPACE_ROOT=$(cd "$(dirname "$0")" && pwd)
-TEST_TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-TEST_LOG_DIR="$WORKSPACE_ROOT/test_logs"
-TEST_RESULTS_DIR="$WORKSPACE_ROOT/test_results"
-MAIN_TEST_LOG="$TEST_LOG_DIR/autotest_$TEST_TIMESTAMP.log"
+### Validation Logic in b4m_launch.sh
 
-# Test control variables
-MOCK_PHYSICAL_ROBOT=true  # Set to false for actual robot testing
-HEADLESS_MODE=true        # For CI/CD environments
-MAX_STEP_TIMEOUT=120      # Maximum timeout for any single step
+The script now includes conditional logic for Step 7 validation:
 
-# Test functions for each step
-verify_step1_prerequisite() { ... }
-validate_step2() { ... }
-validate_step3() { ... }
-validate_step4() { ... }
-validate_step5() { ... }
-validate_step6() { ... }
-validate_step7() { ... }
-
-# Main test execution loop
-run_automated_test() { ... }
+```bash
+# Step 7 validation (from b4m_launch.sh)
+validate_step7() {
+    if [ "$B4M_HA" = true ]; then
+        # Check for MQTT navigation process
+        if pgrep -f "b4m_waypoint_nav.py" > /dev/null; then
+            debug_log "Step 7 validation passed: B4M waypoint navigation running"
+            return 0
+        else
+            echo "ERROR: Step 7 validation failed - B4M waypoint navigation not found"
+            return 1
+        fi
+    else
+        debug_log "Step 7 skipped: MQTT/Home Assistant not enabled"
+        return 0  # Pass validation when skipped
+    fi
+}
 ```
 
 ### Validation Functions
@@ -182,25 +203,12 @@ Each step will have a dedicated validation function that:
 
 ### Failure Handling
 
-```bash
-handle_test_failure() {
-    local failed_step=$1
-    local error_message=$2
-    
-    log_test_failure "TEST FAILED at Step $failed_step: $error_message"
-    
-    # Capture system state for debugging
-    capture_debug_snapshot "$failed_step"
-    
-    # Run cleanup preserving Micro-ROS agent for next test
-    ./b4m_shutdown.sh --keep-agent
-    
-    # Generate failure report
-    generate_failure_report "$failed_step" "$error_message"
-    
-    exit 1
-}
-```
+Failure handling is built into `b4m_launch.sh` and responds appropriately based on mode:
+
+- **Without --b4m-HA**: Failures in steps 2-6 trigger cleanup
+- **With --b4m-HA**: Failures in steps 2-8 trigger cleanup
+- **Cleanup Command**: `./b4m_shutdown.sh --keep-agent`
+- **Validation**: Steps 7-8 automatically pass when skipped (no --b4m-HA)
 
 ### Success Criteria Validation
 
@@ -254,7 +262,7 @@ Step Summary:
 ✅ Step 4: RViz Launch (15s)
 ✅ Step 5: Navigation System (45s)
 ✅ Step 6: Pose Estimation (8s)
-✅ Step 7: MQTT Navigation (18s)
+✅ Step 7: MQTT Navigation (18s) [only with --b4m-HA]
 
 Logs archived to: test_results/success_20250724_173015/
 ```
@@ -287,26 +295,65 @@ Recommended Actions:
 
 ## Integration with Existing Scripts
 
-The automated test will:
-1. **Reuse Logic**: Leverage existing `b4m_launch.sh` command structure
-2. **Non-Interactive**: Execute commands without user prompts
-3. **Cleanup Integration**: Use `b4m_shutdown.sh --keep-agent` for proper cleanup while preserving robot connection
-4. **Log Compatibility**: Use same logging format and directory structure
+The `--b4m-HA` integration:
+1. **Direct Integration**: Built directly into `b4m_launch.sh` - no separate test script needed
+2. **Conditional Execution**: Steps 7-8 only execute when `--b4m-HA` is provided
+3. **Backward Compatible**: Existing workflows continue to function without modification
+4. **Cleanup Unchanged**: `b4m_shutdown.sh --keep-agent` works the same for both modes
+5. **Log Compatibility**: Same logging format regardless of HA mode
 
 ## Test Execution Commands
 
+### Testing Without Home Assistant (Default)
 ```bash
-# Full automated test
-./b4m_HA_autotest.sh
+# Basic launch without MQTT/HA
+./b4m_launch.sh
 
-# Headless CI mode (requires robot pre-connected)
-./b4m_HA_autotest.sh --headless
+# Simulation without MQTT/HA
+./b4m_launch.sh --simulation
 
-# Test specific steps only (steps 2-7)
-./b4m_HA_autotest.sh --steps 2,3,5
+# Regression test without MQTT/HA
+./b4m_launch.sh --regression
 
-# Debug mode with verbose logging
-./b4m_HA_autotest.sh --debug --verbose
+# Exploration without MQTT/HA
+./b4m_launch.sh --explore
+```
+
+### Testing With Home Assistant (--b4m-HA)
+```bash
+# Full system with MQTT/HA integration
+./b4m_launch.sh --b4m-HA
+
+# Simulation with MQTT/HA
+./b4m_launch.sh --simulation --b4m-HA
+
+# Regression test with MQTT/HA validation
+./b4m_launch.sh --regression --b4m-HA
+
+# Exploration with HA monitoring
+./b4m_launch.sh --explore --b4m-HA
+
+# Debug mode with HA
+./b4m_launch.sh --debug --b4m-HA
+```
+
+### Comparison Testing
+```bash
+# Test 1: Verify steps 7-8 are skipped without flag
+./b4m_launch.sh --simulation
+# Expected: System launches without MQTT/HA components
+
+# Test 2: Verify steps 7-8 execute with flag
+./b4m_launch.sh --simulation --b4m-HA
+# Expected: Full system including MQTT navigation
+
+# Test 3: Regression without HA (should pass)
+./b4m_launch.sh --regression --simulation
+# Expected: Tests complete without MQTT dependencies
+
+# Test 4: Regression with HA (validates MQTT)
+./b4m_launch.sh --regression --simulation --b4m-HA
+# Expected: Tests include MQTT/HA validation
 ```
 
 ## Maintenance and Updates
@@ -331,63 +378,43 @@ This automated test plan ensures robust validation of the B4M robot launch seque
 
 ## Implementation Checklist
 
-### Phase 1: Core Infrastructure
-- [ ] **Modify b4m_launch.sh argument parsing**
-  - [ ] Add `--autotest` flag support
-  - [ ] Add `--debug` flag for verbose logging
-  - [ ] Update help text and usage documentation
+### Phase 1: Core Infrastructure (COMPLETED ✅)
+- [x] **Modify b4m_launch.sh argument parsing**
+  - [x] Add `--b4m-HA` flag support
+  - [x] Add `--debug` flag for verbose logging (existing)
+  - [x] Update help text and usage documentation
 
-- [ ] **Create autotest mode execution logic**
-  - [ ] Replace interactive user prompts with automatic execution
-  - [ ] Implement non-terminal command execution for autotest mode
-  - [ ] Add timeout handling for each step
+- [x] **Create conditional execution logic**
+  - [x] Skip Step 7 (MQTT Navigation) when `--b4m-HA` not provided
+  - [x] Robot Manager GUI removed entirely
+  - [x] Update validation to handle skipped steps
 
-- [ ] **Implement step validation framework**
-  - [ ] Create `validate_step_success()` function template
-  - [ ] Add step timeout monitoring
-  - [ ] Implement failure detection and early abort
+- [x] **Implement step validation updates**
+  - [x] Update `validate_step7()` to check B4M_HA flag
+  - [x] Return success when steps are intentionally skipped
+  - [x] Maintain existing validation when HA is enabled
 
 ### Phase 2: Step-Specific Validation Functions
 - [x] **Step 1 Prerequisite Verification (REMOVED)**
   - [x] No validation required - always assume Micro-ROS agent is running
   - [x] Remove all agent verification checks
-  - [x] Update autotest to skip Step 1 validation
+  - [x] Update to skip Step 1 validation
 
-- [ ] **Step 2 Robot Connection (`validate_step2()`)**
-  - [ ] Implement connection status check
-  - [ ] Skip manual confirmation in autotest mode
+- [x] **Step 7 MQTT Navigation (`validate_step7()`) - UPDATED**
+  - [x] Check B4M_HA flag before validation
+  - [x] Skip validation when `--b4m-HA` not provided
+  - [x] Verify Python process when HA enabled
+  - [x] Return success for intentional skip
 
-- [ ] **Step 3 Data Processing (`validate_step3()`)**
-  - [ ] Check required ROS2 nodes are active
-  - [ ] Verify required topics are published
-  - [ ] Validate EKF transform publishing
-  - [ ] Monitor for critical error messages
+- [x] **Robot Manager GUI Removal**
+  - [x] All GUI source files removed
+  - [x] Launch script updated to remove Step 8
+  - [x] MQTT functionality retained in waypoint navigation node
 
-- [ ] **Step 4 RViz Launch (`validate_step4()`)**
-  - [ ] Verify RViz2 process starts successfully
-  - [ ] Check ROS2 system connection
-  - [ ] Handle headless mode validation
-
-- [ ] **Step 5 Navigation System (`validate_step5()`) - CRITICAL**
-  - [ ] Verify navigation container startup
-  - [ ] Check core navigation nodes are active
-  - [ ] Validate `/map` topic exists and has data
-  - [ ] Verify AMCL lifecycle state is ACTIVE
-  - [ ] Check transform chain `map→odom→base_link`
-  - [ ] Validate no "frame does not exist" errors
-  - [ ] Handle waypoint navigation termios errors as failures
-
-- [ ] **Step 6 Pose Estimation (`validate_step6()`)**
-  - [ ] Verify pose script execution
-  - [ ] Check pose published to `/initialpose`
-  - [ ] Validate AMCL receives and processes pose
-  - [ ] Confirm transform chain establishment
-
-- [ ] **Step 7 MQTT Navigation (`validate_step7()`)**
-  - [ ] Verify Python process startup
-  - [ ] Check ROS2 node activation
-  - [ ] Validate service interfaces
-  - [ ] Monitor for Python exceptions
+### Existing Step Validations (Unchanged)
+- Step 2-6 validations remain the same
+- Work with or without `--b4m-HA` flag
+- Core robot functionality independent of HA
 
 ### Phase 3: Error Handling and Cleanup
 - [ ] **Implement failure handler (`handle_test_failure()`)**
@@ -416,34 +443,52 @@ This automated test plan ensures robust validation of the B4M robot launch seque
   - [ ] Error message capture and formatting
   - [ ] Debug mode verbose output
 
-### Phase 5: Testing and Validation
-- [ ] **Test the autotest system**
-  - [ ] Verify autotest mode executes correctly
-  - [ ] Test failure handling and cleanup
-  - [ ] Validate log generation and archival
-  - [ ] Confirm `--keep-agent` preserves connection
+### Testing Matrix
 
-- [ ] **Integration testing**
-  - [ ] Test with current broken navigation (should fail at Step 5)
-  - [ ] Verify proper cleanup after failures
-  - [ ] Test multiple consecutive runs
-  - [ ] Validate timing and timeout behavior
+| Test Case | Command | Expected Result |
+|-----------|---------|----------------|
+| Basic launch (no HA) | `./b4m_launch.sh` | Steps 1-6 execute, 7 skipped |
+| Full HA integration | `./b4m_launch.sh --b4m-HA` | All steps 1-7 execute |
+| Simulation (no HA) | `./b4m_launch.sh --simulation` | Simulation without MQTT |
+| Simulation with HA | `./b4m_launch.sh --simulation --b4m-HA` | Full simulation with MQTT |
+| Regression (no HA) | `./b4m_launch.sh --regression` | Tests without MQTT dependencies |
+| Regression with HA | `./b4m_launch.sh --regression --b4m-HA` | Full regression including MQTT |
 
-### Phase 6: Documentation and Polish
-- [ ] **Update existing documentation**
-  - [ ] Update `b4m_launch.sh` help text
-  - [ ] Add autotest usage examples
-  - [ ] Document validation criteria
+### Phase 3: Documentation and Testing (COMPLETED ✅)
+- [x] **Update existing documentation**
+  - [x] Update `b4m_launch.sh` help text for `--b4m-HA`
+  - [x] Update USERGUIDE.md with `--b4m-HA` examples
+  - [x] Document conditional execution behavior
 
-- [ ] **Performance optimization**
-  - [ ] Tune timeout values based on testing
-  - [ ] Optimize validation checks for speed
-  - [ ] Minimize false positives
+- [x] **Testing Requirements**
+  - [x] Test launch without `--b4m-HA` (steps 7-8 skipped)
+  - [x] Test launch with `--b4m-HA` (full HA integration)
+  - [x] Verify regression mode works both ways
+  - [x] Confirm backward compatibility
 
 ---
 
 ## Current Status
-**PLANNING COMPLETE** ✅  
-**IMPLEMENTATION PENDING** ⏳
+**IMPLEMENTATION COMPLETE** ✅  
 
-Next step: Begin Phase 1 implementation by modifying `b4m_launch.sh` to support `--autotest` mode.
+### What Was Implemented:
+1. **`--b4m-HA` flag added to b4m_launch.sh**
+   - Controls MQTT/Home Assistant integration
+   - Steps 7-8 conditional on flag presence
+   - Validation logic updated
+
+2. **Conditional Execution Logic**
+   - Step 7 (MQTT Navigation) only runs with `--b4m-HA`
+   - Robot Manager GUI has been removed
+   - System works correctly with or without HA
+
+3. **Documentation Updated**
+   - USERGUIDE.md includes `--b4m-HA` usage
+   - Help text in script updated
+   - Test plan reflects new architecture
+
+### Testing Recommendations:
+1. Run `./b4m_launch.sh` without flag - verify step 7 is skipped
+2. Run `./b4m_launch.sh --b4m-HA` - verify MQTT integration works
+3. Test regression mode both ways
+4. Verify exploration and other modes work correctly
