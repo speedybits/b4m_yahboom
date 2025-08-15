@@ -4,7 +4,7 @@
 # This script automates the launch process for the B4M Robot 
 # Each step will be launched in a separate terminal with user confirmation
 #
-# Usage: ./b4m_launch.sh [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--b4m-lidar] [--b4m-HA] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>]
+# Usage: ./b4m_launch.sh [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--b4m-lidar] [--b4m-HA] [--b4m-ping] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>]
 #   --skip-agent:                   Skip the Micro-ROS agent launch (Step 1)
 #   --only-agent:                   Launch ONLY the Micro-ROS agent (Step 1) and exit
 #   --debug:                        Enable verbose debug logging
@@ -12,11 +12,12 @@
 #   --regression:                   Run comprehensive regression test suite (navigation + laser stability)
 #   --explore:                      Enable autonomous exploration mode with obstacle avoidance
 #   --b4m-lidar:                    Enable B4M LiDAR-based intelligent navigation with API
-#   --b4m-HA:                       Enable Home Assistant MQTT integration features
-#   --localization-test:            Enable localization quality and navigation performance testing
-#   --tune-params:                  Enable parameter tuning iterations (requires --localization-test)
-#   --navigation-performance-test:  Execute advanced 1x1m square navigation circuit testing with comprehensive metrics
-#   --parameter-set <name>:         Specify AMCL parameter set to test (baseline, indoor_optimized, high_precision, balanced, fast_convergence)
+#   --b4m-HA:                       (Experimental) Enable Home Assistant MQTT integration features
+#   --b4m-ping:                     Test bike4mind API with random obstacle detection messages
+#   --localization-test:            (Untested) Enable localization quality and navigation performance testing
+#   --tune-params:                  (Untested) Enable parameter tuning iterations (requires --localization-test)
+#   --navigation-performance-test:  (Untested) Execute 1x1m square navigation circuit testing
+#   --parameter-set <name>:         (Untested) Specify parameter set to test (baseline, indoor_optimized, high_precision, balanced, fast_convergence)
 
 # Parse command line arguments
 SKIP_AGENT=false
