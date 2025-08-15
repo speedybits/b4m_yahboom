@@ -557,8 +557,14 @@ if [ "$REGRESSION_MODE" = true ]; then
         echo "   Waiting for RViz initialization..."
         sleep 8
         
-        # Step 4: Start Cartographer SLAM (identical to explore mode)
-        echo "🗺️  Step 4: Starting Cartographer SLAM system (simulation)"
+        # Step 4: Launch TF bridge to connect odom_frame to odom (critical for SLAM)
+        echo "🔗 Step 4: Creating TF bridge between odom_frame and odom"
+        ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 odom_frame odom > "$LOGS_DIR/regression_tf_bridge_$TIMESTAMP.log" 2>&1 &
+        TF_BRIDGE_PID=$!
+        echo "   Bridge created: odom_frame → odom (connects Cartographer to robot)"
+        
+        # Step 5: Start Cartographer SLAM (identical to explore mode)
+        echo "🗺️  Step 5: Starting Cartographer SLAM system (simulation)"
         ros2 launch yahboomcar_nav map_cartographer_launch.py use_sim_time:=true > /dev/null 2>&1 &
         CARTOGRAPHER_PID=$!
         echo "   Waiting for Cartographer initialization..."
@@ -578,7 +584,13 @@ if [ "$REGRESSION_MODE" = true ]; then
         echo "   Waiting for RViz initialization..."
         sleep 8
         
-        echo "🗺️  Step 3: Starting Cartographer SLAM system (real robot)"
+        # Step 3: Launch TF bridge to connect odom_frame to odom (critical for SLAM)
+        echo "🔗 Step 3: Creating TF bridge between odom_frame and odom"
+        ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 odom_frame odom > "$LOGS_DIR/regression_tf_bridge_$TIMESTAMP.log" 2>&1 &
+        TF_BRIDGE_PID=$!
+        echo "   Bridge created: odom_frame → odom (connects Cartographer to robot)"
+        
+        echo "🗺️  Step 4: Starting Cartographer SLAM system (real robot)"
         ros2 launch yahboomcar_nav map_cartographer_launch.py use_sim_time:=false > /dev/null 2>&1 &
         CARTOGRAPHER_PID=$!
         echo "   Waiting for Cartographer initialization..."
