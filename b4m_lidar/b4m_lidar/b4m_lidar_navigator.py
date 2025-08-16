@@ -32,7 +32,14 @@ class B4MLidarAPI:
     def __init__(self, logger=None):
         self.chat_url = "https://app.bike4mind.com/api/chat"
         self.session_create_url = "https://app.bike4mind.com/api/sessions/create"
-        self.api_key = "b4m_live_c491719bd23cc716e2db2c5182f4f900"
+        
+        # Get API key from environment variable
+        self.api_key = os.environ.get('B4M_API_KEY')
+        if not self.api_key:
+            if logger:
+                logger.error("B4M_API_KEY environment variable not set!")
+            raise RuntimeError("B4M_API_KEY environment variable not set! Please set it: export B4M_API_KEY='your_key_here'")
+            
         self.timeout = 30.0  # 30 second timeout for chat requests
         self.logger = logger
         self.api_call_count = 0

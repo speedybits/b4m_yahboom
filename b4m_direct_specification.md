@@ -49,7 +49,7 @@ In simulation mode, the system will:
 
 2. **B4M API Integration**
    - Endpoint: `https://app.bike4mind.com/api/chat`
-   - API Key: `b4m_live_c491719bd23cc716e2db2c5182f4f900`
+   - API Key: Configured via `B4M_API_KEY` environment variable
    - Model: `gpt-4o-mini`
    - Purpose: Interpret visual scenes and provide navigation guidance
 
@@ -156,7 +156,7 @@ b4m_direct_navigator:
   ros__parameters:
     # API Configuration
     api_endpoint: "https://app.bike4mind.com/api/chat"
-    api_key: "b4m_live_c491719bd23cc716e2db2c5182f4f900"
+    # API key configured via B4M_API_KEY environment variable
     model: "gpt-4o-mini"
     temperature: 0.3
     max_tokens: 100

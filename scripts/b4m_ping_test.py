@@ -8,10 +8,17 @@ import sys
 import select
 import termios
 import tty
+import os
 
 class B4MPingTest:
     def __init__(self):
-        self.api_key = "b4m_live_c491719bd23cc716e2db2c5182f4f900"
+        # Get API key from environment variable
+        self.api_key = os.environ.get('B4M_API_KEY')
+        if not self.api_key:
+            print("ERROR: B4M_API_KEY environment variable not set!")
+            print("Please set it: export B4M_API_KEY='your_key_here'")
+            sys.exit(1)
+            
         self.base_url = "https://app.bike4mind.com/api"
         self.headers = {
             "X-API-Key": self.api_key,

@@ -468,7 +468,15 @@ if [ "$B4M_PING" = true ]; then
     echo "- Exit on CTRL+C"
     echo ""
     echo "API endpoint: https://app.bike4mind.com/api/chat"
-    echo "API key: b4m_live_c491719bd23cc716e2db2c5182f4f900"
+    
+    # Check for API key in environment
+    if [ -z "$B4M_API_KEY" ]; then
+        echo "⚠️  WARNING: B4M_API_KEY environment variable not set!"
+        echo "Please set it: export B4M_API_KEY='your_key_here'"
+        echo "Or create a .env file with B4M_API_KEY=your_key_here"
+        exit 1
+    fi
+    echo "API key: [CONFIGURED VIA ENVIRONMENT]"
     echo ""
     
     # Make script executable if needed

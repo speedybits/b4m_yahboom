@@ -29,7 +29,7 @@ We've created a `--b4m-ping` test feature for our Yahboom robot that simulates r
    - Sometimes reports clear paths with no obstacles
 
 3. **API Integration**
-   - Using API key: `b4m_live_c491719bd23cc716e2db2c5182f4f900`
+   - API key configured via B4M_API_KEY environment variable
    - Endpoint: `https://app.bike4mind.com/api/chat`
    - Request format:
      ```json

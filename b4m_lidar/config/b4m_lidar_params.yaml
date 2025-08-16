@@ -2,7 +2,8 @@ b4m_lidar_navigator:
   ros__parameters:
     # API Configuration
     api_endpoint: "https://app.bike4mind.com/api/chat"
-    api_key: "b4m_live_c491719bd23cc716e2db2c5182f4f900"
+    # API key is now read from B4M_API_KEY environment variable for security
+    # Set it with: export B4M_API_KEY='your_api_key_here'
     api_timeout: 30.0  # Seconds to wait for API response (includes polling time)
     api_cooldown: 20.0  # Seconds between API calls (rate limit)
     

@@ -17,7 +17,7 @@ This specification describes the integration of the B4M API with the Yahboom rob
 
 2. **B4M API Integration**
    - Endpoint: `https://app.bike4mind.com/api/chat`
-   - API Key: `b4m_live_c491719bd23cc716e2db2c5182f4f900`
+   - API Key: Configured via `B4M_API_KEY` environment variable
    - Model: `gpt-4o-mini`
    - Purpose: Analyze obstacle patterns and provide turn direction guidance
 
@@ -85,7 +85,7 @@ from typing import Optional
 class B4MLidarAPI:
     def __init__(self):
         self.api_url = "https://app.bike4mind.com/api/chat"
-        self.api_key = "b4m_live_c491719bd23cc716e2db2c5182f4f900"
+        self.api_key = os.environ.get('B4M_API_KEY')  # Get from environment
         self.timeout = 2.0  # 2 second timeout
         
     def get_turn_direction(self, obstacle_description: str) -> Optional[int]:
