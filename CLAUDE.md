@@ -13,6 +13,9 @@ If you are unable to run a command that you need to run, please stop and tell me
 ## User guide
 After any changes that involve user interaction, please make sure the USERGUIDE.md is updated
 
+## Test file location
+Any new test file created should be located in the 'tests' directory
+
 ## Regression testing
 Before commiting any code that is not documentation, we must be able to pass the regression test:
 - For simulation: ./b4m_launch.sh --simulation --regression  

@@ -14,6 +14,16 @@ The B4M Robot is an autonomous navigation system built on ROS2 with optional MQT
 
 ## Quick Start
 
+### First Time Setup (WiFi Configuration)
+```bash
+./b4m_launch.sh --setup-wifi
+```
+**New users should start here!** This interactive wizard guides you through:
+- Connecting the robot via USB
+- Configuring WiFi credentials
+- Setting up mDNS hostname or fixed IP connection
+- Testing the robot configuration
+
 ### Basic Interactive Launch
 ```bash
 ./b4m_launch.sh
@@ -42,6 +52,7 @@ Runs comprehensive regression test suite with automated validation.
 
 | Option | Description |
 |--------|-------------|
+| `--setup-wifi` | **Interactive WiFi setup wizard for robot configuration** |
 | `--skip-agent` | Skip the Micro-ROS agent launch (Step 1) |
 | `--only-agent` | Launch ONLY the Micro-ROS agent and exit |
 | `--debug` | Enable verbose debug logging |
@@ -498,6 +509,153 @@ The script includes built-in process monitoring:
 - Duplicate node detection
 - Resource usage warnings
 - Automatic cleanup on conflicts
+
+## WiFi Setup Wizard
+
+The `--setup-wifi` option provides an interactive wizard to configure your robot's WiFi connection. This is recommended for first-time setup and when changing networks.
+
+### Usage
+```bash
+./b4m_launch.sh --setup-wifi
+```
+
+### Setup Process
+
+The wizard guides you through 6 steps:
+
+**Step 1: Prerequisites Check**
+- Verifies `config_robot.py` is available
+- Checks Python 3 installation
+- Validates user permissions for serial access
+
+**Step 2: USB Connection**
+- Guides you to connect the robot via USB
+- Auto-detects available serial ports
+- Allows manual port specification if needed
+
+**Step 3: WiFi Network Configuration**
+- Prompts for WiFi network name (SSID)
+- Securely collects WiFi password (hidden input)
+- Validates credential format
+
+**Step 4: Agent Connection Method**
+Choose between two connection methods:
+
+1. **mDNS hostname (recommended)**: Uses `hostname.local` for automatic IP resolution
+   - Example: `victus.local` → `192.168.68.105`
+   - Works with dynamic IP addresses (DHCP)
+   - Requires Avahi/mDNS support (included in most Linux distributions)
+
+2. **Fixed IP address**: Manually specify the IP address
+   - Example: `192.168.68.105`
+   - Use when mDNS is not available or for static network configurations
+
+**Step 5: Configuration Summary**
+- Reviews all settings before applying
+- Allows you to restart the wizard if needed
+
+**Step 6: Robot Configuration**
+- Executes the configuration on the robot
+- Provides detailed error messages if issues occur
+- Option to continue to full system launch after successful setup
+
+### Example Session
+```
+🤖 B4M Robot WiFi Setup Wizard
+==========================================
+
+Step 1/6: Prerequisites Check
+----------------------------
+✅ config_robot.py found
+✅ Python 3 available
+✅ User has serial port access
+
+Step 2/6: USB Connection
+------------------------
+📱 Please connect your robot via USB cable and power it on.
+Press Enter when robot is connected and powered on...
+
+🔍 Scanning for serial devices...
+Found serial devices:
+  1) /dev/ttyUSB0
+  2) /dev/ttyACM0
+  c) Enter custom port
+
+Select port [1-2/c]: 1
+✅ Selected port: /dev/ttyUSB0
+
+Step 3/6: WiFi Network Configuration
+------------------------------------
+📶 Enter WiFi network name (SSID): MyHomeNetwork
+🔐 Enter WiFi password: [hidden]
+✅ WiFi credentials configured
+
+Step 4/6: Agent Connection Method
+---------------------------------
+Choose how the robot will connect to the Micro-ROS agent:
+
+1. mDNS hostname (recommended): victus.local
+   → Resolves to: 192.168.68.105
+2. Fixed IP address
+
+Select connection method [1-2]: 1
+✅ Will use mDNS: victus.local → 192.168.68.105
+
+Step 5/6: Configuration Summary
+-------------------------------
+📋 Review your configuration:
+
+   Serial Port: /dev/ttyUSB0
+   WiFi SSID: MyHomeNetwork
+   WiFi Password: [hidden]
+   Agent Connection: mDNS hostname (victus.local)
+   Agent Port: 8090
+
+Proceed with this configuration? [y/N]: y
+
+Step 6/6: Configuring Robot
+---------------------------
+🔄 Sending configuration to robot...
+
+✅ Robot configuration completed successfully!
+
+🎉 WiFi Setup Complete!
+
+Continue to launch the robot system? [y/N]: y
+```
+
+### Troubleshooting WiFi Setup
+
+**No serial devices found**
+- Check USB cable connection
+- Ensure robot is powered on
+- Try a different USB port
+- Verify device appears: `ls /dev/tty*`
+
+**Permission denied accessing serial port**
+- Add user to dialout group: `sudo usermod -a -G dialout $USER`
+- Log out and back in, or run: `newgrp dialout`
+
+**mDNS hostname not resolving**
+- Install Avahi: `sudo apt-get install avahi-daemon avahi-utils`
+- Test resolution: `avahi-resolve -n hostname.local`
+- Ensure both devices are on the same network subnet
+
+**Robot configuration failed**
+- Check robot firmware compatibility
+- Try power cycling the robot
+- Verify WiFi credentials are correct
+- Check network connectivity
+
+### Environment Variables
+
+The WiFi wizard sets these environment variables for `config_robot.py`:
+- `ROBOT_SERIAL_PORT`: Selected serial port
+- `ROBOT_WIFI_SSID`: WiFi network name
+- `ROBOT_WIFI_PASSWORD`: WiFi password
+- `ROBOT_AGENT_HOSTNAME`: mDNS hostname (if selected)
+- `ROBOT_AGENT_IP`: Fixed IP address (if selected)
+- `ROBOT_AGENT_PORT`: Agent port (default: 8090)
 
 ## Troubleshooting
 
