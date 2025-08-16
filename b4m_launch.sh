@@ -169,6 +169,350 @@ if [ "$B4M_PING" = true ]; then
     fi
 fi
 
+# Interactive WiFi Setup Wizard
+setup_wifi_interactive() {
+    echo "=========================================="
+    echo "🤖 B4M Robot WiFi Setup Wizard"
+    echo "=========================================="
+    echo ""
+    echo "This wizard will guide you through configuring your robot's WiFi connection."
+    echo ""
+    
+    # Step 1: Prerequisites Check
+    echo "Step 1/6: Prerequisites Check"
+    echo "----------------------------"
+    
+    # Check if config_robot.py exists
+    if [ ! -f "$WORKSPACE_ROOT/config_robot.py" ]; then
+        echo "❌ Error: config_robot.py not found in $WORKSPACE_ROOT"
+        echo "   Please ensure you're running this script from the correct directory."
+        exit 1
+    fi
+    echo "✅ config_robot.py found"
+    
+    # Check Python3
+    if ! command -v python3 &> /dev/null; then
+        echo "❌ Error: python3 not found"
+        echo "   Please install Python 3"
+        exit 1
+    fi
+    echo "✅ Python 3 available"
+    
+    # Check user permissions for serial access
+    if ! groups | grep -q dialout; then
+        echo "⚠️  Warning: User not in 'dialout' group for serial access"
+        echo "   You may need to run: sudo usermod -a -G dialout $USER"
+        echo "   Then log out and back in, or use: newgrp dialout"
+        echo ""
+        read -p "   Continue anyway? [y/N]: " continue_anyway
+        if [[ ! "$continue_anyway" =~ ^[yY]$ ]]; then
+            echo "   Setup cancelled. Please add user to dialout group and try again."
+            exit 1
+        fi
+    else
+        echo "✅ User has serial port access"
+    fi
+    echo ""
+    
+    # Step 2: USB Connection
+    echo "Step 2/6: USB Connection"
+    echo "------------------------"
+    echo "📱 Please connect your robot via USB cable and power it on."
+    echo ""
+    read -p "Press Enter when robot is connected and powered on..."
+    echo ""
+    
+    echo "🔍 Scanning for serial devices..."
+    
+    # Get available serial ports
+    local available_ports
+    available_ports=$(python3 "$WORKSPACE_ROOT/config_robot.py" --list-ports 2>/dev/null | grep -E '^\s+/' | sed 's/^[ \t]*//')
+    
+    if [ -z "$available_ports" ]; then
+        echo "❌ No serial devices found."
+        echo ""
+        echo "Troubleshooting:"
+        echo "1. Check USB cable connection"
+        echo "2. Ensure robot is powered on"
+        echo "3. Try a different USB port"
+        echo "4. Check if device appears in: ls /dev/tty*"
+        echo ""
+        read -p "Retry scan? [y/N]: " retry_scan
+        if [[ "$retry_scan" =~ ^[yY]$ ]]; then
+            setup_wifi_interactive
+            return
+        else
+            echo "Setup cancelled."
+            exit 1
+        fi
+    fi
+    
+    echo "Found serial devices:"
+    local port_array=()
+    local i=1
+    while IFS= read -r port; do
+        echo "  $i) $port"
+        port_array+=("$port")
+        i=$((i+1))
+    done <<< "$available_ports"
+    echo "  c) Enter custom port"
+    echo ""
+    
+    local selected_port=""
+    while [ -z "$selected_port" ]; do
+        read -p "Select port [1-${#port_array[@]}/c]: " port_choice
+        
+        if [[ "$port_choice" =~ ^[0-9]+$ ]] && [ "$port_choice" -ge 1 ] && [ "$port_choice" -le "${#port_array[@]}" ]; then
+            selected_port="${port_array[$((port_choice-1))]}"
+        elif [[ "$port_choice" =~ ^[cC]$ ]]; then
+            read -p "Enter custom port path (e.g., /dev/ttyUSB0): " custom_port
+            if [ -e "$custom_port" ]; then
+                selected_port="$custom_port"
+            else
+                echo "❌ Port $custom_port does not exist. Please try again."
+            fi
+        else
+            echo "❌ Invalid selection. Please try again."
+        fi
+    done
+    
+    echo "✅ Selected port: $selected_port"
+    echo ""
+    
+    # Step 3: WiFi Network Configuration
+    echo "Step 3/6: WiFi Network Configuration"
+    echo "------------------------------------"
+    
+    local wifi_ssid=""
+    while [ -z "$wifi_ssid" ]; do
+        read -p "📶 Enter WiFi network name (SSID): " wifi_ssid
+        if [ -z "$wifi_ssid" ]; then
+            echo "❌ SSID cannot be empty. Please try again."
+        elif [ ${#wifi_ssid} -gt 32 ]; then
+            echo "❌ SSID too long (max 32 characters). Please try again."
+            wifi_ssid=""
+        fi
+    done
+    
+    local wifi_password=""
+    while [ -z "$wifi_password" ]; do
+        read -s -p "🔐 Enter WiFi password: " wifi_password
+        echo ""
+        if [ -z "$wifi_password" ]; then
+            echo "❌ Password cannot be empty. Please try again."
+        elif [ ${#wifi_password} -lt 8 ]; then
+            echo "⚠️  Warning: Password is shorter than 8 characters (not recommended)"
+            read -p "   Continue with this password? [y/N]: " continue_short_password
+            if [[ ! "$continue_short_password" =~ ^[yY]$ ]]; then
+                wifi_password=""
+                continue
+            fi
+        fi
+    done
+    
+    echo "✅ WiFi credentials configured"
+    echo ""
+    
+    # Step 4: Agent Connection Method
+    echo "Step 4/6: Agent Connection Method"
+    echo "---------------------------------"
+    echo "Choose how the robot will connect to the Micro-ROS agent:"
+    echo ""
+    
+    # Auto-detect current hostname and IP
+    local current_hostname=$(hostname)
+    local current_ip=""
+    if command -v python3 &> /dev/null; then
+        current_ip=$(python3 -c "
+import sys
+sys.path.insert(0, '$WORKSPACE_ROOT')
+try:
+    from config_robot import get_local_ip_for_robot
+    print(get_local_ip_for_robot())
+except:
+    print('Unable to detect')
+" 2>/dev/null)
+    fi
+    
+    echo "1. mDNS hostname (recommended): ${current_hostname}.local"
+    if [ "$current_ip" != "Unable to detect" ] && [ -n "$current_ip" ]; then
+        echo "   → Resolves to: $current_ip"
+    fi
+    echo "2. Fixed IP address"
+    echo ""
+    
+    local connection_method=""
+    local agent_address=""
+    
+    while [ -z "$connection_method" ]; do
+        read -p "Select connection method [1-2]: " method_choice
+        
+        case "$method_choice" in
+            1)
+                connection_method="hostname"
+                agent_address="${current_hostname}.local"
+                if [ "$current_ip" != "Unable to detect" ] && [ -n "$current_ip" ]; then
+                    echo "✅ Will use mDNS: ${agent_address} → $current_ip"
+                else
+                    echo "⚠️  Using mDNS: ${agent_address} (IP resolution will be tested during configuration)"
+                fi
+                ;;
+            2)
+                connection_method="ip"
+                echo ""
+                local ip_address=""
+                while [ -z "$ip_address" ]; do
+                    read -p "Enter IP address: " ip_address
+                    # Validate IP format
+                    if [[ $ip_address =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+                        # Check if each octet is valid (0-255)
+                        IFS='.' read -r -a ip_parts <<< "$ip_address"
+                        local valid_ip=true
+                        for part in "${ip_parts[@]}"; do
+                            if [ "$part" -gt 255 ]; then
+                                valid_ip=false
+                                break
+                            fi
+                        done
+                        if [ "$valid_ip" = true ]; then
+                            agent_address="$ip_address"
+                            echo "✅ Will use fixed IP: $agent_address"
+                        else
+                            echo "❌ Invalid IP address format. Please try again."
+                            ip_address=""
+                        fi
+                    else
+                        echo "❌ Invalid IP address format. Please try again."
+                        ip_address=""
+                    fi
+                done
+                ;;
+            *)
+                echo "❌ Invalid selection. Please try again."
+                ;;
+        esac
+    done
+    echo ""
+    
+    # Step 5: Configuration Summary
+    echo "Step 5/6: Configuration Summary"
+    echo "-------------------------------"
+    echo "📋 Review your configuration:"
+    echo ""
+    echo "   Serial Port: $selected_port"
+    echo "   WiFi SSID: $wifi_ssid"
+    echo "   WiFi Password: [hidden]"
+    if [ "$connection_method" = "hostname" ]; then
+        echo "   Agent Connection: mDNS hostname ($agent_address)"
+    else
+        echo "   Agent Connection: Fixed IP ($agent_address)"
+    fi
+    echo "   Agent Port: 8090"
+    echo ""
+    
+    local confirm_config=""
+    while [[ ! "$confirm_config" =~ ^[yYnN]$ ]]; do
+        read -p "Proceed with this configuration? [y/N]: " confirm_config
+    done
+    
+    if [[ ! "$confirm_config" =~ ^[yY]$ ]]; then
+        echo "❌ Configuration cancelled."
+        echo ""
+        read -p "Start over? [y/N]: " start_over
+        if [[ "$start_over" =~ ^[yY]$ ]]; then
+            setup_wifi_interactive
+            return
+        else
+            exit 1
+        fi
+    fi
+    echo ""
+    
+    # Step 6: Execute Configuration
+    echo "Step 6/6: Configuring Robot"
+    echo "---------------------------"
+    echo "🔄 Sending configuration to robot..."
+    echo ""
+    
+    # Set environment variables for config_robot.py
+    export ROBOT_SERIAL_PORT="$selected_port"
+    export ROBOT_WIFI_SSID="$wifi_ssid"
+    export ROBOT_WIFI_PASSWORD="$wifi_password"
+    
+    if [ "$connection_method" = "hostname" ]; then
+        export ROBOT_AGENT_HOSTNAME="$agent_address"
+        unset ROBOT_AGENT_IP  # Clear any existing IP setting
+    else
+        export ROBOT_AGENT_IP="$agent_address"
+        unset ROBOT_AGENT_HOSTNAME  # Clear any existing hostname setting
+    fi
+    export ROBOT_AGENT_PORT="8090"
+    
+    # Run config_robot.py
+    echo "Executing: python3 config_robot.py"
+    echo "----------------------------------------"
+    
+    if python3 "$WORKSPACE_ROOT/config_robot.py"; then
+        echo "----------------------------------------"
+        echo "✅ Robot configuration completed successfully!"
+        echo ""
+        echo "🎉 WiFi Setup Complete!"
+        echo ""
+        echo "Your robot has been configured with:"
+        echo "   • WiFi network: $wifi_ssid"
+        if [ "$connection_method" = "hostname" ]; then
+            echo "   • Agent connection: $agent_address (mDNS)"
+        else
+            echo "   • Agent connection: $agent_address (Fixed IP)"
+        fi
+        echo ""
+        echo "The robot will now attempt to connect to your WiFi network and"
+        echo "communicate with the Micro-ROS agent on this machine."
+        echo ""
+        echo "Next steps:"
+        echo "1. Disconnect the USB cable from the robot"
+        echo "2. Power cycle the robot (turn off and on)"
+        echo "3. Wait about 10-15 seconds for WiFi connection"
+        echo "4. Run ./b4m_launch.sh to start the robot system"
+        echo ""
+        echo "WiFi setup complete. Exiting."
+        exit 0
+        
+    else
+        echo "----------------------------------------"
+        echo "❌ Robot configuration failed!"
+        echo ""
+        echo "Common issues and solutions:"
+        echo "1. Robot not connected properly:"
+        echo "   - Check USB cable connection"
+        echo "   - Ensure robot is powered on"
+        echo "   - Try a different USB port"
+        echo ""
+        echo "2. Serial permission issues:"
+        echo "   - Add user to dialout group: sudo usermod -a -G dialout $USER"
+        echo "   - Log out and back in, or run: newgrp dialout"
+        echo ""
+        echo "3. Robot firmware issues:"
+        echo "   - Ensure robot has compatible firmware"
+        echo "   - Try power cycling the robot"
+        echo ""
+        
+        local retry_config=""
+        while [[ ! "$retry_config" =~ ^[yYnN]$ ]]; do
+            read -p "Retry configuration? [y/N]: " retry_config
+        done
+        
+        if [[ "$retry_config" =~ ^[yY]$ ]]; then
+            echo ""
+            setup_wifi_interactive
+            return
+        else
+            echo "Setup cancelled."
+            exit 1
+        fi
+    fi
+}
+
 # Handle WiFi setup mode
 if [ "$SETUP_WIFI" = true ]; then
     echo "🔧 WiFi Setup Mode"
@@ -176,7 +520,8 @@ if [ "$SETUP_WIFI" = true ]; then
     echo "Starting interactive WiFi configuration wizard..."
     echo ""
     setup_wifi_interactive
-    # If we reach here, user chose to continue to normal launch
+    # WiFi setup is complete, exit the script
+    exit 0
 fi
 
 # Handle exploration mode
@@ -788,360 +1133,6 @@ if [ "$LOCALIZATION_TEST" = true ]; then
     # Create directories
     mkdir -p "$LOCALIZATION_TEST_DIR" "$PARAM_BACKUP_DIR" "$TEST_RESULTS_DIR" "$TUNING_PARAMS_DIR"
 fi
-
-# Interactive WiFi Setup Wizard
-setup_wifi_interactive() {
-    echo "=========================================="
-    echo "🤖 B4M Robot WiFi Setup Wizard"
-    echo "=========================================="
-    echo ""
-    echo "This wizard will guide you through configuring your robot's WiFi connection."
-    echo ""
-    
-    # Step 1: Prerequisites Check
-    echo "Step 1/6: Prerequisites Check"
-    echo "----------------------------"
-    
-    # Check if config_robot.py exists
-    if [ ! -f "$WORKSPACE_ROOT/config_robot.py" ]; then
-        echo "❌ Error: config_robot.py not found in $WORKSPACE_ROOT"
-        echo "   Please ensure you're running this script from the correct directory."
-        exit 1
-    fi
-    echo "✅ config_robot.py found"
-    
-    # Check Python3
-    if ! command -v python3 &> /dev/null; then
-        echo "❌ Error: python3 not found"
-        echo "   Please install Python 3"
-        exit 1
-    fi
-    echo "✅ Python 3 available"
-    
-    # Check user permissions for serial access
-    if ! groups | grep -q dialout; then
-        echo "⚠️  Warning: User not in 'dialout' group for serial access"
-        echo "   You may need to run: sudo usermod -a -G dialout $USER"
-        echo "   Then log out and back in, or use: newgrp dialout"
-        echo ""
-        read -p "   Continue anyway? [y/N]: " continue_anyway
-        if [[ ! "$continue_anyway" =~ ^[yY]$ ]]; then
-            echo "   Setup cancelled. Please add user to dialout group and try again."
-            exit 1
-        fi
-    else
-        echo "✅ User has serial port access"
-    fi
-    echo ""
-    
-    # Step 2: USB Connection
-    echo "Step 2/6: USB Connection"
-    echo "------------------------"
-    echo "📱 Please connect your robot via USB cable and power it on."
-    echo ""
-    read -p "Press Enter when robot is connected and powered on..."
-    echo ""
-    
-    echo "🔍 Scanning for serial devices..."
-    
-    # Get available serial ports
-    local available_ports
-    available_ports=$(python3 "$WORKSPACE_ROOT/config_robot.py" --list-ports 2>/dev/null | grep -E '^\s+/' | sed 's/^[ \t]*//')
-    
-    if [ -z "$available_ports" ]; then
-        echo "❌ No serial devices found."
-        echo ""
-        echo "Troubleshooting:"
-        echo "1. Check USB cable connection"
-        echo "2. Ensure robot is powered on"
-        echo "3. Try a different USB port"
-        echo "4. Check if device appears in: ls /dev/tty*"
-        echo ""
-        read -p "Retry scan? [y/N]: " retry_scan
-        if [[ "$retry_scan" =~ ^[yY]$ ]]; then
-            setup_wifi_interactive
-            return
-        else
-            echo "Setup cancelled."
-            exit 1
-        fi
-    fi
-    
-    echo "Found serial devices:"
-    local port_array=()
-    local i=1
-    while IFS= read -r port; do
-        echo "  $i) $port"
-        port_array+=("$port")
-        i=$((i+1))
-    done <<< "$available_ports"
-    echo "  c) Enter custom port"
-    echo ""
-    
-    local selected_port=""
-    while [ -z "$selected_port" ]; do
-        read -p "Select port [1-${#port_array[@]}/c]: " port_choice
-        
-        if [[ "$port_choice" =~ ^[0-9]+$ ]] && [ "$port_choice" -ge 1 ] && [ "$port_choice" -le "${#port_array[@]}" ]; then
-            selected_port="${port_array[$((port_choice-1))]}"
-        elif [[ "$port_choice" =~ ^[cC]$ ]]; then
-            read -p "Enter custom port path (e.g., /dev/ttyUSB0): " custom_port
-            if [ -e "$custom_port" ]; then
-                selected_port="$custom_port"
-            else
-                echo "❌ Port $custom_port does not exist. Please try again."
-            fi
-        else
-            echo "❌ Invalid selection. Please try again."
-        fi
-    done
-    
-    echo "✅ Selected port: $selected_port"
-    echo ""
-    
-    # Step 3: WiFi Network Configuration
-    echo "Step 3/6: WiFi Network Configuration"
-    echo "------------------------------------"
-    
-    local wifi_ssid=""
-    while [ -z "$wifi_ssid" ]; do
-        read -p "📶 Enter WiFi network name (SSID): " wifi_ssid
-        if [ -z "$wifi_ssid" ]; then
-            echo "❌ SSID cannot be empty. Please try again."
-        elif [ ${#wifi_ssid} -gt 32 ]; then
-            echo "❌ SSID too long (max 32 characters). Please try again."
-            wifi_ssid=""
-        fi
-    done
-    
-    local wifi_password=""
-    while [ -z "$wifi_password" ]; do
-        read -s -p "🔐 Enter WiFi password: " wifi_password
-        echo ""
-        if [ -z "$wifi_password" ]; then
-            echo "❌ Password cannot be empty. Please try again."
-        elif [ ${#wifi_password} -lt 8 ]; then
-            echo "⚠️  Warning: Password is shorter than 8 characters (not recommended)"
-            read -p "   Continue with this password? [y/N]: " continue_short_password
-            if [[ ! "$continue_short_password" =~ ^[yY]$ ]]; then
-                wifi_password=""
-                continue
-            fi
-        fi
-    done
-    
-    echo "✅ WiFi credentials configured"
-    echo ""
-    
-    # Step 4: Agent Connection Method
-    echo "Step 4/6: Agent Connection Method"
-    echo "---------------------------------"
-    echo "Choose how the robot will connect to the Micro-ROS agent:"
-    echo ""
-    
-    # Auto-detect current hostname and IP
-    local current_hostname=$(hostname)
-    local current_ip=""
-    if command -v python3 &> /dev/null; then
-        current_ip=$(python3 -c "
-import sys
-sys.path.insert(0, '$WORKSPACE_ROOT')
-try:
-    from config_robot import get_local_ip_for_robot
-    print(get_local_ip_for_robot())
-except:
-    print('Unable to detect')
-" 2>/dev/null)
-    fi
-    
-    echo "1. mDNS hostname (recommended): ${current_hostname}.local"
-    if [ "$current_ip" != "Unable to detect" ] && [ -n "$current_ip" ]; then
-        echo "   → Resolves to: $current_ip"
-    fi
-    echo "2. Fixed IP address"
-    echo ""
-    
-    local connection_method=""
-    local agent_address=""
-    
-    while [ -z "$connection_method" ]; do
-        read -p "Select connection method [1-2]: " method_choice
-        
-        case "$method_choice" in
-            1)
-                connection_method="hostname"
-                agent_address="${current_hostname}.local"
-                if [ "$current_ip" != "Unable to detect" ] && [ -n "$current_ip" ]; then
-                    echo "✅ Will use mDNS: ${agent_address} → $current_ip"
-                else
-                    echo "⚠️  Using mDNS: ${agent_address} (IP resolution will be tested during configuration)"
-                fi
-                ;;
-            2)
-                connection_method="ip"
-                echo ""
-                local ip_address=""
-                while [ -z "$ip_address" ]; do
-                    read -p "Enter IP address: " ip_address
-                    # Validate IP format
-                    if [[ $ip_address =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-                        # Check if each octet is valid (0-255)
-                        IFS='.' read -r -a ip_parts <<< "$ip_address"
-                        local valid_ip=true
-                        for part in "${ip_parts[@]}"; do
-                            if [ "$part" -gt 255 ]; then
-                                valid_ip=false
-                                break
-                            fi
-                        done
-                        if [ "$valid_ip" = true ]; then
-                            agent_address="$ip_address"
-                            echo "✅ Will use fixed IP: $agent_address"
-                        else
-                            echo "❌ Invalid IP address format. Please try again."
-                            ip_address=""
-                        fi
-                    else
-                        echo "❌ Invalid IP address format. Please try again."
-                        ip_address=""
-                    fi
-                done
-                ;;
-            *)
-                echo "❌ Invalid selection. Please try again."
-                ;;
-        esac
-    done
-    echo ""
-    
-    # Step 5: Configuration Summary
-    echo "Step 5/6: Configuration Summary"
-    echo "-------------------------------"
-    echo "📋 Review your configuration:"
-    echo ""
-    echo "   Serial Port: $selected_port"
-    echo "   WiFi SSID: $wifi_ssid"
-    echo "   WiFi Password: [hidden]"
-    if [ "$connection_method" = "hostname" ]; then
-        echo "   Agent Connection: mDNS hostname ($agent_address)"
-    else
-        echo "   Agent Connection: Fixed IP ($agent_address)"
-    fi
-    echo "   Agent Port: 8090"
-    echo ""
-    
-    local confirm_config=""
-    while [[ ! "$confirm_config" =~ ^[yYnN]$ ]]; do
-        read -p "Proceed with this configuration? [y/N]: " confirm_config
-    done
-    
-    if [[ ! "$confirm_config" =~ ^[yY]$ ]]; then
-        echo "❌ Configuration cancelled."
-        echo ""
-        read -p "Start over? [y/N]: " start_over
-        if [[ "$start_over" =~ ^[yY]$ ]]; then
-            setup_wifi_interactive
-            return
-        else
-            exit 1
-        fi
-    fi
-    echo ""
-    
-    # Step 6: Execute Configuration
-    echo "Step 6/6: Configuring Robot"
-    echo "---------------------------"
-    echo "🔄 Sending configuration to robot..."
-    echo ""
-    
-    # Set environment variables for config_robot.py
-    export ROBOT_SERIAL_PORT="$selected_port"
-    export ROBOT_WIFI_SSID="$wifi_ssid"
-    export ROBOT_WIFI_PASSWORD="$wifi_password"
-    
-    if [ "$connection_method" = "hostname" ]; then
-        export ROBOT_AGENT_HOSTNAME="$agent_address"
-        unset ROBOT_AGENT_IP  # Clear any existing IP setting
-    else
-        export ROBOT_AGENT_IP="$agent_address"
-        unset ROBOT_AGENT_HOSTNAME  # Clear any existing hostname setting
-    fi
-    export ROBOT_AGENT_PORT="8090"
-    
-    # Run config_robot.py
-    echo "Executing: python3 config_robot.py"
-    echo "----------------------------------------"
-    
-    if python3 "$WORKSPACE_ROOT/config_robot.py"; then
-        echo "----------------------------------------"
-        echo "✅ Robot configuration completed successfully!"
-        echo ""
-        echo "🎉 WiFi Setup Complete!"
-        echo ""
-        echo "Your robot has been configured with:"
-        echo "   • WiFi network: $wifi_ssid"
-        if [ "$connection_method" = "hostname" ]; then
-            echo "   • Agent connection: $agent_address (mDNS)"
-        else
-            echo "   • Agent connection: $agent_address (Fixed IP)"
-        fi
-        echo ""
-        echo "The robot will now attempt to connect to your WiFi network and"
-        echo "communicate with the Micro-ROS agent on this machine."
-        echo ""
-        
-        # Ask if user wants to continue to normal launch
-        local continue_launch=""
-        while [[ ! "$continue_launch" =~ ^[yYnN]$ ]]; do
-            read -p "Continue to launch the robot system? [y/N]: " continue_launch
-        done
-        
-        if [[ "$continue_launch" =~ ^[yY]$ ]]; then
-            echo ""
-            echo "Continuing to robot system launch..."
-            echo "==========================================="
-            echo ""
-            return 0  # Continue to normal script execution
-        else
-            echo ""
-            echo "WiFi setup complete. Run ./b4m_launch.sh to start the robot system."
-            exit 0
-        fi
-        
-    else
-        echo "----------------------------------------"
-        echo "❌ Robot configuration failed!"
-        echo ""
-        echo "Common issues and solutions:"
-        echo "1. Robot not connected properly:"
-        echo "   - Check USB cable connection"
-        echo "   - Ensure robot is powered on"
-        echo "   - Try a different USB port"
-        echo ""
-        echo "2. Serial permission issues:"
-        echo "   - Add user to dialout group: sudo usermod -a -G dialout $USER"
-        echo "   - Log out and back in, or run: newgrp dialout"
-        echo ""
-        echo "3. Robot firmware issues:"
-        echo "   - Ensure robot has compatible firmware"
-        echo "   - Try power cycling the robot"
-        echo ""
-        
-        local retry_config=""
-        while [[ ! "$retry_config" =~ ^[yYnN]$ ]]; do
-            read -p "Retry configuration? [y/N]: " retry_config
-        done
-        
-        if [[ "$retry_config" =~ ^[yY]$ ]]; then
-            echo ""
-            setup_wifi_interactive
-            return
-        else
-            echo "Setup cancelled."
-            exit 1
-        fi
-    fi
-}
 
 # Function to ask for user confirmation
 confirm() {
