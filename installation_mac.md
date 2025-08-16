@@ -21,7 +21,7 @@ Download and install UTM from:
 ### Create Ubuntu Virtual Machine
 
 1. **Download Ubuntu 22.04 LTS ISO**
-   - Download from: https://ubuntu.com/download/desktop
+   - Download from: https://releases.ubuntu.com/22.04.5/ubuntu-22.04.5-desktop-amd64.iso.torrent
    - Choose Ubuntu 22.04.3 LTS
 
 2. **Create new VM in UTM**
