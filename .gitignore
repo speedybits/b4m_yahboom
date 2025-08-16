@@ -28,6 +28,13 @@
 *.out
 *.app
 
+# API keys and secrets - NEVER commit these!
+b4m_api.md
+.env
+*.key
+*_api_key*
+*_secret*
+
 # Python byte code
 *.pyc
 __pycache__/
