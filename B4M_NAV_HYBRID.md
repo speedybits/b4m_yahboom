@@ -4,8 +4,6 @@
 
 The B4M LLM Navigation System enables natural language communication between Large Language Models (LLMs) and the Yahboom robot's SLAM-based navigation system. This system translates occupancy grid maps and sensor data into text descriptions that LLMs can understand, and converts LLM decisions into robot movement commands.
 
-**Important:** The LLM communicates with the robot exclusively through JSON over HTTP. The LLM does not run any code on the robot - it only sends navigation requests as JSON and receives status updates as JSON. All ROS2 and Navigation2 integration happens on the robot side via the API server.
-
 ## System Architecture
 
 ### Core Components
@@ -31,71 +29,76 @@ REST API server providing the interface between LLM services and the robot.
 **Default Port:** 8080
 
 **Endpoints:**
-- `GET /spatial_context` - Returns current spatial situation in text and grid
-- `POST /navigate_to` - Navigate to specific coordinates using Nav2
+- `GET /spatial_context` - Returns current spatial situation in text
+- `POST /move` - Execute movement command from LLM
+- `GET /scan_data` - Returns processed LiDAR information
+- `POST /navigate_to` - Navigate to specific coordinates
 - `GET /status` - Current navigation and robot status
 
 #### 3. Navigation Controller Node (`b4m_llm_controller`)
-Bridges API commands to ROS2 Navigation2 stack.
+Bridges API commands to ROS2 navigation stack.
 
 **Publishers:**
-- `/navigate_to_pose` (geometry_msgs/PoseStamped) - Navigation2 goals
+- `/cmd_vel` (geometry_msgs/Twist) - Direct velocity commands
+- `/navigate_to_pose` (geometry_msgs/PoseStamped) - Navigation goals
 
 **Functionality:**
-- Converts LLM grid analysis to Navigation2 2D pose estimates
-- Validates goal poses before sending to Nav2
+- Translates simple movement commands (forward/left/right/back)
+- Implements safety validation before executing commands
 - Monitors navigation progress and reports status
 
 ## API Specification
 
 ### GET /spatial_context
-Returns the robot's current spatial understanding in grid and text format.
+Returns the robot's current spatial understanding in text format.
 
 **Response:**
 ```json
 {
   "position": {
-    "x": 1.5,
-    "y": 1.5,
+    "x": 2.5,
+    "y": 3.2,
     "heading": 1.57
   },
-  "grid_view": [
-    ["#", "#", "#", "#", "#", "#", "#", "#", "#", "#"],
-    ["#", ".", ".", ".", ".", "#", "?", "?", "?", "#"],
-    ["#", ".", ".", ".", ".", "#", "?", "?", "?", "#"],
-    ["#", ".", ".", "@", ".", ".", ".", ".", "?", "#"],
-    ["#", ".", ".", ".", ".", "#", ".", ".", "?", "#"],
-    ["#", "#", "#", ".", "#", "#", ".", ".", "?", "#"],
-    ["#", ".", ".", ".", ".", ".", ".", ".", "?", "#"],
-    ["#", ".", ".", "*", ".", "#", "#", "#", "#", "#"],
-    ["#", ".", ".", ".", ".", "#", "?", "?", "?", "#"],
-    ["#", "#", "#", "#", "#", "#", "#", "#", "#", "#"]
-  ],
-  "grid_analysis": {
-    "robot_symbol": "@",
-    "robot_grid_position": [3, 3],
-    "target_symbol": "*",
-    "target_grid_position": [3, 7],
-    "unexplored_positions": [[6,1], [7,1], [8,1], [6,2], [7,2], [8,2], [8,3], [8,4], [8,5], [8,6], [6,8], [7,8], [8,8]],
-    "unexplored_percentage": 30,
-    "grid_resolution": 0.5,
-    "grid_origin": {"x": 0.0, "y": 0.0}
-  },
-  "text_description": "You are at grid position (3,3) in a partially mapped room. Target (*) is at (3,7), 2.0m south. Clear path detected through doorway at (3,5). Unexplored areas (30%) to the east.",
-  "navigable_goals": [
+  "text_description": "You are in an open area. Forward: clear path for 4.5m. Left: wall at 0.8m. Right: doorway at 2.1m. Behind: open space extends 3m.",
+  "obstacles": [
     {
-      "label": "target",
-      "grid_position": [3, 7],
-      "world_position": {"x": 1.5, "y": 3.5},
-      "distance": 2.0
+      "direction": "forward-left",
+      "distance": 1.5,
+      "description": "table-sized object"
     },
     {
-      "label": "nearest_unexplored",
-      "grid_position": [6, 1],
-      "world_position": {"x": 3.0, "y": 0.5},
-      "distance": 3.16
+      "direction": "right",
+      "distance": 2.0,
+      "description": "small obstacle"
     }
-  ]
+  ],
+  "map_stats": {
+    "explored_percentage": 65,
+    "current_zone": "central_area"
+  }
+}
+```
+
+### POST /move
+Execute a movement command.
+
+**Request:**
+```json
+{
+  "command": "move",
+  "direction": "forward",  // Options: "forward", "left", "right", "back", "stop"
+  "distance": 2.0,          // Optional, in meters
+  "speed": "normal"         // Optional: "slow", "normal", "fast"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "executing",
+  "estimated_duration": 4.5,
+  "message": "Moving forward 2.0 meters"
 }
 ```
 
@@ -120,6 +123,24 @@ Navigate to specific map coordinates.
   "status": "navigating",
   "distance_to_target": 3.4,
   "estimated_time": 15.2
+}
+```
+
+### GET /scan_data
+Returns processed LiDAR scan information.
+
+**Response:**
+```json
+{
+  "timestamp": "2024-01-15T10:30:00Z",
+  "sectors": {
+    "front": {"min_distance": 2.5, "clear": true},
+    "left": {"min_distance": 0.8, "clear": false},
+    "right": {"min_distance": 3.2, "clear": true},
+    "back": {"min_distance": 1.5, "clear": true}
+  },
+  "obstacle_count": 3,
+  "scan_quality": "good"
 }
 ```
 
@@ -148,35 +169,18 @@ Returns current robot and navigation status.
 
 ```
 1. LLM requests spatial context
-   LLM → GET /spatial_context → Spatial Interpreter → Grid + Text Description
+   LLM → GET /spatial_context → Spatial Interpreter → Text Description
 
-2. LLM analyzes grid and sets navigation goal
+2. LLM makes movement decision
+   Option A: Incremental Movement
+   LLM → POST /move → Navigation Controller → /cmd_vel → Robot Movement
+   
+   Option B: Navigation2 Goal Pose
    LLM → POST /navigate_to → Nav2 Action Server → Path Planner → Robot Movement
 
 3. LLM monitors progress
    LLM → GET /status → Current State → LLM Feedback Loop
 ```
-
-## LLM vs Robot-Side Processing
-
-### What the LLM Does:
-- **Receives**: JSON data with grid symbols and analysis
-- **Analyzes**: Grid patterns using natural language understanding
-- **Calculates**: Simple conversions (grid position × resolution = meters)
-- **Decides**: Where to navigate based on goals and exploration needs
-- **Sends**: JSON requests with target coordinates
-
-### What the Robot API Server Does:
-- **Converts**: JSON requests to ROS2 messages
-- **Transforms**: Coordinates to Navigation2 format
-- **Publishes**: Goals to Nav2 action servers
-- **Monitors**: Navigation progress via ROS2 topics
-- **Returns**: Status updates as JSON to LLM
-
-### Clear Separation:
-- **LLM**: High-level decision making via HTTP/JSON
-- **Robot**: Low-level execution via ROS2/Navigation2
-- **Interface**: REST API bridges the two systems
 
 ## Navigation2 Integration with Grid System
 
@@ -220,16 +224,16 @@ When LLM sets a Nav2 goal, the system continuously:
 - Adjusts for moving obstacles
 - Triggers recovery behaviors if stuck
 
-### Navigation Goal Selection Strategy
+### Navigation Mode Decision Matrix
 
-| Scenario | Grid State | Nav2 Goal Target | Reason |
-|----------|------------|------------------|---------|
-| Exploration | >40% `?` symbols | Nearest `?` position | Map unknown areas |
-| Target navigation | `*` symbol visible | `*` position | Reach designated goal |
-| Obstacle maze | Many `#` symbols | Best `.` path node | Nav2 handles path planning |
-| Doorway navigation | Single `.` between `#` | Center of doorway `.` | Navigate through opening |
-| Open area | Large `.` region | Center of region | Maximize visibility |
-| Edge exploration | `?` at map boundary | Edge `?` position | Expand map coverage |
+| Scenario | Grid State | Navigation Method | Reason |
+|----------|------------|-------------------|---------|
+| Exploration | >40% `?` symbols | Incremental | Need careful exploration |
+| Known path | <20% `?`, clear `.` path | Nav2 Goal | Efficient path planning |
+| Obstacle maze | Many `#` symbols | Nav2 Goal | Better obstacle avoidance |
+| Precise positioning | Target within 1m | Incremental | Fine control needed |
+| Long distance | Target >5m away | Nav2 Goal | Optimal path planning |
+| Doorway navigation | Single `.` between `#` | Hybrid | Nav2 to door, incremental through |
 
 ## Text-Based Spatial Representation
 
@@ -293,59 +297,72 @@ The Spatial Map Interpreter analyzes this grid and generates:
 
 #### LLM Navigation Decision Process
 
-1. **Grid Analysis**: LLM examines the grid to understand environment
-   - Current position: @ at (3,3)
-   - Target position: * at (3,7)
-   - Path viability: Check for obstacles (#) and unknown areas (?)
-   - Distance calculation: Grid cells × resolution (0.5m)
+1. **Path Analysis**: LLM examines symbols between @ and *
+   - Path from (3,3) to (3,7): @ → . → . → doorway → . → . → *
+   - All symbols are "." (free space) except for the doorway
 
-2. **LLM Decision → JSON Request**:
+2. **Navigation Strategy Selection**:
    
-   **What the LLM does:**
-   - Analyzes grid: "Robot is at [3,3], target is at [3,7]"
-   - Calculates: "Target is 4 cells south, which is 2.0 meters (4 × 0.5m)"
-   - Decides: "Navigate to target position"
-   - Sends JSON request:
-   ```json
-   {
-       "target": {
-           "x": 1.5,
-           "y": 3.5,
-           "orientation": 1.57
-       },
-       "label": "reach_target"
-   }
-   ```
-
-3. **Robot API Server Processing** (runs on robot, not in LLM):
+   **Option A: Navigation2 Goal Pose (Preferred for known areas)**
    ```python
-   # This code runs on the robot's b4m_llm_nav_api server
-   # NOT in the LLM - shown here for implementation reference
-   def handle_navigate_request(request_json):
-       target = request_json["target"]
-       
-       # Convert to ROS2 Navigation2 goal
-       goal = PoseStamped()
-       goal.pose.position.x = target["x"]
-       goal.pose.position.y = target["y"]
-       goal.pose.orientation = quaternion_from_euler(0, 0, target["orientation"])
-       
-       # Send to Nav2 (robot-side processing)
-       nav2_client.send_goal(goal)
-       return {"status": "navigating", "estimated_time": 15.2}
+   # LLM analyzes grid and sets direct 2D goal pose
+   if path_is_clear and all_areas_mapped:
+       # Use Nav2 to handle path planning automatically
+       navigation_request = {
+           "target": {
+               "x": 3.5,  # Grid position 7 * 0.5m resolution
+               "y": 1.5,  # Grid position 3 * 0.5m resolution  
+               "orientation": 3.14  # Face south (π radians)
+           },
+           "label": "target_location"
+       }
+       # Nav2 handles obstacle avoidance and path planning
+       response = requests.post("http://robot:8080/navigate_to", json=navigation_request)
+   ```
+   
+   **Option B: Incremental Movement (For exploration or complex obstacles)**
+   ```
+   Initial:          After Analysis:     LLM Commands:
+   #   #   #   #     #   #   #   #      1. Move right (1.0m)
+   #   .   @   #     #   .   →   #      2. Move forward (2.0m)
+   #   #   .   #     #   #   ↓   #      3. Move left (1.0m)
+   #   .   .   #     #   ←   .   #      4. Move forward to *
+   #   .   *   #     #   .   *   #
    ```
 
-3. **Pattern Recognition for Goal Selection**:
-   - **Exploration**: Target nearest '?' symbol for mapping
-   - **Navigation**: Target '*' symbol for goal achievement  
-   - **Doorway**: Target center of single '.' between walls
-   - **Open Area**: Target center of large '.' regions
+3. **Hybrid Navigation Approach**:
+   ```python
+   # LLM Decision Tree
+   def select_navigation_method(grid_analysis, target):
+       if grid_analysis["unexplored_percentage"] > 40:
+           # Too much unknown - use incremental exploration
+           return "incremental"
+       elif grid_analysis["path_exists"] and not grid_analysis["obstacles_between"]:
+           # Clear path - use Nav2 direct goal
+           return "nav2_goal"
+       elif grid_analysis["obstacles_between"]:
+           # Complex obstacles - let Nav2 plan around them
+           return "nav2_goal"  # Nav2 handles obstacle avoidance
+       else:
+           # Default to incremental for fine control
+           return "incremental"
+   ```
 
-4. **Navigation2 Handles Complexity**:
-   - Path planning around obstacles
-   - Dynamic replanning if new obstacles detected
-   - Recovery behaviors if stuck
-   - Smooth trajectory generation
+4. **Navigation2 Integration Benefits**:
+   - **Automatic Path Planning**: Nav2 uses A* or other algorithms to find optimal path
+   - **Dynamic Obstacle Avoidance**: Real-time adjustments for moving obstacles
+   - **Recovery Behaviors**: Built-in recovery when stuck or path blocked
+   - **Cost Maps**: Considers traversal costs, not just free/occupied
+
+5. **Pattern Recognition**:
+   - **Corridor**: Sequential '.' symbols between walls → "hallway"
+   - **Doorway**: Single '.' between '#' symbols → "doorway"
+   - **Room**: Enclosed area of '.' symbols → "room"
+
+6. **Exploration Strategy**:
+   - '?' symbols indicate unexplored areas
+   - LLM prioritizes exploring unknown regions
+   - Updates path plans as '?' becomes '.' or '#'
 
 #### Real-time Grid Updates
 
@@ -475,174 +492,151 @@ ros2 run b4m_llm_nav_api test_integration
 
 ## Example LLM Interactions
 
-**Note:** The examples below show the JSON communication between the LLM and robot API. The LLM sends/receives JSON via HTTP - it does NOT execute Python code directly.
-
 ### Example 1: Basic Exploration
+```python
+# LLM requests current situation
+response = requests.get("http://robot:8080/spatial_context")
+# Response: "You are in an open area. Forward: clear path for 4.5m..."
 
-**LLM receives from GET /spatial_context:**
-```json
-{
-  "grid_analysis": {
-    "robot_grid_position": [3, 3],
-    "unexplored_positions": [[6,1], [7,1], [8,1]],
-    "grid_resolution": 0.5
-  }
-}
+# LLM decides to explore forward
+command = {"command": "move", "direction": "forward", "distance": 2.0}
+response = requests.post("http://robot:8080/move", json=command)
+
+# LLM checks status after movement
+status = requests.get("http://robot:8080/status")
 ```
 
-**LLM reasoning:** "I see unexplored areas at [6,1]. That's 3.0m east and 0.5m north."
-
-**LLM sends to POST /navigate_to:**
-```json
-{
-  "target": {
-    "x": 3.0,
-    "y": 0.5,
-    "orientation": 0.0
-  },
-  "label": "explore_unknown"
-}
+### Example 2: Obstacle Avoidance
+```python
+# LLM detects obstacle in spatial context
+context = requests.get("http://robot:8080/spatial_context").json()
+if "obstacle" in context["text_description"]:
+    # Choose alternate direction
+    if "left" in context["text_description"] and "clear" in context["text_description"]:
+        command = {"command": "move", "direction": "left"}
+        requests.post("http://robot:8080/move", json=command)
 ```
 
-**Robot API server handles the conversion to ROS2 commands (not shown to LLM)**
-
-### Example 2: Target Navigation
-
-**LLM receives from GET /spatial_context:**
-```json
-{
-  "grid_analysis": {
-    "robot_grid_position": [3, 3],
-    "target_grid_position": [3, 7],
-    "grid_resolution": 0.5
-  },
-  "text_description": "Target (*) is at (3,7), 2.0m south of your position"
+### Example 3: Coordinate Navigation
+```python
+# LLM has stored a location and wants to return
+stored_location = {"x": 2.5, "y": 3.2, "orientation": 0.0}
+navigation_request = {
+    "target": stored_location,
+    "label": "starting_position"
 }
+response = requests.post("http://robot:8080/navigate_to", json=navigation_request)
+
+# Monitor navigation progress
+while True:
+    status = requests.get("http://robot:8080/status").json()
+    if status["robot_state"] != "navigating":
+        break
+    time.sleep(1)
 ```
 
-**LLM reasoning:** "Target is at grid [3,7], which converts to 1.5m x, 3.5m y"
+### Example 4: Navigation2 Grid-Based Goal Setting
+```python
+# LLM receives grid and converts to Nav2 goal
+def grid_to_nav2_goal(grid_analysis, target_grid_pos, grid_resolution=0.5):
+    """
+    Convert grid position to Navigation2 2D Goal Pose
+    Grid origin is top-left, Nav2 uses bottom-left with meters
+    """
+    # Convert grid coordinates to meters
+    target_x = target_grid_pos[0] * grid_resolution
+    target_y = target_grid_pos[1] * grid_resolution
+    
+    # Calculate orientation towards target
+    robot_pos = grid_analysis["robot_grid_position"]
+    dx = target_grid_pos[0] - robot_pos[0]
+    dy = target_grid_pos[1] - robot_pos[1]
+    target_orientation = math.atan2(dy, dx)
+    
+    return {
+        "x": target_x,
+        "y": target_y,
+        "orientation": target_orientation
+    }
 
-**LLM sends to POST /navigate_to:**
-```json
-{
-  "target": {
-    "x": 1.5,
-    "y": 3.5,
-    "orientation": 1.57
-  },
-  "label": "reach_target"
-}
+# Example: LLM analyzes grid and navigates to unexplored area
+context = requests.get("http://robot:8080/spatial_context").json()
+grid_analysis = context["grid_analysis"]
+
+# Find nearest unexplored area (? symbol)
+if grid_analysis["unexplored_percentage"] > 10:
+    # Convert grid position of unexplored area to Nav2 goal
+    unexplored_pos = [6, 2]  # Example: found '?' at grid position (6,2)
+    nav2_goal = grid_to_nav2_goal(grid_analysis, unexplored_pos)
+    
+    # Send Nav2 goal - let Navigation2 handle path planning
+    navigation_request = {
+        "target": nav2_goal,
+        "label": "explore_unknown_area",
+        "use_nav2": True  # Explicitly use Navigation2 stack
+    }
+    response = requests.post("http://robot:8080/navigate_to", json=navigation_request)
+    
+    # Nav2 automatically:
+    # - Plans optimal path using A* or DWB
+    # - Avoids obstacles dynamically
+    # - Handles recovery if stuck
+    # - Updates path if new obstacles detected
 ```
 
-### Example 3: Doorway Navigation
-
-**LLM receives grid showing doorway pattern:**
-```json
-{
-  "grid_view": [
-    ["#", "#", ".", "#", "#"]
-  ],
-  "text_description": "Doorway detected at position (2,0)"
-}
+### Example 5: Intelligent Navigation Mode Selection
+```python
+def llm_navigate_to_target(spatial_context, target_symbol="*"):
+    """
+    LLM intelligently selects between Nav2 goal pose or incremental movement
+    """
+    grid = spatial_context["grid_analysis"]
+    
+    # Check if target exists in grid
+    if not grid.get("target_grid_position"):
+        return {"error": "No target found in grid"}
+    
+    target_pos = grid["target_grid_position"]
+    robot_pos = grid["robot_grid_position"]
+    
+    # Decision criteria for navigation method
+    distance = math.sqrt((target_pos[0]-robot_pos[0])**2 + 
+                        (target_pos[1]-robot_pos[1])**2)
+    
+    if distance < 2.0:  # Close range - use incremental
+        return {
+            "method": "incremental",
+            "reason": "Target very close, need precise control",
+            "commands": [
+                {"command": "move", "direction": "forward", "distance": 0.5},
+                {"command": "move", "direction": "left", "distance": 0.3}
+            ]
+        }
+    elif grid["unexplored_percentage"] < 20:  # Well-mapped area
+        # Use Nav2 for efficient path planning
+        nav2_goal = grid_to_nav2_goal(grid, target_pos)
+        return {
+            "method": "nav2_goal", 
+            "reason": "Area well-mapped, Nav2 can plan optimal path",
+            "navigation_request": {
+                "target": nav2_goal,
+                "label": "direct_to_target"
+            }
+        }
+    else:  # Partially explored - hybrid approach
+        # Navigate to nearest known area first
+        intermediate_pos = find_nearest_explored_point(grid, target_pos)
+        nav2_goal = grid_to_nav2_goal(grid, intermediate_pos)
+        return {
+            "method": "hybrid",
+            "reason": "Partially explored - navigate to known area first",
+            "navigation_request": {
+                "target": nav2_goal,
+                "label": "intermediate_waypoint"
+            },
+            "follow_up": "incremental_exploration"
+        }
 ```
-
-**LLM reasoning:** "Single '.' at [2,0] indicates doorway. Navigate through it."
-
-**LLM sends:**
-```json
-{
-  "target": {
-    "x": 1.0,
-    "y": 0.0,
-    "orientation": 1.57
-  },
-  "label": "navigate_through_doorway"
-}
-```
-
-### Example 4: Exploration Conversation Flow
-
-**This shows the conversation pattern between LLM and robot API:**
-
-**Round 1 - LLM checks exploration status:**
-```json
-GET /spatial_context response:
-{
-  "grid_analysis": {
-    "unexplored_percentage": 45,
-    "unexplored_positions": [[6,1], [7,2], [8,3]]
-  }
-}
-```
-
-**LLM decides:** "45% unexplored, navigate to nearest unknown area [6,1]"
-
-```json
-POST /navigate_to request:
-{
-  "target": {"x": 3.0, "y": 0.5, "orientation": 0.0},
-  "label": "explore_6_1"
-}
-```
-
-**Round 2 - After reaching first point:**
-```json
-GET /spatial_context response:
-{
-  "grid_analysis": {
-    "unexplored_percentage": 35,
-    "unexplored_positions": [[7,2], [8,3]]
-  }
-}
-```
-
-**LLM continues exploration until unexplored_percentage < 5%**
-
-### Example 5: Semantic Goal Navigation
-
-**LLM receives context with semantic hints:**
-```json
-GET /spatial_context response:
-{
-  "grid_analysis": {
-    "robot_grid_position": [3, 3],
-    "large_open_areas": [
-      {"center": [8, 8], "size": 25, "label": "possible_room"}
-    ],
-    "narrow_passages": [
-      {"center": [5, 2], "length": 8, "label": "possible_corridor"}
-    ]
-  },
-  "text_description": "Large open area detected at east (possibly a room). Narrow passage to the north (possibly a corridor)."
-}
-```
-
-**LLM reasoning:** "User asked to go to 'kitchen'. Large open areas often indicate rooms. Navigate to [8,8]."
-
-**LLM sends:**
-```json
-{
-  "target": {"x": 4.0, "y": 4.0, "orientation": 0.785},
-  "label": "navigate_to_kitchen"
-}
-```
-
-### Implementation Notes
-
-**For Robot API Developers:**
-The robot-side API server (b4m_llm_nav_api) handles:
-- Converting JSON coordinates to ROS2 PoseStamped messages
-- Publishing goals to Navigation2 action servers
-- Monitoring navigation feedback from Nav2
-- Returning status updates to the LLM
-
-**For LLM Integration:**
-The LLM only needs to:
-1. Parse JSON from GET /spatial_context
-2. Analyze grid patterns and positions
-3. Calculate target coordinates (grid_pos × 0.5m)
-4. Send JSON to POST /navigate_to
-5. Poll GET /status for completion
 
 ## Safety Considerations
 
