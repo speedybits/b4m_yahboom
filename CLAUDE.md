@@ -16,11 +16,6 @@ After any changes that involve user interaction, please make sure the USERGUIDE.
 ## Test file location
 Any new test file created should be located in the 'tests' directory
 
-## Regression testing
-Before commiting any code that is not documentation, we must be able to pass the regression test:
-- For simulation: ./b4m_launch.sh --simulation --regression  
-- For real robot: ./b4m_launch.sh --regression
-
 The regression test now includes automated image comparison that validates RViz visualization:
 - Captures screenshots at 3 key moments: initial, mid-rotation (180°), and final (360°)
 - Compares against mode-appropriate reference screenshots with 90% similarity threshold
