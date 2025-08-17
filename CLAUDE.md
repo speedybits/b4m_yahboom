@@ -2,40 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Commits
-Only commit files if the regression test has passed:
-- For simulation development: ./b4m_launch.sh --simulation --regression
-- For real robot deployment: ./b4m_launch.sh --regression
-
-## Get help running important commands
-If you are unable to run a command that you need to run, please stop and tell me what you need me to run. For example, if you can't run a 'sudo' command, please stop and tell me.
-
 ## User guide
 After any changes that involve user interaction, please make sure the USERGUIDE.md is updated
 
 ## Test file location
 Any new test file created should be located in the 'tests' directory
-
-## Regression testing
-Before commiting any code that is not documentation, we must be able to pass the regression test:
-- For simulation: ./b4m_launch.sh --simulation --regression  
-- For real robot: ./b4m_launch.sh --regression
-
-The regression test now includes automated image comparison that validates RViz visualization:
-- Captures screenshots at 3 key moments: initial, mid-rotation (180°), and final (360°)
-- Compares against mode-appropriate reference screenshots with 90% similarity threshold
-- Uses multi-method analysis: histogram, SSIM, feature matching, and template matching
-- Ensures laser scan visualization and SLAM mapping functionality remain consistent
-- Test fails if screenshots differ by more than 10% from reference images
-- Automatically detects simulation vs real robot mode and uses correct reference directory
-
-**Important**: The regression test now:
-- Cleans up at the START (not end) to ensure clean state
-- Leaves system running after tests for debugging
-- Uses filtered `/odom` topic (from EKF), not raw `/odom_raw`
-- To manually clean up after debugging: `./b4m_shutdown.sh --keep-agent`
-
-Dependencies required: python3-opencv python3-skimage
 
 ## Running and Shut down
 Always use b4m_launch to run tests. Use the --simulation switch for Gazebo Classic simulation tests
@@ -61,19 +32,6 @@ Keep iterating on the code implementation until the unit tests pass
 Please remember to re-run colcon build whenever necessary after making changes to code
 
 **CRITICAL: After rebuilding, you must restart any running ROS2 nodes/processes to load the new code. Python processes do not automatically reload changed modules.**
-
-## MQTT Integration Development
-
-### MQTT Command Handling
-- **JSON Format**: All MQTT commands use structured JSON format
-- **Topic Structure**: Uses `yahboom/navigation/*` topic hierarchy
-- **Status Updates**: Real-time feedback via status topics
-- **Error Handling**: Comprehensive error reporting via MQTT
-
-### Home Assistant Integration
-- **Coordinate-based Commands**: Direct position/orientation specification
-- **Real-time Status**: Live navigation progress updates
-- **Error Reporting**: Detailed error messages for troubleshooting
 
 ### ROS2 Workspace Build
 ```bash
