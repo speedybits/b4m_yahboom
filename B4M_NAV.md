@@ -34,6 +34,8 @@ REST API server providing the interface between LLM services and the robot.
 - `GET /spatial_context` - Returns current spatial situation in text and grid
 - `POST /navigate_to` - Navigate to specific coordinates using Nav2
 - `GET /status` - Current navigation and robot status
+- `POST /enable_simulated_llm` - Enable/disable simulated LLM test mode
+- `GET /simulated_llm_decision` - Get next simulated LLM navigation decision
 
 #### 3. Navigation Controller Node (`b4m_llm_controller`)
 Bridges API commands to ROS2 Navigation2 stack.
@@ -140,12 +142,60 @@ Returns current robot and navigation status.
   "safety_status": {
     "emergency_stop": false,
     "obstacles_detected": false
+  },
+  "simulated_llm_active": false
+}
+```
+
+### POST /enable_simulated_llm
+Enable or disable the simulated LLM test mode.
+
+**Request:**
+```json
+{
+  "enabled": true,
+  "strategy": "nearest_first"  // Optional: override default strategy
+}
+```
+
+**Response:**
+```json
+{
+  "status": "enabled",
+  "message": "Simulated LLM activated with strategy: nearest_first",
+  "configuration": {
+    "strategy": "nearest_first",
+    "decision_delay": 2.0,
+    "safety_margin": 1.0
   }
+}
+```
+
+### GET /simulated_llm_decision
+Get the next navigation decision from the simulated LLM.
+
+**Response:**
+```json
+{
+  "decision_available": true,
+  "reasoning": "Found unexplored area at grid position [6,2]. Distance: 3.16m. Strategy: nearest_first exploration.",
+  "navigation_goal": {
+    "target": {
+      "x": 3.0,
+      "y": 1.0,
+      "orientation": 0.523
+    },
+    "label": "simulated_exploration_6_2",
+    "source": "simulated_llm"
+  },
+  "confidence": 0.85,
+  "estimated_completion_time": 12.5
 }
 ```
 
 ## Communication Flow
 
+**Normal Operation (Real LLM):**
 ```
 1. LLM requests spatial context
    LLM → GET /spatial_context → Spatial Interpreter → Grid + Text Description
@@ -155,6 +205,21 @@ Returns current robot and navigation status.
 
 3. LLM monitors progress
    LLM → GET /status → Current State → LLM Feedback Loop
+```
+
+**Test Mode (Simulated LLM):**
+```
+1. Enable simulated LLM
+   Test System → POST /enable_simulated_llm → Simulated LLM Activated
+
+2. Robot provides spatial context internally
+   Spatial Interpreter → Simulated LLM → Grid Analysis
+
+3. Simulated LLM makes decision
+   Simulated LLM → POST /navigate_to → Nav2 Action Server → Robot Movement
+
+4. Monitor simulated decisions
+   Test System → GET /simulated_llm_decision → Decision Reasoning
 ```
 
 ## LLM vs Robot-Side Processing
@@ -222,25 +287,26 @@ When LLM sets a Nav2 goal, the system continuously:
 
 ### Navigation Goal Selection Strategy
 
-| Scenario | Grid State | Nav2 Goal Target | Reason |
-|----------|------------|------------------|---------|
-| Exploration | >40% `?` symbols | Nearest `?` position | Map unknown areas |
-| Target navigation | `*` symbol visible | `*` position | Reach designated goal |
-| Obstacle maze | Many `#` symbols | Best `.` path node | Nav2 handles path planning |
-| Doorway navigation | Single `.` between `#` | Center of doorway `.` | Navigate through opening |
-| Open area | Large `.` region | Center of region | Maximize visibility |
-| Edge exploration | `?` at map boundary | Edge `?` position | Expand map coverage |
+| Scenario | Grid State | Nav2 Goal Target | Configuration Requirement | Reason |
+|----------|------------|------------------|---------------------------|---------|
+| Exploration | >40% `?` symbols | Nearest `?` position | `allow_unknown: true` | Map unknown areas |
+| Target navigation | `*` symbol visible | `*` position | Standard | Reach designated goal |
+| Obstacle maze | Many `#` symbols | Best `.` path node | Standard | Nav2 handles path planning |
+| Doorway navigation | Single `.` between `#` | Center of doorway `.` | Standard | Navigate through opening |
+| Open area | Large `.` region | Center of region | Standard | Maximize visibility |
+| Edge exploration | `?` at map boundary | Edge `?` position | `allow_unknown: true` + `track_unknown_space: true` | Expand map coverage |
+| Fallback mode | Nav2 unknown disabled | Best `.` position only | `allow_unknown: false` | Safe navigation in known areas |
 
 ## Text-Based Spatial Representation
 
 The system converts occupancy grids into natural language descriptions:
 
 ### Grid Symbol Mapping
-- `.` - Free space
-- `#` - Obstacle/wall
-- `?` - Unknown/unexplored area
-- `@` - Robot position
-- `*` - Target/goal position
+- `.` - Free space (confirmed navigable)
+- `#` - Obstacle/wall (confirmed blocked)
+- `?` - Unknown/unexplored area (navigable if Navigation2 configured properly)
+- `@` - Robot position (current location)
+- `*` - Target/goal position (designated objective)
 
 ### Detailed Grid Symbol Usage Example
 
@@ -263,8 +329,14 @@ The system converts occupancy grids into natural language descriptions:
 - `@` at (3,3): Robot's current position
 - `*` at (3,7): Target/goal position
 - `#`: Walls and obstacles detected by SLAM
-- `.`: Free navigable space
-- `?`: Unexplored areas (no sensor data yet)
+- `.`: Free navigable space (confirmed safe)
+- `?`: Unexplored areas (navigable depending on Navigation2 configuration)
+
+**Navigation2 Behavior with `?` Symbols:**
+- **With `allow_unknown: true`**: Robot can navigate to and through `?` areas
+- **With `allow_unknown: false`**: Robot cannot plan paths to `?` positions
+- **With `track_unknown_space: false`**: `?` areas treated as obstacles
+- **SLAM Integration**: `?` areas convert to `.` or `#` as robot explores
 
 #### Grid-to-Text Conversion
 The Spatial Map Interpreter analyzes this grid and generates:
@@ -394,6 +466,7 @@ b4m_llm_nav_api/
 │   ├── api_server.py           # FastAPI server implementation
 │   ├── spatial_interpreter.py   # Map to text conversion
 │   ├── nav_controller_node.py  # ROS2 navigation bridge
+│   ├── simulated_llm.py        # Simulated LLM for testing
 │   └── utils/
 │       ├── map_utils.py        # Occupancy grid processing
 │       └── text_generator.py   # Natural language generation
@@ -404,9 +477,93 @@ b4m_llm_nav_api/
 ├── tests/
 │   ├── test_api_endpoints.py   # API unit tests
 │   ├── test_spatial_interpreter.py
+│   ├── test_simulated_llm.py   # Simulated LLM tests
 │   └── test_navigation.py
 ├── package.xml
 └── setup.py
+```
+
+### Simulated LLM Implementation Details
+
+The `simulated_llm.py` module provides automated decision-making for testing:
+
+```python
+class SimulatedLLM:
+    """
+    Simulates LLM behavior for testing robot-to-LLM API
+    Accounts for Navigation2 unknown space configuration
+    """
+    
+    def __init__(self, nav2_config):
+        self.allow_unknown = nav2_config.get("allow_unknown", False)
+        self.track_unknown_space = nav2_config.get("track_unknown_space", False)
+        
+    def analyze_grid(self, spatial_context):
+        """
+        Analyzes grid like an LLM would, returns navigation decision
+        """
+        grid = spatial_context["grid_analysis"]
+        
+        # Check Navigation2 capability for unknown space
+        can_navigate_unknown = self.allow_unknown and self.track_unknown_space
+        
+        # Priority 1: Navigate to unexplored areas (if Nav2 supports it)
+        if grid["unexplored_positions"] and can_navigate_unknown:
+            target = self.find_best_unexplored(grid)
+            return self.create_navigation_goal(target, "exploration", 
+                                             "Navigating to unexplored area")
+        
+        # Priority 2: Navigate to target marker if present
+        if grid.get("target_grid_position"):
+            target = grid["target_grid_position"]
+            return self.create_navigation_goal(target, "target",
+                                             "Navigating to marked target")
+        
+        # Priority 3: Navigate to center of largest clear area
+        clear_area = self.find_largest_clear_area(grid)
+        fallback_reason = "No targets available" if can_navigate_unknown else \
+                         "Nav2 unknown space disabled - using known areas only"
+        return self.create_navigation_goal(clear_area, "open_area", fallback_reason)
+    
+    def find_best_unexplored(self, grid):
+        """
+        Selects best unexplored position based on strategy
+        Only called when Navigation2 supports unknown space
+        """
+        robot_pos = grid["robot_grid_position"]
+        unexplored = grid["unexplored_positions"]
+        
+        # Find nearest unexplored that's safely accessible
+        best = None
+        min_dist = float('inf')
+        
+        for pos in unexplored:
+            if self.is_safely_accessible(pos, grid):
+                dist = self.calculate_distance(robot_pos, pos)
+                if dist < min_dist:
+                    min_dist = dist
+                    best = pos
+        
+        return best if best else unexplored[0]
+    
+    def create_navigation_goal(self, grid_pos, goal_type, reasoning=""):
+        """
+        Converts grid position to navigation goal JSON with reasoning
+        """
+        return {
+            "target": {
+                "x": grid_pos[0] * 0.5,  # Grid to meters
+                "y": grid_pos[1] * 0.5,
+                "orientation": self.calculate_approach_angle(grid_pos)
+            },
+            "label": f"simulated_{goal_type}_{grid_pos[0]}_{grid_pos[1]}",
+            "source": "simulated_llm",
+            "reasoning": reasoning,
+            "nav2_config_check": {
+                "allow_unknown": self.allow_unknown,
+                "track_unknown_space": self.track_unknown_space
+            }
+        }
 ```
 
 ## Configuration Parameters
@@ -438,7 +595,55 @@ text_generation:
   include_distances: true
   include_dimensions: true
   coordinate_format: "relative"  # Options: "relative", "absolute"
+
+simulated_llm:
+  enabled: false             # Set to true to use simulated LLM
+  strategy: "nearest_first"  # Options: "nearest_first", "systematic", "random"
+  decision_delay: 2.0        # Seconds to wait before making decision
+  exploration_radius: 5.0    # Maximum distance to explore from current position
+  safety_margin: 1.0         # Minimum distance from obstacles (meters)
+  completion_threshold: 95   # Percentage of map explored before stopping
+  verbose_logging: true      # Log simulated LLM decisions
 ```
+
+## Navigation2 Configuration for Unknown Space
+
+**Critical:** Navigation2 must be properly configured to allow navigation to unexplored areas (marked with `?` in the grid). The following parameters are required:
+
+```yaml
+# Navigation2 planner configuration
+planner_server:
+  ros__parameters:
+    planner_plugins: ['GridBased']
+    GridBased:
+      plugin: 'nav2_navfn_planner::NavfnPlanner'
+      tolerance: 0.5
+      use_astar: true
+      allow_unknown: true    # REQUIRED: Allows planning through unexplored areas
+
+# Navigation2 costmap configuration  
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      track_unknown_space: true  # REQUIRED: Differentiates unknown from free space
+      unknown_cost_value: 255    # Cost value for unknown cells
+      
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      track_unknown_space: true  # REQUIRED: Local costmap must also track unknown space
+```
+
+### Key Parameters Explained:
+
+- **`allow_unknown: true`**: Enables path planning through areas marked as `?` (unexplored)
+- **`track_unknown_space: true`**: Required for costmaps to properly handle unknown areas
+- **`unknown_cost_value`**: Determines how unknown space is treated (255 = unknown, 0 = free)
+
+### Without Proper Configuration:
+- Navigation2 will fail to plan paths to `?` positions
+- Robot will be limited to only known areas (`.` symbols)
+- LLM exploration strategies will be severely limited
 
 ## Testing Strategy
 
@@ -460,6 +665,101 @@ text_generation:
 - Error recovery testing
 - Performance benchmarks
 
+### Simulated LLM Test Mode
+
+The system includes a built-in simulated LLM mode for testing the robot-to-LLM API without requiring a real LLM service. This mode mimics LLM behavior by automatically analyzing the grid and selecting appropriate navigation goals.
+
+#### Enabling Simulated LLM Mode
+
+**Launch with test flag:**
+```bash
+ros2 launch b4m_llm_nav_api llm_nav_api_launch.py use_simulated_llm:=true
+```
+
+**Or set in configuration:**
+```yaml
+# config/llm_nav_api.yaml
+test_mode:
+  use_simulated_llm: true
+  exploration_strategy: "nearest_first"  # Options: "nearest_first", "systematic", "random"
+  target_selection_delay: 2.0  # Seconds before selecting new goal
+  prefer_unexplored: true  # Prioritize unexplored areas
+  safety_margin: 1.0  # Meters from obstacles
+```
+
+#### Simulated LLM Behavior
+
+The simulated LLM follows this decision logic, accounting for Navigation2's capabilities:
+
+1. **Receives spatial context** (same as real LLM would)
+2. **Analyzes grid** for clear areas and obstacles
+3. **Validates Navigation2 configuration** for unknown space support
+4. **Selects navigation goal** based on strategy:
+   - **Priority 1**: If unexplored areas exist (`?`) AND `allow_unknown: true` → Navigate to nearest `?`
+   - **Priority 2**: If target marker exists (`*`) → Navigate to `*`
+   - **Priority 3**: Navigate to center of largest clear area (`.`)
+   - **Fallback**: If Nav2 doesn't support unknown space, avoid `?` positions
+5. **Validates goal safety** against obstacles and unknown space policy
+6. **Sends navigation command** with calculated 2D pose
+
+#### Example Simulated LLM Response
+
+**When robot provides spatial context:**
+```json
+GET /spatial_context returns:
+{
+  "grid_analysis": {
+    "robot_grid_position": [3, 3],
+    "unexplored_positions": [[6, 2], [7, 3]],
+    "clear_areas": [
+      {"center": [5, 5], "radius": 2.0}
+    ]
+  }
+}
+```
+
+**Simulated LLM automatically responds:**
+```json
+POST /navigate_to with:
+{
+  "target": {
+    "x": 3.0,
+    "y": 1.0,
+    "orientation": 0.523
+  },
+  "label": "simulated_exploration_6_2",
+  "source": "simulated_llm"
+}
+```
+
+#### Test Scenarios
+
+The simulated LLM can run various test scenarios:
+
+**1. Exploration Test:**
+```python
+# Simulated LLM systematically explores all unknown areas
+def exploration_test():
+    # Continuously navigates to unexplored positions
+    # Until map is >95% complete
+```
+
+**2. Obstacle Avoidance Test:**
+```python
+# Simulated LLM navigates around obstacles
+def obstacle_test():
+    # Finds clear paths around detected obstacles
+    # Maintains safety_margin from walls
+```
+
+**3. Target Seeking Test:**
+```python
+# Simulated LLM navigates to marked targets
+def target_test():
+    # If '*' symbol present, navigate to it
+    # Tests direct goal navigation
+```
+
 ### Test Commands
 ```bash
 # Run unit tests
@@ -469,8 +769,11 @@ colcon test --packages-select b4m_llm_nav_api
 ./b4m_launch.sh --simulation
 ros2 run b4m_llm_nav_api test_integration
 
-# Run full system test
-./tests/test_llm_navigation_system.sh
+# Run with simulated LLM
+ros2 launch b4m_llm_nav_api llm_nav_api_launch.py use_simulated_llm:=true
+
+# Run full system test with simulated LLM
+./tests/test_llm_navigation_system.sh --simulated-llm
 ```
 
 ## Example LLM Interactions
@@ -651,6 +954,43 @@ The LLM only needs to:
 3. **Emergency Stop**: System supports immediate stop commands
 4. **Timeout Protection**: All navigation goals have configurable timeouts
 5. **Speed Limits**: Maximum speeds are enforced regardless of LLM requests
+
+### Navigation in Unexplored Areas (`?` symbols)
+
+**Additional safety measures when navigating to unknown space:**
+
+6. **Unknown Space Validation**: 
+   - Verify Navigation2 `allow_unknown: true` before sending goals to `?` positions
+   - Check `track_unknown_space: true` is configured in costmaps
+   - Fallback to known areas if configuration doesn't support unknown navigation
+
+7. **Exploration Safety Margins**:
+   - Increase safety distance when approaching unexplored boundaries
+   - Use conservative speeds when entering unknown areas
+   - Monitor sensor data for unexpected obstacles
+
+8. **Dynamic Replanning**:
+   - Navigation2 will replan if new obstacles discovered in `?` areas
+   - Robot automatically stops if unknown area becomes blocked
+   - Recovery behaviors activated if exploration goal becomes unreachable
+
+9. **Configuration Validation**:
+   ```python
+   # Safety check before sending goal to unexplored area
+   def validate_unknown_navigation(nav2_config, target_position):
+       if target_position in unexplored_areas:
+           if not nav2_config.get("allow_unknown", False):
+               raise NavigationError("Nav2 not configured for unknown space")
+           if not nav2_config.get("track_unknown_space", False):
+               raise NavigationError("Costmap not tracking unknown space")
+       return True
+   ```
+
+10. **Sensor Requirements**:
+    - LiDAR must be active and publishing valid data
+    - SLAM system must be running and updating map
+    - Localization (AMCL) must have good position estimate
+    - All transforms (map→odom→base_link) must be valid
 
 ## Integration with Existing System
 
