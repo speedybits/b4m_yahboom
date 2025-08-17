@@ -32,8 +32,9 @@ REST API server providing the interface between LLM services and the robot.
 
 **Endpoints:**
 - `GET /spatial_context` - Returns current spatial situation in text and grid
-- `POST /navigate_to` - Navigate to specific coordinates using Nav2
-- `GET /status` - Current navigation and robot status
+- `POST /navigate_to` - Navigate using delta movement or absolute coordinates
+- `GET /status` - Current navigation and robot status with detailed Nav2 feedback
+- `POST /emergency_stop` - Immediately stop robot and cancel navigation goals
 - `POST /enable_simulated_llm` - Enable/disable simulated LLM test mode
 - `GET /simulated_llm_decision` - Get next simulated LLM navigation decision
 
@@ -83,7 +84,7 @@ Returns the robot's current spatial understanding in grid and text format.
     "grid_resolution": 0.5,
     "grid_origin": {"x": 0.0, "y": 0.0}
   },
-  "text_description": "You are at grid position (3,3) in a partially mapped room. Target (*) is at (3,7), 2.0m south. Clear path detected through doorway at (3,5). Unexplored areas (30%) to the east.",
+  "text_description": "You are at grid position (3,3) in a partially mapped room. Target (*) is at (3,7), 2.0m north. Clear path detected through doorway at (3,5). Unexplored areas (30%) to the east.",
   "navigable_goals": [
     {
       "label": "target",
@@ -102,9 +103,21 @@ Returns the robot's current spatial understanding in grid and text format.
 ```
 
 ### POST /navigate_to
-Navigate to specific map coordinates.
+Navigate using relative movement (delta) from current position.
 
-**Request:**
+**Request Option 1 - Delta Movement (Recommended):**
+```json
+{
+  "delta": {
+    "x": 1.5,             // meters east from current position
+    "y": -1.0,            // meters south from current position
+    "orientation": 0.785  // Optional: absolute orientation in radians
+  },
+  "label": "explore_east"  // Optional, for logging
+}
+```
+
+**Request Option 2 - Absolute Coordinates (Legacy):**
 ```json
 {
   "target": {
@@ -121,29 +134,80 @@ Navigate to specific map coordinates.
 {
   "status": "navigating",
   "distance_to_target": 3.4,
-  "estimated_time": 15.2
+  "estimated_time": 15.2,
+  "current_position": {
+    "x": 3.7,
+    "y": 4.8
+  },
+  "target_position": {
+    "x": 5.2,
+    "y": 3.8
+  }
 }
 ```
 
 ### GET /status
-Returns current robot and navigation status.
+Returns current robot and navigation status with detailed Navigation2 feedback.
 
 **Response:**
 ```json
 {
-  "robot_state": "idle",  // Options: "idle", "moving", "navigating", "stopped"
+  "robot_state": "navigating",  // Options: "idle", "navigating", "stopped", "error"
   "battery_level": 85,
-  "last_command": "move forward",
+  "last_command": "delta movement east",
+  "position": {
+    "x": 3.7,
+    "y": 4.8,
+    "heading": 1.57
+  },
   "navigation_status": {
-    "active": false,
-    "goal": null,
-    "progress": 0
+    "active": true,
+    "state": "following_path",  // Options: "planning", "following_path", "replanning", "recovery_active", "path_blocked", "goal_reached", "failed"
+    "goal": {
+      "x": 5.2,
+      "y": 3.8,
+      "orientation": 0.785
+    },
+    "progress": 65,              // Percentage complete (0-100)
+    "distance_remaining": 1.2,   // meters
+    "estimated_remaining_time": 8.5,  // seconds
+    "recovery_attempts": 0,      // Number of recovery behaviors attempted
+    "replanning_count": 1        // Number of times path was replanned
   },
   "safety_status": {
     "emergency_stop": false,
-    "obstacles_detected": false
+    "emergency_stop_triggered": false,  // NEW: Was emergency stop just triggered?
+    "obstacles_detected": true,
+    "obstacle_clearance": 0.8,   // meters to nearest obstacle
+    "path_clear": true
+  },
+  "nav2_diagnostics": {
+    "global_planner_active": true,
+    "local_planner_active": true,
+    "costmap_updates": true,
+    "localization_quality": "good"  // Options: "good", "poor", "lost"
   },
   "simulated_llm_active": false
+}
+```
+
+### POST /emergency_stop
+Immediately stop the robot and cancel all active navigation goals.
+
+**Request:**
+```json
+{
+  "reason": "obstacle_detected"  // Optional: reason for emergency stop
+}
+```
+
+**Response:**
+```json
+{
+  "status": "stopped",
+  "message": "Emergency stop activated - all navigation goals cancelled",
+  "goals_cancelled": 1,
+  "timestamp": "2024-01-15T10:30:00Z"
 }
 ```
 
@@ -265,18 +329,31 @@ Nav2 provides multiple planners the LLM can leverage:
 - **DWB/TEB**: Local planning for smooth trajectories
 - **Theta***: Any-angle path planning for natural movement
 
-#### 3. Grid to Nav2 Coordinate Transformation
+#### 3. Simplified Grid to Nav2 Coordinate Mapping
 ```python
-def grid_to_nav2_transform(grid_pos, grid_info):
+def grid_to_world_coordinates(grid_pos, grid_resolution):
     """
-    Transform grid coordinates to Nav2 world coordinates
-    Accounts for map origin and resolution
+    Direct mapping from grid coordinates to world coordinates
+    Both use bottom-left origin - no transformation needed
     """
-    # Grid uses top-left origin, Nav2 uses bottom-left
-    world_x = grid_info["origin"]["x"] + (grid_pos[0] * grid_info["resolution"])
-    world_y = grid_info["origin"]["y"] + (grid_pos[1] * grid_info["resolution"])
+    world_x = grid_pos[0] * grid_resolution
+    world_y = grid_pos[1] * grid_resolution
     
     return {"x": world_x, "y": world_y}
+
+def delta_to_nav2_goal(current_position, delta):
+    """
+    Convert delta movement to absolute Nav2 goal position
+    """
+    target_x = current_position["x"] + delta["x"]
+    target_y = current_position["y"] + delta["y"]
+    target_orientation = delta.get("orientation", current_position["heading"])
+    
+    return {
+        "x": target_x,
+        "y": target_y, 
+        "orientation": target_orientation
+    }
 ```
 
 #### 4. Dynamic Replanning
@@ -308,21 +385,30 @@ The system converts occupancy grids into natural language descriptions:
 - `@` - Robot position (current location)
 - `*` - Target/goal position (designated objective)
 
+### Grid Coordinate System
+The grid uses a **bottom-left origin** coordinate system, matching Navigation2's world coordinates:
+- **Origin (0,0)**: Bottom-left corner of the grid
+- **+X axis**: Points right (east)
+- **+Y axis**: Points up (north)
+- **Grid position [x,y]**: Direct correspondence to world coordinates (x*resolution, y*resolution)
+
+This eliminates coordinate transformation complexity and provides direct mapping between grid and Nav2 coordinates.
+
 ### Detailed Grid Symbol Usage Example
 
 #### Example Occupancy Grid (5m x 5m area, 0.5m resolution)
 ```
     0   1   2   3   4   5   6   7   8   9
-0   #   #   #   #   #   #   #   #   #   #
-1   #   .   .   .   .   #   ?   ?   ?   #
-2   #   .   .   .   .   #   ?   ?   ?   #
-3   #   .   .   @   .   .   .   .   ?   #
-4   #   .   .   .   .   #   .   .   ?   #
-5   #   #   #   .   #   #   .   .   ?   #
-6   #   .   .   .   .   .   .   .   ?   #
-7   #   .   .   *   .   #   #   #   #   #
-8   #   .   .   .   .   #   ?   ?   ?   #
 9   #   #   #   #   #   #   #   #   #   #
+8   #   .   .   .   .   #   ?   ?   ?   #
+7   #   .   .   *   .   #   #   #   #   #
+6   #   .   .   .   .   .   .   .   ?   #
+5   #   #   #   .   #   #   .   .   ?   #
+4   #   .   .   .   .   #   .   .   ?   #
+3   #   .   .   @   .   .   .   .   ?   #
+2   #   .   .   .   .   #   ?   ?   ?   #
+1   #   .   .   .   .   #   ?   ?   ?   #
+0   #   #   #   #   #   #   #   #   #   #
 ```
 
 **Symbol Locations:**
@@ -344,11 +430,11 @@ The Spatial Map Interpreter analyzes this grid and generates:
 ```json
 {
   "text_description": "You are located at coordinates (3,3) in a partially mapped room. 
-    Forward (heading south): Clear path for 2.0m until a doorway at (3,5). Beyond the 
-    doorway is another room extending 2.5m with your target at (3,7).
-    Left (heading east): Clear space for 1.5m, then unexplored area.
-    Right (heading west): Immediate wall at 0.5m.
-    Behind (heading north): Clear path for 1.0m to wall.
+    Forward (heading north): Clear path for 2.0m until a doorway at (3,5). Beyond the 
+    doorway is another room extending 1.0m with your target at (3,7).
+    Left (heading west): Immediate wall at 0.5m.
+    Right (heading east): Clear space for 1.5m, then unexplored area.
+    Behind (heading south): Clear path for 1.0m to wall.
     Unexplored regions detected to the east (right side of map).",
     
   "grid_analysis": {
@@ -371,21 +457,33 @@ The Spatial Map Interpreter analyzes this grid and generates:
    - Path viability: Check for obstacles (#) and unknown areas (?)
    - Distance calculation: Grid cells × resolution (0.5m)
 
-2. **LLM Decision → JSON Request**:
+2. **LLM Decision → Delta Movement Request**:
    
    **What the LLM does:**
    - Analyzes grid: "Robot is at [3,3], target is at [3,7]"
-   - Calculates: "Target is 4 cells south, which is 2.0 meters (4 × 0.5m)"
-   - Decides: "Navigate to target position"
+   - Calculates delta: "Need to move 0 cells east, 4 cells north = (0m, 2.0m)"
+   - Decides: "Send delta movement to target"
    - Sends JSON request:
    ```json
    {
-       "target": {
-           "x": 1.5,
-           "y": 3.5,
+       "delta": {
+           "x": 0.0,
+           "y": 2.0,
            "orientation": 1.57
        },
        "label": "reach_target"
+   }
+   ```
+   
+   **Alternative - Grid-based thinking:**
+   ```json
+   {
+       "delta": {
+           "x": 0.0,        // No east/west movement needed
+           "y": 2.0,        // Move 2 meters north (4 grid cells × 0.5m)
+           "orientation": 1.57  // Face north
+       },
+       "label": "move_to_target"
    }
    ```
 
@@ -394,17 +492,40 @@ The Spatial Map Interpreter analyzes this grid and generates:
    # This code runs on the robot's b4m_llm_nav_api server
    # NOT in the LLM - shown here for implementation reference
    def handle_navigate_request(request_json):
-       target = request_json["target"]
+       current_pos = get_current_robot_position()  # Get from /amcl_pose
+       
+       if "delta" in request_json:
+           # Delta-based movement (preferred)
+           delta = request_json["delta"]
+           target_x = current_pos["x"] + delta["x"]
+           target_y = current_pos["y"] + delta["y"]
+           target_orientation = delta.get("orientation", current_pos["heading"])
+       elif "target" in request_json:
+           # Absolute coordinates (legacy support)
+           target = request_json["target"]
+           target_x = target["x"]
+           target_y = target["y"] 
+           target_orientation = target.get("orientation", current_pos["heading"])
+       else:
+           return {"status": "error", "message": "No delta or target specified"}
        
        # Convert to ROS2 Navigation2 goal
        goal = PoseStamped()
-       goal.pose.position.x = target["x"]
-       goal.pose.position.y = target["y"]
-       goal.pose.orientation = quaternion_from_euler(0, 0, target["orientation"])
+       goal.pose.position.x = target_x
+       goal.pose.position.y = target_y
+       goal.pose.orientation = quaternion_from_euler(0, 0, target_orientation)
        
-       # Send to Nav2 (robot-side processing)
-       nav2_client.send_goal(goal)
-       return {"status": "navigating", "estimated_time": 15.2}
+       # Send to Nav2 - let Nav2 handle path planning and failures
+       try:
+           nav2_client.send_goal(goal)
+           return {
+               "status": "navigating", 
+               "target_position": {"x": target_x, "y": target_y},
+               "estimated_time": calculate_travel_time(current_pos, {"x": target_x, "y": target_y})
+           }
+       except Exception as e:
+           # Let Navigation2 handle the failure and report back to LLM
+           return {"status": "nav2_error", "message": str(e)}
    ```
 
 3. **Pattern Recognition for Goal Selection**:
@@ -438,9 +559,10 @@ The Spatial Map Interpreter analyzes this grid and generates:
 #### Configuration Impact
 With `grid_resolution: 0.5` (from config):
 - Each grid cell = 0.5m × 0.5m
-- 10×10 grid = 5m × 5m physical space
+- Grid size automatically matches SLAM map size (no limits)
 - Cells >65% occupancy → '#' (obstacle)
 - Cells <65% occupancy → '.' (free)
+- Bottom-left origin provides direct Nav2 coordinate mapping
 
 ### Example Text Description
 ```
@@ -507,23 +629,25 @@ class SimulatedLLM:
         # Check Navigation2 capability for unknown space
         can_navigate_unknown = self.allow_unknown and self.track_unknown_space
         
+        robot_pos = grid["robot_grid_position"]
+        
         # Priority 1: Navigate to unexplored areas (if Nav2 supports it)
         if grid["unexplored_positions"] and can_navigate_unknown:
             target = self.find_best_unexplored(grid)
-            return self.create_navigation_goal(target, "exploration", 
+            return self.create_navigation_goal(target, robot_pos, "exploration", 
                                              "Navigating to unexplored area")
         
         # Priority 2: Navigate to target marker if present
         if grid.get("target_grid_position"):
             target = grid["target_grid_position"]
-            return self.create_navigation_goal(target, "target",
+            return self.create_navigation_goal(target, robot_pos, "target",
                                              "Navigating to marked target")
         
         # Priority 3: Navigate to center of largest clear area
         clear_area = self.find_largest_clear_area(grid)
         fallback_reason = "No targets available" if can_navigate_unknown else \
                          "Nav2 unknown space disabled - using known areas only"
-        return self.create_navigation_goal(clear_area, "open_area", fallback_reason)
+        return self.create_navigation_goal(clear_area, robot_pos, "open_area", fallback_reason)
     
     def find_best_unexplored(self, grid):
         """
@@ -546,17 +670,21 @@ class SimulatedLLM:
         
         return best if best else unexplored[0]
     
-    def create_navigation_goal(self, grid_pos, goal_type, reasoning=""):
+    def create_navigation_goal(self, target_grid_pos, current_grid_pos, goal_type, reasoning=""):
         """
-        Converts grid position to navigation goal JSON with reasoning
+        Converts target grid position to delta movement JSON with reasoning
         """
+        # Calculate delta movement from current to target
+        delta_x = (target_grid_pos[0] - current_grid_pos[0]) * 0.5  # Grid cells to meters
+        delta_y = (target_grid_pos[1] - current_grid_pos[1]) * 0.5
+        
         return {
-            "target": {
-                "x": grid_pos[0] * 0.5,  # Grid to meters
-                "y": grid_pos[1] * 0.5,
-                "orientation": self.calculate_approach_angle(grid_pos)
+            "delta": {
+                "x": delta_x,
+                "y": delta_y,
+                "orientation": self.calculate_approach_angle(target_grid_pos, current_grid_pos)
             },
-            "label": f"simulated_{goal_type}_{grid_pos[0]}_{grid_pos[1]}",
+            "label": f"simulated_{goal_type}_{target_grid_pos[0]}_{target_grid_pos[1]}",
             "source": "simulated_llm",
             "reasoning": reasoning,
             "nav2_config_check": {
@@ -785,6 +913,7 @@ ros2 launch b4m_llm_nav_api llm_nav_api_launch.py use_simulated_llm:=true
 **LLM receives from GET /spatial_context:**
 ```json
 {
+  "position": {"x": 1.5, "y": 1.5, "heading": 0.0},
   "grid_analysis": {
     "robot_grid_position": [3, 3],
     "unexplored_positions": [[6,1], [7,1], [8,1]],
@@ -793,45 +922,46 @@ ros2 launch b4m_llm_nav_api llm_nav_api_launch.py use_simulated_llm:=true
 }
 ```
 
-**LLM reasoning:** "I see unexplored areas at [6,1]. That's 3.0m east and 0.5m north."
+**LLM reasoning:** "I'm at grid [3,3]. Unexplored area at [6,1] means I need to move +3 cells east, -2 cells south. That's +1.5m east, -1.0m south from my current position."
 
 **LLM sends to POST /navigate_to:**
 ```json
 {
-  "target": {
-    "x": 3.0,
-    "y": 0.5,
+  "delta": {
+    "x": 1.5,     // Move 1.5m east from current position
+    "y": -1.0,    // Move 1.0m south from current position  
     "orientation": 0.0
   },
   "label": "explore_unknown"
 }
 ```
 
-**Robot API server handles the conversion to ROS2 commands (not shown to LLM)**
+**Robot API server calculates absolute goal (1.5+1.5, 1.5-1.0) = (3.0, 0.5) and sends to Nav2**
 
 ### Example 2: Target Navigation
 
 **LLM receives from GET /spatial_context:**
 ```json
 {
+  "position": {"x": 1.5, "y": 1.5, "heading": 0.0},
   "grid_analysis": {
     "robot_grid_position": [3, 3],
     "target_grid_position": [3, 7],
     "grid_resolution": 0.5
   },
-  "text_description": "Target (*) is at (3,7), 2.0m south of your position"
+  "text_description": "Target (*) is at (3,7), 2.0m north of your position"
 }
 ```
 
-**LLM reasoning:** "Target is at grid [3,7], which converts to 1.5m x, 3.5m y"
+**LLM reasoning:** "Target is at grid [3,7]. I'm at [3,3]. Need to move 0 cells east, +4 cells north. That's 0m east, +2.0m north from current position."
 
 **LLM sends to POST /navigate_to:**
 ```json
 {
-  "target": {
-    "x": 1.5,
-    "y": 3.5,
-    "orientation": 1.57
+  "delta": {
+    "x": 0.0,     // No east/west movement
+    "y": 2.0,     // Move 2.0m north
+    "orientation": 1.57  // Face north
   },
   "label": "reach_target"
 }
@@ -871,19 +1001,22 @@ ros2 launch b4m_llm_nav_api llm_nav_api_launch.py use_simulated_llm:=true
 ```json
 GET /spatial_context response:
 {
+  "position": {"x": 2.0, "y": 1.5, "heading": 0.0},
   "grid_analysis": {
+    "robot_grid_position": [4, 3],
     "unexplored_percentage": 45,
-    "unexplored_positions": [[6,1], [7,2], [8,3]]
+    "unexplored_positions": [[6,1], [7,2], [8,3]],
+    "grid_resolution": 0.5
   }
 }
 ```
 
-**LLM decides:** "45% unexplored, navigate to nearest unknown area [6,1]"
+**LLM decides:** "45% unexplored, navigate to nearest unknown area [6,1]. That's +2 cells east, -2 cells south from my position."
 
 ```json
 POST /navigate_to request:
 {
-  "target": {"x": 3.0, "y": 0.5, "orientation": 0.0},
+  "delta": {"x": 1.0, "y": -1.0, "orientation": 0.0},
   "label": "explore_6_1"
 }
 ```
@@ -892,14 +1025,16 @@ POST /navigate_to request:
 ```json
 GET /spatial_context response:
 {
+  "position": {"x": 3.0, "y": 0.5, "heading": 0.0},
   "grid_analysis": {
+    "robot_grid_position": [6, 1],
     "unexplored_percentage": 35,
     "unexplored_positions": [[7,2], [8,3]]
   }
 }
 ```
 
-**LLM continues exploration until unexplored_percentage < 5%**
+**LLM continues exploration using delta movements until unexplored_percentage < 5%**
 
 ### Example 5: Semantic Goal Navigation
 
@@ -949,11 +1084,12 @@ The LLM only needs to:
 
 ## Safety Considerations
 
-1. **Command Validation**: All movement commands are validated against safety boundaries
-2. **Obstacle Detection**: Continuous monitoring of LiDAR data prevents collisions
-3. **Emergency Stop**: System supports immediate stop commands
-4. **Timeout Protection**: All navigation goals have configurable timeouts
-5. **Speed Limits**: Maximum speeds are enforced regardless of LLM requests
+1. **Delta Movement Validation**: All delta movements are validated before converting to absolute goals
+2. **Navigation2 Error Handling**: Invalid goals are handled by Nav2 and reported back to LLM
+3. **Emergency Stop Integration**: `POST /emergency_stop` immediately cancels all goals and notifies LLM
+4. **Continuous Monitoring**: Real-time obstacle detection and path clearance monitoring
+5. **Timeout Notifications**: Navigation timeouts are immediately reported to LLM via `/status`
+6. **Automatic Recovery**: Nav2 recovery behaviors are exposed to LLM through detailed status updates
 
 ### Navigation in Unexplored Areas (`?` symbols)
 
