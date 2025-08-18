@@ -35,8 +35,8 @@ REST API server providing the interface between LLM services and the robot.
 - `POST /navigate_to` - Navigate using delta movement or absolute coordinates
 - `GET /status` - Current navigation and robot status with detailed Nav2 feedback
 - `POST /emergency_stop` - Immediately stop robot and cancel navigation goals
-- `POST /enable_simulated_llm` - Enable/disable simulated LLM test mode
-- `GET /simulated_llm_decision` - Get next simulated LLM navigation decision
+- `POST /enable_simulated_b4m` - Enable/disable simulated B4M test mode
+- `GET /simulated_b4m_decision` - Get next simulated B4M navigation decision
 
 #### 3. Navigation Controller Node (`b4m_llm_controller`)
 Bridges API commands to ROS2 Navigation2 stack.
@@ -187,7 +187,7 @@ Returns current robot and navigation status with detailed Navigation2 feedback.
     "costmap_updates": true,
     "localization_quality": "good"  // Options: "good", "poor", "lost"
   },
-  "simulated_llm_active": false
+  "simulated_b4m_active": false
 }
 ```
 
@@ -211,8 +211,8 @@ Immediately stop the robot and cancel all active navigation goals.
 }
 ```
 
-### POST /enable_simulated_llm
-Enable or disable the simulated LLM test mode.
+### POST /enable_simulated_b4m
+Enable or disable the simulated B4M test mode.
 
 **Request:**
 ```json
@@ -226,7 +226,7 @@ Enable or disable the simulated LLM test mode.
 ```json
 {
   "status": "enabled",
-  "message": "Simulated LLM activated with strategy: nearest_first",
+  "message": "Simulated B4M activated with strategy: nearest_first",
   "configuration": {
     "strategy": "nearest_first",
     "decision_delay": 2.0,
@@ -235,8 +235,8 @@ Enable or disable the simulated LLM test mode.
 }
 ```
 
-### GET /simulated_llm_decision
-Get the next navigation decision from the simulated LLM.
+### GET /simulated_b4m_decision
+Get the next navigation decision from the simulated B4M.
 
 **Response:**
 ```json
@@ -250,7 +250,7 @@ Get the next navigation decision from the simulated LLM.
       "orientation": 0.523
     },
     "label": "simulated_exploration_6_2",
-    "source": "simulated_llm"
+    "source": "simulated_b4m"
   },
   "confidence": 0.85,
   "estimated_completion_time": 12.5
@@ -271,19 +271,19 @@ Get the next navigation decision from the simulated LLM.
    LLM → GET /status → Current State → LLM Feedback Loop
 ```
 
-**Test Mode (Simulated LLM):**
+**Simulated B4M Mode:**
 ```
-1. Enable simulated LLM
-   Test System → POST /enable_simulated_llm → Simulated LLM Activated
+1. Enable simulated B4M
+   System → POST /enable_simulated_b4m → Simulated B4M Activated
 
 2. Robot provides spatial context internally
-   Spatial Interpreter → Simulated LLM → Grid Analysis
+   Spatial Interpreter → Simulated B4M → Grid Analysis
 
-3. Simulated LLM makes decision
-   Simulated LLM → POST /navigate_to → Nav2 Action Server → Robot Movement
+3. Simulated B4M makes decision
+   Simulated B4M → POST /navigate_to → Nav2 Action Server → Robot Movement
 
 4. Monitor simulated decisions
-   Test System → GET /simulated_llm_decision → Decision Reasoning
+   System → GET /simulated_b4m_decision → Decision Reasoning
 ```
 
 ## LLM vs Robot-Side Processing
@@ -588,7 +588,7 @@ b4m_llm_nav_api/
 │   ├── api_server.py           # FastAPI server implementation
 │   ├── spatial_interpreter.py   # Map to text conversion
 │   ├── nav_controller_node.py  # ROS2 navigation bridge
-│   ├── simulated_llm.py        # Simulated LLM for testing
+│   ├── simulated_b4m.py        # Simulated B4M for testing
 │   └── utils/
 │       ├── map_utils.py        # Occupancy grid processing
 │       └── text_generator.py   # Natural language generation
@@ -596,23 +596,18 @@ b4m_llm_nav_api/
 │   └── llm_nav_api_launch.py   # ROS2 launch file
 ├── config/
 │   └── llm_nav_api.yaml        # Configuration parameters
-├── tests/
-│   ├── test_api_endpoints.py   # API unit tests
-│   ├── test_spatial_interpreter.py
-│   ├── test_simulated_llm.py   # Simulated LLM tests
-│   └── test_navigation.py
 ├── package.xml
 └── setup.py
 ```
 
-### Simulated LLM Implementation Details
+### Simulated B4M Implementation Details
 
-The `simulated_llm.py` module provides automated decision-making for testing:
+The `simulated_b4m.py` module provides automated decision-making for testing:
 
 ```python
-class SimulatedLLM:
+class SimulatedB4M:
     """
-    Simulates LLM behavior for testing robot-to-LLM API
+    Simulates B4M LLM behavior for testing robot-to-LLM API
     Accounts for Navigation2 unknown space configuration
     """
     
@@ -685,7 +680,7 @@ class SimulatedLLM:
                 "orientation": self.calculate_approach_angle(target_grid_pos, current_grid_pos)
             },
             "label": f"simulated_{goal_type}_{target_grid_pos[0]}_{target_grid_pos[1]}",
-            "source": "simulated_llm",
+            "source": "simulated_b4m",
             "reasoning": reasoning,
             "nav2_config_check": {
                 "allow_unknown": self.allow_unknown,
@@ -724,14 +719,200 @@ text_generation:
   include_dimensions: true
   coordinate_format: "relative"  # Options: "relative", "absolute"
 
-simulated_llm:
-  enabled: false             # Set to true to use simulated LLM
+simulated_b4m:
+  enabled: false             # Set to true to use simulated B4M
   strategy: "nearest_first"  # Options: "nearest_first", "systematic", "random"
   decision_delay: 2.0        # Seconds to wait before making decision
   exploration_radius: 5.0    # Maximum distance to explore from current position
   safety_margin: 1.0         # Minimum distance from obstacles (meters)
   completion_threshold: 95   # Percentage of map explored before stopping
-  verbose_logging: true      # Log simulated LLM decisions
+  verbose_logging: true      # Log simulated B4M decisions
+
+console_output:
+  show_api_requests: true    # Display incoming API requests
+  show_api_responses: true   # Display outgoing API responses
+  show_grid_visualization: true  # Show ASCII grid in console
+  show_navigation_commands: true # Display Nav2 goal commands
+  show_decision_reasoning: true  # Display LLM/simulated reasoning
+  use_colors: true           # Use ANSI colors for clarity
+  timestamp_format: "HH:MM:SS.mmm"  # Timestamp for each log entry
+  log_level: "INFO"          # Options: "DEBUG", "INFO", "WARNING", "ERROR"
+```
+
+## Console Output Formatting
+
+### Real-Time Console Messages
+
+The system provides comprehensive console output to monitor LLM communications and navigation decisions. All messages are timestamped and color-coded for clarity.
+
+#### Message Types and Colors
+
+| Message Type | Color | Prefix | Description |
+|-------------|-------|--------|-------------|
+| API Request | 🟦 Blue | `[→ REQ]` | Incoming requests from LLM |
+| API Response | 🟩 Green | `[← RES]` | Responses sent to LLM |
+| Grid Update | 🟨 Yellow | `[GRID]` | Occupancy grid changes |
+| Navigation | 🟪 Purple | `[NAV]` | Navigation commands to Nav2 |
+| Decision | 🟧 Orange | `[DECISION]` | LLM/simulated reasoning |
+| Status | ⬜ White | `[STATUS]` | System status updates |
+| Error | 🟥 Red | `[ERROR]` | Error messages |
+
+#### Example Console Output
+
+```
+[10:23:45.123] [→ REQ] GET /spatial_context
+[10:23:45.125] [GRID] Generating spatial context for position (1.5, 1.5)
+[10:23:45.127] [GRID] Grid analysis:
+                       0 1 2 3 4 5 6 7 8 9
+                    9  # # # # # # # # # #
+                    8  # . . . . # ? ? ? #
+                    7  # . . * . # # # # #
+                    6  # . . . . . . . ? #
+                    5  # # # . # # . . ? #
+                    4  # . . . . # . . ? #
+                    3  # . . @ . . . . ? #
+                    2  # . . . . # ? ? ? #
+                    1  # . . . . # ? ? ? #
+                    0  # # # # # # # # # #
+                    Robot: @ at (3,3) | Target: * at (3,7)
+                    Unexplored: 30% | Clear path: YES
+
+[10:23:45.130] [← RES] 200 OK /spatial_context (5ms)
+                    {
+                      "position": {"x": 1.5, "y": 1.5, "heading": 1.57},
+                      "grid_analysis": {
+                        "robot_grid_position": [3, 3],
+                        "target_grid_position": [3, 7],
+                        "unexplored_percentage": 30
+                      },
+                      "text_description": "Target 2.0m north through doorway"
+                    }
+
+[10:23:46.234] [→ REQ] POST /navigate_to
+                    {
+                      "delta": {"x": 0.0, "y": 2.0, "orientation": 1.57},
+                      "label": "reach_target"
+                    }
+
+[10:23:46.235] [DECISION] Navigation request analysis:
+                    - Current position: (1.5, 1.5)
+                    - Delta movement: 0.0m east, 2.0m north
+                    - Calculated target: (1.5, 3.5)
+                    - Path validation: CLEAR
+                    - Estimated time: 10.0 seconds
+
+[10:23:46.237] [NAV] Sending goal to Navigation2:
+                    Target: (1.5, 3.5) | Orientation: 1.57 rad (90°)
+                    Frame: map | Planner: NavFn/A*
+
+[10:23:46.240] [← RES] 200 OK /navigate_to (6ms)
+                    {
+                      "status": "navigating",
+                      "distance_to_target": 2.0,
+                      "estimated_time": 10.0
+                    }
+
+[10:23:47.500] [STATUS] Navigation progress: 15% (1.7m remaining)
+[10:23:48.500] [STATUS] Navigation progress: 30% (1.4m remaining)
+[10:23:49.500] [STATUS] Navigation progress: 45% (1.1m remaining)
+[10:23:50.500] [STATUS] Navigation progress: 60% (0.8m remaining)
+[10:23:51.500] [STATUS] Navigation progress: 75% (0.5m remaining)
+[10:23:52.500] [STATUS] Navigation progress: 90% (0.2m remaining)
+[10:23:53.000] [STATUS] ✓ Goal reached successfully!
+
+[10:23:54.100] [→ REQ] GET /status
+[10:23:54.102] [← RES] 200 OK /status (2ms)
+                    {
+                      "robot_state": "idle",
+                      "position": {"x": 1.5, "y": 3.5, "heading": 1.57},
+                      "navigation_status": {
+                        "state": "goal_reached",
+                        "last_goal": "reach_target"
+                      }
+                    }
+```
+
+#### Simulated B4M Console Output
+
+When running in simulated B4M mode, additional reasoning information is displayed:
+
+```
+[10:23:45.123] [DECISION] === SIMULATED B4M REASONING ===
+                    Grid Analysis:
+                    - Robot position: [3, 3]
+                    - Unexplored areas: 30% at positions [[6,1], [7,1], [8,1]]
+                    - Target marker: [3, 7] (2.0m north)
+                    - Clear areas: 70% of known space
+                    
+                    Decision Process:
+                    1. Priority check: Target marker exists
+                    2. Path analysis: Clear path through doorway at [3,5]
+                    3. Safety check: No obstacles within 1.0m margin
+                    4. Strategy: Direct navigation to target
+                    
+                    Selected Action: Navigate to target at (3,7)
+                    Confidence: 95%
+                    ================================
+
+[10:23:45.125] [→ REQ] POST /navigate_to (from simulated_b4m)
+                    {
+                      "delta": {"x": 0.0, "y": 2.0, "orientation": 1.57},
+                      "label": "simulated_target_3_7",
+                      "source": "simulated_b4m"
+                    }
+```
+
+### Diagnostic Output Levels
+
+#### INFO Level (Default)
+Shows essential navigation flow:
+- API requests and responses
+- Navigation commands
+- Goal completion status
+
+#### DEBUG Level
+Includes detailed technical information:
+- Transform calculations
+- Costmap updates
+- Path planner iterations
+- Recovery behavior triggers
+- Sensor data processing
+
+#### ERROR Level
+Only shows critical issues:
+- Navigation failures
+- API errors
+- System faults
+
+### Grid Visualization Options
+
+The console can display different grid visualization modes:
+
+#### Compact Mode
+```
+[GRID] @ at (3,3) → * at (3,7) | Path: CLEAR | Unknown: 30%
+```
+
+#### Standard Mode (Default)
+Shows 10x10 grid with symbols as shown in examples above.
+
+#### Detailed Mode
+```
+[GRID] Occupancy Grid Analysis
+       Resolution: 0.5m/cell | Origin: (0.0, 0.0)
+       Dimensions: 10x10 cells (5.0m x 5.0m)
+       
+       Legend: @ Robot | * Target | # Wall | . Free | ? Unknown
+       
+       Grid State:
+       [Full grid display]
+       
+       Statistics:
+       - Explored: 70% (49/70 cells)
+       - Free space: 35 cells
+       - Obstacles: 35 cells
+       - Unknown: 21 cells
+       - Robot→Target: 2.0m (4 cells)
 ```
 
 ## Navigation2 Configuration for Unknown Space
@@ -773,56 +954,45 @@ local_costmap:
 - Robot will be limited to only known areas (`.` symbols)
 - LLM exploration strategies will be severely limited
 
-## Testing Strategy
+## Running the B4M Navigation System
 
-### Unit Tests
-- Spatial interpretation accuracy
-- Text generation consistency
-- API endpoint validation
-- Safety boundary checks
+### Launch Options
 
-### Integration Tests
-- Gazebo simulation environment tests
-- SLAM map interpretation tests
-- Navigation command execution
-- LiDAR data processing
+The B4M navigation system is launched using the `b4m_launch.sh` script with the following options:
 
-### System Tests
-- End-to-end LLM interaction scenarios
-- Multi-step navigation sequences
-- Error recovery testing
-- Performance benchmarks
-
-### Simulated LLM Test Mode
-
-The system includes a built-in simulated LLM mode for testing the robot-to-LLM API without requiring a real LLM service. This mode mimics LLM behavior by automatically analyzing the grid and selecting appropriate navigation goals.
-
-#### Enabling Simulated LLM Mode
-
-**Launch with test flag:**
+#### Real Robot Navigation
 ```bash
-ros2 launch b4m_llm_nav_api llm_nav_api_launch.py use_simulated_llm:=true
+# Launch with real robot and real LLM service
+./b4m_launch.sh --b4m-nav
 ```
 
-**Or set in configuration:**
-```yaml
-# config/llm_nav_api.yaml
-test_mode:
-  use_simulated_llm: true
-  exploration_strategy: "nearest_first"  # Options: "nearest_first", "systematic", "random"
-  target_selection_delay: 2.0  # Seconds before selecting new goal
-  prefer_unexplored: true  # Prioritize unexplored areas
-  safety_margin: 1.0  # Meters from obstacles
+#### Simulated B4M Mode
+```bash
+# Launch with real robot but simulated LLM (no external LLM service needed)
+./b4m_launch.sh --b4m-nav --simulated-b4m
 ```
 
-#### Simulated LLM Behavior
+#### Full Simulation Mode
+```bash
+# Launch in Gazebo simulation with real LLM service
+./b4m_launch.sh --b4m-nav --simulation
 
-The simulated LLM follows this decision logic, accounting for Navigation2's capabilities:
+# Launch in Gazebo simulation with simulated LLM
+./b4m_launch.sh --b4m-nav --simulation --simulated-b4m
+```
+
+### Simulated B4M Mode
+
+The system includes a built-in simulated B4M mode for testing the robot-to-LLM API without requiring a real LLM service. This mode mimics LLM behavior by automatically analyzing the grid and selecting appropriate navigation goals.
+
+#### How Simulated B4M Works
+
+The simulated B4M follows this decision logic, accounting for Navigation2's capabilities:
 
 1. **Receives spatial context** (same as real LLM would)
 2. **Analyzes grid** for clear areas and obstacles
 3. **Validates Navigation2 configuration** for unknown space support
-4. **Selects navigation goal** based on strategy:
+4. **Selects navigation goal** based on priority:
    - **Priority 1**: If unexplored areas exist (`?`) AND `allow_unknown: true` → Navigate to nearest `?`
    - **Priority 2**: If target marker exists (`*`) → Navigate to `*`
    - **Priority 3**: Navigate to center of largest clear area (`.`)
@@ -830,7 +1000,7 @@ The simulated LLM follows this decision logic, accounting for Navigation2's capa
 5. **Validates goal safety** against obstacles and unknown space policy
 6. **Sends navigation command** with calculated 2D pose
 
-#### Example Simulated LLM Response
+#### Example Simulated B4M Response
 
 **When robot provides spatial context:**
 ```json
@@ -846,7 +1016,7 @@ GET /spatial_context returns:
 }
 ```
 
-**Simulated LLM automatically responds:**
+**Simulated B4M automatically responds:**
 ```json
 POST /navigate_to with:
 {
@@ -856,52 +1026,8 @@ POST /navigate_to with:
     "orientation": 0.523
   },
   "label": "simulated_exploration_6_2",
-  "source": "simulated_llm"
+  "source": "simulated_b4m"
 }
-```
-
-#### Test Scenarios
-
-The simulated LLM can run various test scenarios:
-
-**1. Exploration Test:**
-```python
-# Simulated LLM systematically explores all unknown areas
-def exploration_test():
-    # Continuously navigates to unexplored positions
-    # Until map is >95% complete
-```
-
-**2. Obstacle Avoidance Test:**
-```python
-# Simulated LLM navigates around obstacles
-def obstacle_test():
-    # Finds clear paths around detected obstacles
-    # Maintains safety_margin from walls
-```
-
-**3. Target Seeking Test:**
-```python
-# Simulated LLM navigates to marked targets
-def target_test():
-    # If '*' symbol present, navigate to it
-    # Tests direct goal navigation
-```
-
-### Test Commands
-```bash
-# Run unit tests
-colcon test --packages-select b4m_llm_nav_api
-
-# Run integration tests with simulation
-./b4m_launch.sh --simulation
-ros2 run b4m_llm_nav_api test_integration
-
-# Run with simulated LLM
-ros2 launch b4m_llm_nav_api llm_nav_api_launch.py use_simulated_llm:=true
-
-# Run full system test with simulated LLM
-./tests/test_llm_navigation_system.sh --simulated-llm
 ```
 
 ## Example LLM Interactions
@@ -1159,7 +1285,7 @@ The LLM navigation system integrates seamlessly with the existing B4M Yahboom in
    - Check safety distance parameters
 
 3. **API connection refused**
-   - Verify API server is running: `ros2 run b4m_llm_nav_api api_server`
+   - Verify B4M navigation is launched: `./b4m_launch.sh --b4m-nav`
    - Check firewall settings for port 8080
 
 ## License and Attribution
