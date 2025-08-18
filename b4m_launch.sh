@@ -4,7 +4,7 @@
 # This script automates the launch process for the B4M Robot 
 # Each step will be launched in a separate terminal with user confirmation
 #
-# Usage: ./b4m_launch.sh [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--b4m-lidar] [--b4m-HA] [--b4m-ping] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>] [--setup-wifi]
+# Usage: ./b4m_launch.sh [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--b4m-lidar] [--b4m-HA] [--b4m-ping] [--b4m-nav] [--simulated-b4m] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>] [--setup-wifi]
 #   --skip-agent:                   Skip the Micro-ROS agent launch (Step 1)
 #   --only-agent:                   Launch ONLY the Micro-ROS agent (Step 1) and exit
 #   --debug:                        Enable verbose debug logging
@@ -14,6 +14,8 @@
 #   --b4m-lidar:                    Enable B4M LiDAR-based intelligent navigation with API
 #   --b4m-HA:                       (Experimental) Enable Home Assistant MQTT integration features
 #   --b4m-ping:                     Test bike4mind API with random obstacle detection messages
+#   --b4m-nav:                      Enable LLM Navigation API for spatial awareness and natural language control
+#   --simulated-b4m:                Run B4M Navigation API in simulated mode (no real LLM calls)
 #   --localization-test:            (Untested) Enable localization quality and navigation performance testing
 #   --tune-params:                  (Untested) Enable parameter tuning iterations (requires --localization-test)
 #   --navigation-performance-test:  (Untested) Execute 1x1m square navigation circuit testing
@@ -30,6 +32,8 @@ EXPLORE_MODE=false
 B4M_LIDAR=false
 B4M_PING=false
 B4M_HA=false
+B4M_NAV=false
+SIMULATED_B4M=false
 LOCALIZATION_TEST=false
 TUNE_PARAMS=false
 NAVIGATION_PERFORMANCE_TEST=false
@@ -73,6 +77,15 @@ for arg in "$@"; do
             B4M_HA=true
             shift
             ;;
+        --b4m-nav)
+            B4M_NAV=true
+            shift
+            ;;
+        --simulated-b4m)
+            SIMULATED_B4M=true
+            B4M_NAV=true  # Auto-enable B4M Nav
+            shift
+            ;;
         --localization-test)
             LOCALIZATION_TEST=true
             shift
@@ -96,7 +109,7 @@ for arg in "$@"; do
             shift
             ;;
         -h|--help)
-            echo "Usage: $0 [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--b4m-lidar] [--b4m-HA] [--b4m-ping] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>] [--setup-wifi]"
+            echo "Usage: $0 [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--b4m-lidar] [--b4m-HA] [--b4m-ping] [--b4m-nav] [--simulated-b4m] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>] [--setup-wifi]"
             echo "  --skip-agent:                   Skip the Micro-ROS agent launch (Step 1)"
             echo "  --only-agent:                   Launch ONLY the Micro-ROS agent (Step 1) and exit"
             echo "  --debug:                        Enable verbose debug logging"
@@ -106,6 +119,8 @@ for arg in "$@"; do
             echo "  --b4m-lidar:                    Enable B4M LiDAR-based intelligent navigation with API"
 	    echo "  --b4m-HA:                       (Experimental) Enable Home Assistant MQTT integration features"
             echo "  --b4m-ping:                     Test bike4mind API with random obstacle detection messages"
+            echo "  --b4m-nav:                      Enable LLM Navigation API for spatial awareness and natural language control"
+            echo "  --simulated-b4m:                Run B4M Navigation API in simulated mode (no real LLM calls)"
 	    echo "  --localization-test:            (Untested) Enable localization quality and navigation performance testing"
 	    echo "  --tune-params:                  (Untested) Enable parameter tuning iterations (requires --localization-test)"
 	    echo "  --navigation-performance-test:  (Untested) Execute 1x1m square navigation circuit testing"
@@ -120,6 +135,12 @@ for arg in "$@"; do
             ;;
     esac
 done
+
+# Automatically skip agent in simulation mode (simulation doesn't need physical robot connection)
+if [ "$SIMULATION_MODE" = true ]; then
+    SKIP_AGENT=true
+    echo "🎮 Simulation mode detected: Automatically skipping Micro-ROS agent (no physical robot needed)"
+fi
 
 # Get the workspace root directory (where this script is located)
 WORKSPACE_ROOT=$(cd "$(dirname "$0")" && pwd)
@@ -353,6 +374,222 @@ if [ "$EXPLORE_MODE" = true ]; then
         sleep 30
         echo "🗺️  Exploration continues... (Ctrl+C to stop)"
         echo "   Check RViz to see mapping progress"
+    done
+fi
+
+# Handle B4M LLM Navigation mode
+if [ "$B4M_NAV" = true ]; then
+    echo "🤖 B4M LLM NAVIGATION MODE"
+    echo "======================================"
+    echo "Launching LLM Navigation API with real-time SLAM mapping"
+    
+    if [ "$SIMULATION_MODE" = true ]; then
+        echo "Mode: Gazebo Classic Simulation with LLM Navigation"
+        WORLD_NAME="exploration_test_classic"  # Use same world as exploration
+    else  
+        echo "Mode: Real Robot LLM Navigation"
+    fi
+    
+    echo ""
+    echo "This mode will:"
+    echo "- Launch Cartographer for real-time SLAM mapping"
+    echo "- Start B4M LLM Navigation API server on port 8080" 
+    echo "- Provide spatial awareness to LLMs via HTTP/JSON"
+    echo "- Enable natural language navigation control"
+    if [ "$SIMULATED_B4M" = true ]; then
+        echo "- Run in SIMULATED B4M mode (no external LLM needed)"
+    fi
+    echo ""
+    
+    # FIX: Ensure clean state before launching B4M navigation
+    echo "🧹 ENSURING CLEAN STATE FOR B4M NAVIGATION"
+    echo "======================================"
+    echo "Cleaning up any existing ROS2 processes to prevent TF conflicts..."
+    ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1
+    sleep 3
+    echo "✅ System cleanup completed"
+    echo ""
+    
+    # Launch B4M navigation sequence (copying explore pattern exactly)
+    echo "🚀 B4M NAVIGATION LAUNCH SEQUENCE"
+    echo "======================================"
+    
+    if [ "$SIMULATION_MODE" = true ]; then
+        # Step 1: Launch Gazebo Classic simulation with exploration world
+        echo "🎮 Step 1: Starting Gazebo Classic simulation with exploration world"
+        ros2 launch yahboomcar_nav gazebo_classic_nav_launch.py world_name:=$WORLD_NAME > "$LOGS_DIR/b4m_nav_gazebo_$TIMESTAMP.log" 2>&1 &
+        GAZEBO_PID=$!
+        echo "   Waiting for simulation initialization..."
+        sleep 10  # Give Gazebo more time to fully initialize and spawn robot
+        
+        # Verify laser scan is being published
+        echo "   Verifying laser scan topic..."
+        if timeout 5 ros2 topic echo /scan --once > /dev/null 2>&1; then
+            echo "   ✅ Laser scan topic active"
+        else
+            echo "   ⚠️  Warning: Laser scan topic not detected"
+        fi
+        
+        # Step 2: Launch robot bringup for EKF and sensor processing (CRITICAL FOR SIMULATION)
+        echo "🤖 Step 2: Starting robot sensor and control systems (EKF, IMU, etc.)"
+        echo "   This is required even in simulation to get filtered /odom from EKF"
+        cd "$WORKSPACE_ROOT" && . source_workspaces.sh && ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py use_sim_time:=true > "$LOGS_DIR/b4m_nav_bringup_$TIMESTAMP.log" 2>&1 &
+        BRINGUP_PID=$!
+        echo "   Waiting for sensor initialization and EKF startup..."
+        sleep 12
+        
+        # FIX: Verify that /odom topic is being published before continuing (even in simulation)
+        echo "   Verifying odometry is available..."
+        timeout 10 ros2 topic echo /odom --once > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            echo "   ✅ Odometry topic verified"
+        else
+            echo "   ⚠️  Warning: /odom topic not ready, continuing anyway..."
+        fi
+        
+        # Step 3: Launch RViz for visualization
+        echo "📊 Step 3: Starting RViz for map visualization"
+        ros2 launch yahboomcar_nav display_launch.py use_sim_time:=true > "$LOGS_DIR/b4m_nav_rviz_$TIMESTAMP.log" 2>&1 &
+        RVIZ_PID=$!
+        sleep 5  # Give RViz more time to connect to topics
+        
+    else
+        echo "   ⚠️  Make sure physical robot is powered on and ready"
+        echo "   ⚠️  Ensure navigation area is safe and obstacle-free"
+        read -p "   Press Enter when robot is ready for B4M navigation..."
+        
+        # Step 1: Launch robot bringup 
+        echo "🤖 Step 1: Starting robot sensor and control systems"
+        # Must source ALL workspaces including IMU for EKF to work properly
+        cd "$WORKSPACE_ROOT" && . source_workspaces.sh && ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py > "$LOGS_DIR/b4m_nav_bringup_$TIMESTAMP.log" 2>&1 &
+        BRINGUP_PID=$!
+        echo "   Waiting for sensor initialization and EKF startup..."
+        sleep 12
+        
+        # FIX: Verify that /odom topic is being published before continuing
+        echo "   Verifying odometry is available..."
+        timeout 10 ros2 topic echo /odom --once > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            echo "   ✅ Odometry topic verified"
+        else
+            echo "   ⚠️  Warning: /odom topic not ready, continuing anyway..."
+        fi
+        
+        # Step 2: Launch RViz for visualization
+        echo "📊 Step 2: Starting RViz for map visualization"  
+        ros2 launch yahboomcar_nav display_launch.py use_sim_time:=false > "$LOGS_DIR/b4m_nav_rviz_$TIMESTAMP.log" 2>&1 &
+        RVIZ_PID=$!
+        sleep 3
+    fi
+    
+    # Step 4: Launch TF bridge to connect odom_frame to odom
+    echo "🔗 Step 4: Creating TF bridge between odom_frame and odom"
+    ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 odom_frame odom > "$LOGS_DIR/b4m_nav_tf_bridge_$TIMESTAMP.log" 2>&1 &
+    TF_BRIDGE_PID=$!
+    echo "   Bridge created: odom_frame → odom (connects Cartographer to robot)"
+    
+    # Step 5: Launch Cartographer SLAM for real-time mapping
+    echo "🗺️  Step 5: Starting Cartographer SLAM for real-time mapping"
+    if [ "$SIMULATION_MODE" = true ]; then
+        ros2 launch yahboomcar_nav map_cartographer_launch.py use_sim_time:=true > "$LOGS_DIR/b4m_nav_cartographer_$TIMESTAMP.log" 2>&1 &
+    else
+        ros2 launch yahboomcar_nav map_cartographer_launch.py use_sim_time:=false > "$LOGS_DIR/b4m_nav_cartographer_$TIMESTAMP.log" 2>&1 &
+    fi
+    CARTOGRAPHER_PID=$!
+    echo "   Waiting for SLAM system initialization..."
+    sleep 10  # Give Cartographer more time to initialize
+    
+    # Verify map topic is being published
+    echo "   Verifying map topic..."
+    if timeout 10 ros2 topic echo /map --once > /dev/null 2>&1; then
+        echo "   ✅ Map topic active"
+    else
+        echo "   ⚠️  Warning: Map topic not detected yet (may appear shortly)"
+        echo "   Checking available topics..."
+        ros2 topic list | grep -E "map|scan|tf" || true
+    fi
+    
+    # FIX: Verify TF tree is complete before starting LLM API
+    echo "   Verifying TF tree integrity..."
+    timeout 10 ros2 run tf2_ros tf2_echo map base_link > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        echo "   ✅ TF tree verified (map → base_link transform available)"
+    else
+        echo "   ⚠️  TF tree not complete yet, waiting additional time..."
+        sleep 5
+        timeout 5 ros2 run tf2_ros tf2_echo map base_link > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            echo "   ✅ TF tree now ready"
+        else
+            echo "   ⚠️  Warning: TF tree may be incomplete, but continuing..."
+        fi
+    fi
+    
+    # Step 6: Start B4M LLM Navigation API
+    echo "🚀 Step 6: Starting B4M LLM Navigation API server"
+    if [ "$SIMULATED_B4M" = true ]; then
+        echo "   Launching in SIMULATED B4M mode (no external LLM needed)"
+        cd "$WORKSPACE_ROOT" && . install/setup.bash && ros2 launch b4m_llm_nav_api llm_nav_api_launch.py simulated_b4m:=true verbose_logging:=true > "$LOGS_DIR/b4m_nav_api_$TIMESTAMP.log" 2>&1 &
+    else
+        echo "   Launching for real LLM integration"
+        cd "$WORKSPACE_ROOT" && . install/setup.bash && ros2 launch b4m_llm_nav_api llm_nav_api_launch.py simulated_b4m:=false verbose_logging:=true > "$LOGS_DIR/b4m_nav_api_$TIMESTAMP.log" 2>&1 &
+    fi
+    API_PID=$!
+    echo "   Waiting for API server initialization..."
+    sleep 8
+    
+    # Verify API server is responding
+    echo "   Verifying API server is responding..."
+    if timeout 10 curl -s -f "http://localhost:8080/" > /dev/null 2>&1; then
+        echo "   ✅ API server responding on port 8080"
+    else
+        echo "   ⚠️  Warning: API server not responding yet (may need more time)"
+    fi
+    
+    echo ""
+    echo "✅ B4M LLM NAVIGATION ACTIVE"
+    echo "======================================"
+    echo "🤖 Robot is now ready for LLM navigation control"
+    echo "🌐 API server available at: http://localhost:8080"
+    echo ""
+    echo "📊 Monitor progress in RViz:"
+    echo "   - Map topic: /map (shows real-time SLAM mapping)"
+    echo "   - Robot position: /tf (robot location on map)"
+    echo "   - Laser scans: /scan (sensor readings)"
+    echo ""
+    echo "🔗 Available API endpoints:"
+    echo "   - GET  /spatial_context      - Get spatial description for LLM"
+    echo "   - POST /navigate_to          - Send navigation commands"
+    echo "   - GET  /status               - Check navigation status"
+    if [ "$SIMULATED_B4M" = true ]; then
+        echo "   - GET  /simulated_b4m_decision - Get simulated B4M decision"
+    fi
+    echo ""
+    echo "🛑 To stop B4M navigation:"
+    echo "   - Press Ctrl+C in this terminal, OR"
+    echo "   - Run: ./b4m_shutdown.sh --keep-agent"
+    echo ""
+    
+    # Set up signal handler for clean shutdown
+    trap 'echo "🛑 Stopping B4M navigation..."; [ ! -z "$API_PID" ] && kill $API_PID 2>/dev/null; [ ! -z "$CARTOGRAPHER_PID" ] && kill $CARTOGRAPHER_PID 2>/dev/null; [ ! -z "$TF_BRIDGE_PID" ] && kill $TF_BRIDGE_PID 2>/dev/null; [ ! -z "$RVIZ_PID" ] && kill $RVIZ_PID 2>/dev/null; [ ! -z "$BRINGUP_PID" ] && kill $BRINGUP_PID 2>/dev/null; if [ "$SIMULATION_MODE" = true ]; then [ ! -z "$GAZEBO_PID" ] && kill $GAZEBO_PID 2>/dev/null; fi; ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1; echo "✅ B4M navigation stopped"; exit 0' INT
+    
+    # Wait for user to stop or let it run
+    if [ "$SIMULATED_B4M" = true ]; then
+        echo "⏳ Simulated B4M is now analyzing the environment and making navigation decisions..."
+        echo "   Watch the console output and RViz to see the LLM-like navigation behavior"
+    else
+        echo "⏳ System ready for LLM connections and navigation commands"
+        echo "   LLMs can now connect to http://localhost:8080 for spatial awareness"
+    fi
+    
+    while true; do
+        sleep 5
+        echo "🗺️  B4M navigation continues... (Ctrl+C to stop)"
+        if [ "$SIMULATED_B4M" = true ]; then
+            echo "   Check RViz to see simulated LLM navigation behavior"
+        else
+            echo "   API server ready for LLM connections on port 8080"
+        fi
     done
 fi
 
@@ -1146,7 +1383,12 @@ except:
 # Function to ask for user confirmation
 confirm() {
     echo ""
-    read -p "Press Enter to continue to the next step or Ctrl+C to exit..."
+    if [ "$SIMULATION_MODE" = true ]; then
+        echo "🎮 Simulation mode: Auto-continuing to next step..."
+        sleep 1  # Brief pause to show progress
+    else
+        read -p "Press Enter to continue to the next step or Ctrl+C to exit..."
+    fi
     echo ""
 }
 
@@ -1603,6 +1845,37 @@ validate_step_success() {
                 fi
             else
                 debug_log "Step 7 skipped: MQTT/Home Assistant not enabled (--b4m-HA not provided)"
+                return 0
+            fi
+            ;;
+        8)
+            # Step 8: B4M LLM Navigation API - check for FastAPI server process (only if B4M_NAV enabled)
+            if [ "$B4M_NAV" = true ]; then
+                sleep 3
+                
+                # Check if the ROS2 launch process is running
+                if pgrep -f "b4m_llm_nav_api.*llm_nav_api_launch.py" > /dev/null; then
+                    debug_log "B4M LLM Navigation API launch process found"
+                    
+                    # Check if FastAPI server is responding
+                    local retries=10
+                    for i in $(seq 1 $retries); do
+                        if curl -s -f "http://localhost:8080/" > /dev/null 2>&1; then
+                            debug_log "Step 8 validation passed: FastAPI server responding on port 8080"
+                            return 0
+                        fi
+                        debug_log "Waiting for FastAPI server to start (attempt $i/$retries)..."
+                        sleep 2
+                    done
+                    
+                    echo "ERROR: Step 8 validation failed - FastAPI server not responding on port 8080"
+                    return 1
+                else
+                    echo "ERROR: Step 8 validation failed - B4M LLM Navigation API process not found"
+                    return 1
+                fi
+            else
+                debug_log "Step 8 skipped: B4M LLM Navigation API not enabled (--b4m-nav not provided)"
                 return 0
             fi
             ;;
@@ -2497,6 +2770,9 @@ launch_in_terminal() {
     # Interactive mode
     if [ "$ONLY_AGENT" = true ]; then
         echo "🎯 ONLY-AGENT MODE: Executing automatically..."
+    elif [ "$SIMULATION_MODE" = true ]; then
+        echo "🎮 SIMULATION MODE: Executing automatically..."
+        sleep 1  # Brief pause to show progress
     else
         echo "Press ENTER to execute this command, or Ctrl+C to exit..."
         read
@@ -2718,7 +2994,9 @@ echo "STEP 2: Power on the physical Yahboom Robot"
 echo "====================================================="
 
 if [ "$SIMULATION_MODE" = true ]; then
-    echo "🎮 SIMULATION MODE: Skipping physical robot power on (using simulation)"
+    echo "🎮 SIMULATION MODE: Skipping physical robot power on (using Gazebo simulation)"
+    log_message "STEP 2: Skipped - using simulation instead of physical robot"
+else
     echo "Manual step required:"
     echo "  1. Turn on the physical robot's power switch"
     echo "  2. Wait for the robot to boot up and connect to the Micro-ROS agent"
@@ -2733,25 +3011,57 @@ if [ "$SIMULATION_MODE" = true ]; then
     log_message "STEP 2: Physical robot power on confirmed"
 fi
 
-# Step 3: Launch the Car's Underlying Data Processing
-launch_in_terminal "Starting the car's underlying data processing for sensor integration" \
-    "cd \"$WORKSPACE_ROOT\" && . source_workspaces.sh && ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py" \
-    "3"
+# Step 3: Launch Robot System (Simulation or Real Hardware)
+echo "====================================================="
+if [ "$SIMULATION_MODE" = true ]; then
+    echo "STEP 3: Launch Gazebo Classic Simulation"
+else
+    echo "STEP 3: Launch Car's Underlying Data Processing"
+fi
+echo "====================================================="
+
+if [ "$SIMULATION_MODE" = true ]; then
+    launch_in_terminal "Starting Gazebo Classic simulation for B4M robot" \
+        "cd \"$WORKSPACE_ROOT\" && . source_workspaces.sh && ros2 launch yahboomcar_nav gazebo_classic_nav_launch.py world_name:=exploration_test_classic" \
+        "3"
+else
+    launch_in_terminal "Starting the car's underlying data processing for sensor integration" \
+        "cd \"$WORKSPACE_ROOT\" && . source_workspaces.sh && ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py" \
+        "3"
+fi
 
 # Step 4: Start RViz for Visualization
-launch_in_terminal "Starting RViz for visualization of robot state and environment" \
-    "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_nav display_launch.py" \
-    "4"
+if [ "$SIMULATION_MODE" = true ]; then
+    launch_in_terminal "Starting RViz for simulation visualization (with laser scan mapping)" \
+        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_nav display_launch.py use_sim_time:=true" \
+        "4"
+else
+    launch_in_terminal "Starting RViz for visualization of robot state and environment" \
+        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_nav display_launch.py" \
+        "4"
+fi
 
 # Step 5: Launch the Navigation System
-launch_in_terminal "Launching the navigation system with pre-built map" \
-    "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_nav waypoint_navigation_launch.py maps:=\"$WORKSPACE_ROOT/yahboomcar_nav/maps/yahboom_map.yaml\"" \
-    "5"
+if [ "$SIMULATION_MODE" = true ]; then
+    launch_in_terminal "Launching navigation system for simulation (with laser scan support)" \
+        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_nav waypoint_navigation_launch.py maps:=\"$WORKSPACE_ROOT/yahboomcar_nav/maps/yahboom_map.yaml\" use_sim_time:=true" \
+        "5"
+else
+    launch_in_terminal "Launching the navigation system with pre-built map" \
+        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch yahboomcar_nav waypoint_navigation_launch.py maps:=\"$WORKSPACE_ROOT/yahboomcar_nav/maps/yahboom_map.yaml\"" \
+        "5"
+fi
 
 # Step 6: Automatic Robot Positioning
-launch_in_terminal "Setting automatic pose estimate at map center for testing" \
-    "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && python3 \"$WORKSPACE_ROOT/scripts/set_initial_pose.py\"" \
-    "6"
+if [ "$SIMULATION_MODE" = true ]; then
+    launch_in_terminal "Setting automatic pose estimate for simulation robot" \
+        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && python3 \"$WORKSPACE_ROOT/scripts/set_initial_pose.py\"" \
+        "6"
+else
+    launch_in_terminal "Setting automatic pose estimate at map center for testing" \
+        "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && python3 \"$WORKSPACE_ROOT/scripts/set_initial_pose.py\"" \
+        "6"
+fi
 
 # Step 7: Start the B4M Waypoint Navigation Node with MQTT Parameters (if enabled)
 if [ "$B4M_HA" = true ]; then
@@ -2762,11 +3072,51 @@ else
     echo "Skipping Step 7: MQTT/Home Assistant integration (use --b4m-HA to enable)"
 fi
 
-# Localization Testing Integration (Steps 8-9)
-if [ "$LOCALIZATION_TEST" = true ]; then
-    # Step 8: Localization Quality Assessment
+# Step 8: B4M LLM Navigation API (if enabled)
+if [ "$B4M_NAV" = true ]; then
     echo "======================================================"
-    echo "STEP 8: Localization Quality Assessment"
+    echo "STEP 8: B4M LLM Navigation API"
+    echo "======================================================"
+    
+    if [ "$SIMULATED_B4M" = true ]; then
+        echo "Starting B4M Navigation API in SIMULATED mode (no real LLM calls)"
+        launch_in_terminal "Starting B4M LLM Navigation API (Simulated Mode)" \
+            "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch b4m_llm_nav_api llm_nav_api_launch.py simulated_b4m:=true verbose_logging:=true" \
+            "8"
+    else
+        echo "Starting B4M Navigation API in REAL mode (with LLM integration)"
+        launch_in_terminal "Starting B4M LLM Navigation API (Real Mode)" \
+            "cd \"$WORKSPACE_ROOT\" && . install/setup.bash && ros2 launch b4m_llm_nav_api llm_nav_api_launch.py simulated_b4m:=false verbose_logging:=true" \
+            "8"
+    fi
+    
+    echo ""
+    echo "B4M LLM Navigation API is now running!"
+    echo "FastAPI server available at: http://localhost:8080"
+    echo ""
+    echo "Available endpoints:"
+    echo "  - GET  /spatial/environment     - Get spatial description for LLM"
+    echo "  - POST /navigation/goto         - Navigate to specific position"
+    echo "  - POST /navigation/delta        - Navigate using relative movement"
+    if [ "$SIMULATED_B4M" = true ]; then
+        echo "  - GET  /navigation/simulated_decision - Get simulated B4M decision"
+    fi
+    echo ""
+    echo "Console output will show real-time API requests, responses, and"
+    echo "grid analysis with color-coded messages for monitoring LLM"
+    echo "communications and navigation decisions."
+    echo ""
+    
+    confirm
+else
+    echo "Skipping Step 8: B4M LLM Navigation API (use --b4m-nav to enable)"
+fi
+
+# Localization Testing Integration (Steps 9-10)
+if [ "$LOCALIZATION_TEST" = true ]; then
+    # Step 9: Localization Quality Assessment
+    echo "======================================================"
+    echo "STEP 9: Localization Quality Assessment"
     echo "======================================================"
     
     echo "Running localization quality tests..."
@@ -2782,9 +3132,9 @@ if [ "$LOCALIZATION_TEST" = true ]; then
     fi
     confirm
     
-    # Step 9: Navigation Performance Testing
+    # Step 10: Navigation Performance Testing
     echo "======================================================"
-    echo "STEP 9: Navigation Performance Testing"
+    echo "STEP 10: Navigation Performance Testing"
     echo "======================================================"
     
     echo "Running navigation performance tests..."
