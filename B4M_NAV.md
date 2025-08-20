@@ -985,6 +985,84 @@ The B4M navigation system is launched using the `b4m_launch.sh` script with the 
 
 The system includes a built-in simulated B4M mode for testing the robot-to-LLM API without requiring a real LLM service. This mode mimics LLM behavior by automatically analyzing the grid and selecting appropriate navigation goals.
 
+#### Simulated B4M Automatic Decision Loop
+
+**IMPORTANT:** The simulated B4M mode requires an automatic decision loop to initiate robot movement. Without this continuous loop, the robot will remain stationary even when launched with `--simulated-b4m`.
+
+The automatic decision loop operates as follows:
+
+1. **Periodic Activation** (every 15 seconds):
+   - Timer triggers decision cycle
+   - Checks if robot is idle (not currently navigating)
+   - Proceeds only if previous navigation completed
+
+2. **Spatial Context Retrieval**:
+   - Internally calls GET /spatial_context
+   - Receives current grid, robot position, and analysis
+   - Updates internal state with latest environment data
+
+3. **Decision Making**:
+   - Analyzes grid for exploration opportunities
+   - Identifies targets, unexplored areas, or clear spaces
+   - Selects optimal navigation goal based on strategy
+
+4. **Navigation Command**:
+   - Sends POST /navigate_to with calculated delta movement
+   - Includes reasoning for console output
+   - Marks navigation as active
+
+5. **Progress Monitoring**:
+   - Polls navigation status periodically
+   - Waits for completion or failure
+   - Returns to step 1 for next decision
+
+**Example Implementation Pattern:**
+
+```python
+async def simulated_b4m_decision_loop(api_server):
+    """
+    Automatic decision loop that initiates robot movement
+    This loop is REQUIRED for the robot to move autonomously
+    """
+    while api_server.simulated_b4m_enabled:
+        # Wait for configurable decision delay (default 15 seconds)
+        await asyncio.sleep(api_server.config['simulated_b4m']['decision_delay'])
+        
+        # Check if robot is ready for new command
+        status = await api_server.get_status()
+        if status['robot_state'] != 'idle':
+            continue  # Robot still navigating, wait for completion
+        
+        # Get current spatial context
+        spatial_context = await api_server.get_spatial_context()
+        
+        # Make autonomous decision
+        decision = api_server.simulated_b4m.analyze_grid(spatial_context)
+        
+        if decision:
+            # Send navigation command to initiate movement
+            await api_server.navigate_to(decision)
+            
+            # Log decision for visibility
+            api_server.log_decision(decision['reasoning'])
+        
+        # Continue loop for next decision
+```
+
+**Why the Loop is Necessary:**
+
+Without this automatic loop, the simulated B4M system:
+- Has no trigger to start navigation
+- Cannot respond to environmental changes
+- Will not explore or reach targets
+- Essentially becomes a passive system
+
+The loop transforms the simulated B4M from a passive decision-maker into an active navigator that continuously:
+- Explores unknown areas
+- Navigates to targets
+- Adapts to discovered obstacles
+- Completes exploration tasks
+
 #### How Simulated B4M Works
 
 The simulated B4M follows this decision logic, accounting for Navigation2's capabilities:
@@ -1029,6 +1107,89 @@ POST /navigate_to with:
   "source": "simulated_b4m"
 }
 ```
+
+#### Complete Example: Automatic Decision Loop in Action
+
+This example demonstrates how the automatic decision loop enables continuous robot movement without external LLM input:
+
+**Time 00:00 - System Startup:**
+```bash
+./b4m_launch.sh --simulation --b4m-nav --simulated-b4m
+# Launches system with simulated B4M mode enabled
+# Automatic decision loop starts immediately
+```
+
+**Time 00:02 - First Decision Cycle:**
+```
+[DECISION] === SIMULATED B4M AUTOMATIC LOOP CYCLE 1 ===
+Status Check: Robot state = idle ✓
+Retrieving spatial context...
+
+Grid Analysis:
+  @ . . ? ?    Robot at [0,0]
+  . . . ? ?    45% unexplored
+  # # . ? ?    Clear path east
+  
+Decision: Explore nearest unknown at [3,0]
+Sending: POST /navigate_to {"delta": {"x": 1.5, "y": 0.0}}
+Status: Robot now navigating...
+```
+
+**Time 00:05 - Second Decision Cycle (still navigating):**
+```
+[DECISION] === SIMULATED B4M AUTOMATIC LOOP CYCLE 2 ===
+Status Check: Robot state = navigating ✗
+Skipping decision - robot still moving
+Will check again in 2 seconds...
+```
+
+**Time 00:07 - Third Decision Cycle (navigation complete):**
+```
+[DECISION] === SIMULATED B4M AUTOMATIC LOOP CYCLE 3 ===
+Status Check: Robot state = idle ✓
+Retrieving spatial context...
+
+Grid Analysis:
+  . . . @ ?    Robot at [3,0]
+  . . . . ?    35% unexplored
+  # # . . ?    New area discovered
+  
+Decision: Continue exploration at [4,1]
+Sending: POST /navigate_to {"delta": {"x": 0.5, "y": 0.5}}
+Status: Robot now navigating...
+```
+
+**Time 00:10 - Fourth Decision Cycle:**
+```
+[DECISION] === SIMULATED B4M AUTOMATIC LOOP CYCLE 4 ===
+Status Check: Robot state = idle ✓
+Retrieving spatial context...
+
+Grid Analysis:
+  . . . . *    Robot at [4,1]
+  . . . @ *    Target detected!
+  # # . . *    10% unexplored
+  
+Decision: Navigate to target at [4,2]
+Sending: POST /navigate_to {"delta": {"x": 0.0, "y": 0.5}}
+Status: Robot now navigating to target...
+```
+
+**Time 00:12 - Fifth Decision Cycle (target reached):**
+```
+[DECISION] === SIMULATED B4M AUTOMATIC LOOP CYCLE 5 ===
+Status Check: Robot state = idle ✓
+Target reached! Exploration 90% complete.
+
+Decision: Continue exploring remaining areas...
+```
+
+**Key Points:**
+- The loop runs continuously every 2 seconds
+- Only sends new commands when robot is idle
+- Adapts to discovered environment features
+- Provides detailed console output for monitoring
+- Continues until exploration is complete or stopped manually
 
 ## Example LLM Interactions
 
