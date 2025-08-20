@@ -7,7 +7,7 @@ When running the B4M system with `--simulation --simulated-b4m --b4m-nav` flags,
 1. **State 1**: All robot links showing "Transform OK" 
 2. **State 2**: Robot links showing "No transform from [link_name] to..."
 
-The affected links included: `jq1_Link`, `jq2_Link`, `radar_Link`, `yh_Link`, `yq_Link`, `zh_Link`, `zq_Link`, `imu_Link`
+The affected links included: `base_link`, `jq1_Link`, `jq2_Link`, `radar_Link`, `yh_Link`, `yq_Link`, `zh_Link`, `zq_Link`, `imu_Link`
 
 ## Root Cause Analysis
 
