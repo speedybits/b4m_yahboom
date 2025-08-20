@@ -2,9 +2,10 @@
 
 # B4M Robot Launch Script
 # This script automates the launch process for the B4M Robot 
+# Automatically rebuilds workspace before launch to ensure latest code
 # Each step will be launched in a separate terminal with user confirmation
 #
-# Usage: ./b4m_launch.sh [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--b4m-lidar] [--b4m-HA] [--b4m-ping] [--b4m-nav] [--simulated-b4m] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>] [--setup-wifi]
+# Usage: ./b4m_launch.sh [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--b4m-lidar] [--b4m-HA] [--b4m-ping] [--b4m-nav] [--simulated-b4m] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>] [--setup-wifi] [--skip-rebuild]
 #   --skip-agent:                   Skip the Micro-ROS agent launch (Step 1)
 #   --only-agent:                   Launch ONLY the Micro-ROS agent (Step 1) and exit
 #   --debug:                        Enable verbose debug logging
@@ -21,6 +22,7 @@
 #   --navigation-performance-test:  (Untested) Execute 1x1m square navigation circuit testing
 #   --parameter-set <name>:         (Untested) Specify parameter set to test (baseline, indoor_optimized, high_precision, balanced, fast_convergence)
 #   --setup-wifi:                   Interactive WiFi setup wizard for robot configuration
+#   --skip-rebuild:                 Skip automatic workspace rebuild (for development/debugging)
 
 # Parse command line arguments
 SKIP_AGENT=false
@@ -39,6 +41,7 @@ TUNE_PARAMS=false
 NAVIGATION_PERFORMANCE_TEST=false
 PARAMETER_SET=""
 SETUP_WIFI=false
+SKIP_REBUILD=false
 for arg in "$@"; do
     case $arg in
         --skip-agent)
@@ -108,8 +111,12 @@ for arg in "$@"; do
             SETUP_WIFI=true
             shift
             ;;
+        --skip-rebuild)
+            SKIP_REBUILD=true
+            shift
+            ;;
         -h|--help)
-            echo "Usage: $0 [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--b4m-lidar] [--b4m-HA] [--b4m-ping] [--b4m-nav] [--simulated-b4m] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>] [--setup-wifi]"
+            echo "Usage: $0 [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--b4m-lidar] [--b4m-HA] [--b4m-ping] [--b4m-nav] [--simulated-b4m] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>] [--setup-wifi] [--skip-rebuild]"
             echo "  --skip-agent:                   Skip the Micro-ROS agent launch (Step 1)"
             echo "  --only-agent:                   Launch ONLY the Micro-ROS agent (Step 1) and exit"
             echo "  --debug:                        Enable verbose debug logging"
@@ -126,6 +133,7 @@ for arg in "$@"; do
 	    echo "  --navigation-performance-test:  (Untested) Execute 1x1m square navigation circuit testing"
 	    echo "  --parameter-set <name>:         (Untested) Specify parameter set to test (baseline, indoor_optimized, high_precision, balanced, fast_convergence)"
 	    echo "  --setup-wifi:                   Interactive WiFi setup wizard for robot configuration"
+	    echo "  --skip-rebuild:                 Skip automatic workspace rebuild (for development/debugging)"
             exit 0
             ;;
         *)
@@ -152,6 +160,44 @@ mkdir -p "$LOGS_DIR"
 # Generate timestamp for log files
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 MAIN_LOG="$LOGS_DIR/b4m_launch_$TIMESTAMP.log"
+
+# Automatic workspace rebuild (unless skipped)
+if [ "$SKIP_REBUILD" = false ]; then
+    echo ""
+    echo "======================================================"
+    echo "🔨 REBUILDING WORKSPACE"
+    echo "======================================================"
+    echo "Rebuilding all packages to ensure latest code changes..."
+    
+    # Create rebuild log file
+    REBUILD_LOG="$LOGS_DIR/colcon_build_$TIMESTAMP.log"
+    echo "📝 Build log: $REBUILD_LOG"
+    
+    # Clean and rebuild all packages
+    echo "🧹 Cleaning build and install directories..."
+    rm -rf build/ install/ > /dev/null 2>&1 || true
+    
+    echo "🔨 Building all packages with symlink install..."
+    if colcon build --symlink-install > "$REBUILD_LOG" 2>&1; then
+        echo "✅ Workspace rebuild completed successfully"
+        
+        # Source all workspaces after rebuild
+        echo "📂 Sourcing all workspaces..."
+        if . source_workspaces.sh > /dev/null 2>&1; then
+            echo "✅ Workspaces sourced successfully"
+        else
+            echo "⚠️  Warning: Could not source workspaces properly"
+        fi
+    else
+        echo "❌ Workspace rebuild failed! Check logs at: $REBUILD_LOG"
+        echo "Exiting due to build failure..."
+        exit 1
+    fi
+    echo ""
+else
+    echo "⏭️  Skipping workspace rebuild (--skip-rebuild specified)"
+    echo ""
+fi
 
 # Validate argument combinations
 if [ "$EXPLORE_MODE" = true ] && [ "$REGRESSION_MODE" = true ]; then
