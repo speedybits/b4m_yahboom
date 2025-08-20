@@ -53,11 +53,11 @@ if [ -f "$WORKSPACE_ROOT/stop_motors.sh" ] && [ -x "$WORKSPACE_ROOT/stop_motors.
     # Run stop_motors.sh in background to avoid blocking, but wait for completion
     timeout 10 bash "$WORKSPACE_ROOT/stop_motors.sh" 2>&1 | tee -a "$SHUTDOWN_LOG" || {
         shutdown_log "WARNING: stop_motors.sh timed out or failed, attempting manual motor stop"
-        ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}' 2>&1 | tee -a "$SHUTDOWN_LOG" || true
+        timeout 3 ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}' 2>&1 | tee -a "$SHUTDOWN_LOG" || shutdown_log "No subscribers for /cmd_vel (robot may already be stopped)"
     }
 else
     shutdown_log "WARNING: stop_motors.sh not found or not executable, manually stopping motors"
-    ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}' 2>&1 | tee -a "$SHUTDOWN_LOG" || true
+    timeout 3 ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}' 2>&1 | tee -a "$SHUTDOWN_LOG" || shutdown_log "No subscribers for /cmd_vel (robot may already be stopped)"
 fi
 sleep 2
 shutdown_log "Motor stop sequence completed"
