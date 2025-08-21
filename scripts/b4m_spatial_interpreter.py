@@ -60,6 +60,8 @@ class B4MSpatialInterpreter(Node):
         self.obstacle_detected = False
         self.path_clear = True
         self.user_decision_pending = False
+        self.just_turned = False  # Flag to ignore side obstacles after turning
+        self.forward_start_time = 0  # Track forward movement after turning
         
         # Turn tracking
         self.turn_start_time = 0
@@ -124,12 +126,17 @@ class B4MSpatialInterpreter(Node):
         right_ranges = ranges[right_start_idx:right_end_idx + 1] if right_end_idx >= right_start_idx else []
         min_right_distance = np.min(right_ranges) if len(right_ranges) > 0 else msg.range_max
         
-        # Stop at ANY obstacle within stop distance (30cm)
-        self.obstacle_detected = (
-            min_front_distance <= self.stop_distance or
-            min_left_distance <= self.stop_distance or
-            min_right_distance <= self.stop_distance
-        )
+        # Stop at obstacles, but be smart about it after turning
+        if self.just_turned:
+            # After turning, only care about front obstacles to allow forward movement
+            self.obstacle_detected = min_front_distance <= self.stop_distance
+        else:
+            # Normal operation: stop at ANY obstacle within stop distance (30cm)
+            self.obstacle_detected = (
+                min_front_distance <= self.stop_distance or
+                min_left_distance <= self.stop_distance or
+                min_right_distance <= self.stop_distance
+            )
         
         # Path is clear only when front has enough clearance
         self.path_clear = min_front_distance > self.safe_distance
@@ -328,6 +335,10 @@ class B4MSpatialInterpreter(Node):
         cmd = Twist()
         
         if self.state == "moving_forward":
+            # Reset just_turned flag after 2 seconds of forward movement
+            if self.just_turned and time.time() - self.forward_start_time > 2.0:
+                self.just_turned = False
+                
             if self.obstacle_detected and not self.user_decision_pending:
                 # Stop and wait for user input
                 cmd.linear.x = 0.0
@@ -339,9 +350,10 @@ class B4MSpatialInterpreter(Node):
                 if spatial_context:
                     self.display_spatial_description(spatial_context)
                     
-                    # Set flag to prevent re-displaying
+                    # Set flag to prevent re-displaying and reset just_turned
                     self.user_decision_pending = True
                     self.state = "stopped_waiting"
+                    self.just_turned = False  # Reset flag when handling new obstacle
                     
                     # Get user decision (blocking)
                     decision = self.get_user_decision()
@@ -409,6 +421,8 @@ class B4MSpatialInterpreter(Node):
                 # Resume forward movement (stay quiet)
                 self.state = "moving_forward"
                 self.obstacle_detected = False  # Reset for next obstacle
+                self.just_turned = True  # Ignore side obstacles briefly after turning
+                self.forward_start_time = time.time()  # Start timer for forward movement
             elif not min_turn_elapsed:
                 # Still in minimum turn time
                 pass
