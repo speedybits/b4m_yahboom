@@ -5,13 +5,14 @@
 # Automatically rebuilds workspace before launch to ensure latest code
 # Each step will be launched in a separate terminal with user confirmation
 #
-# Usage: ./b4m_launch.sh [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--b4m-lidar] [--b4m-HA] [--b4m-ping] [--b4m-nav] [--simulated-b4m] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>] [--setup-wifi] [--skip-rebuild]
+# Usage: ./b4m_launch.sh [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--b4m-api] [--b4m-lidar] [--b4m-HA] [--b4m-ping] [--b4m-nav] [--simulated-b4m] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>] [--setup-wifi] [--skip-rebuild]
 #   --skip-agent:                   Skip the Micro-ROS agent launch (Step 1)
 #   --only-agent:                   Launch ONLY the Micro-ROS agent (Step 1) and exit
 #   --debug:                        Enable verbose debug logging
 #   --simulation:                   Launch in Gazebo simulation mode instead of real robot
 #   --regression:                   Run comprehensive regression test suite (navigation + laser stability)
 #   --explore:                      Enable autonomous exploration mode with obstacle avoidance
+#   --b4m-api:                      Enable B4M API mode (duplicate of --explore for API integration)
 #   --b4m-lidar:                    Enable B4M LiDAR-based intelligent navigation with API
 #   --b4m-HA:                       (Experimental) Enable Home Assistant MQTT integration features
 #   --b4m-ping:                     Test bike4mind API with random obstacle detection messages
@@ -31,6 +32,7 @@ DEBUG_MODE=false
 SIMULATION_MODE=false
 REGRESSION_MODE=false
 EXPLORE_MODE=false
+B4M_API=false
 B4M_LIDAR=false
 B4M_PING=false
 B4M_HA=false
@@ -66,6 +68,10 @@ for arg in "$@"; do
             ;;
         --explore)
             EXPLORE_MODE=true
+            shift
+            ;;
+        --b4m-api)
+            B4M_API=true
             shift
             ;;
         --b4m-lidar)
@@ -116,13 +122,14 @@ for arg in "$@"; do
             shift
             ;;
         -h|--help)
-            echo "Usage: $0 [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--b4m-lidar] [--b4m-HA] [--b4m-ping] [--b4m-nav] [--simulated-b4m] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>] [--setup-wifi] [--skip-rebuild]"
+            echo "Usage: $0 [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--b4m-api] [--b4m-lidar] [--b4m-HA] [--b4m-ping] [--b4m-nav] [--simulated-b4m] [--localization-test] [--tune-params] [--navigation-performance-test] [--parameter-set <name>] [--setup-wifi] [--skip-rebuild]"
             echo "  --skip-agent:                   Skip the Micro-ROS agent launch (Step 1)"
             echo "  --only-agent:                   Launch ONLY the Micro-ROS agent (Step 1) and exit"
             echo "  --debug:                        Enable verbose debug logging"
             echo "  --simulation:                   Launch in Gazebo simulation mode instead of real robot"
             echo "  --regression:                   Run comprehensive regression test suite (navigation + laser stability)"
             echo "  --explore:                      Enable autonomous exploration mode with obstacle avoidance"
+            echo "  --b4m-api:                      Enable B4M API mode (duplicate of --explore for API integration)"
             echo "  --b4m-lidar:                    Enable B4M LiDAR-based intelligent navigation with API"
 	    echo "  --b4m-HA:                       (Experimental) Enable Home Assistant MQTT integration features"
             echo "  --b4m-ping:                     Test bike4mind API with random obstacle detection messages"
@@ -218,9 +225,34 @@ if [ "$EXPLORE_MODE" = true ] && [ "$NAVIGATION_PERFORMANCE_TEST" = true ]; then
     exit 1
 fi
 
+# B4M API mode incompatibility checks (same as --explore)
+if [ "$B4M_API" = true ] && [ "$REGRESSION_MODE" = true ]; then
+    echo "ERROR: --b4m-api mode is incompatible with --regression mode"
+    echo "B4M API requires manual control while regression runs automated tests"
+    exit 1
+fi
+
+if [ "$B4M_API" = true ] && [ "$LOCALIZATION_TEST" = true ]; then
+    echo "ERROR: --b4m-api mode is incompatible with --localization-test mode"  
+    echo "Both modes require different navigation behaviors"
+    exit 1
+fi
+
+if [ "$B4M_API" = true ] && [ "$NAVIGATION_PERFORMANCE_TEST" = true ]; then
+    echo "ERROR: --b4m-api mode is incompatible with --navigation-performance-test mode"
+    echo "Both modes require different robot control patterns"
+    exit 1
+fi
+
+if [ "$B4M_API" = true ] && [ "$EXPLORE_MODE" = true ]; then
+    echo "ERROR: --b4m-api and --explore cannot be used together"
+    echo "They are functionally identical modes"
+    exit 1
+fi
+
 # B4M LiDAR mode incompatibility checks
 if [ "$B4M_LIDAR" = true ]; then
-    if [ "$EXPLORE_MODE" = true ] || [ "$REGRESSION_MODE" = true ] || [ "$LOCALIZATION_TEST" = true ] || [ "$NAVIGATION_PERFORMANCE_TEST" = true ]; then
+    if [ "$EXPLORE_MODE" = true ] || [ "$B4M_API" = true ] || [ "$REGRESSION_MODE" = true ] || [ "$LOCALIZATION_TEST" = true ] || [ "$NAVIGATION_PERFORMANCE_TEST" = true ]; then
         echo "ERROR: --b4m-lidar is incompatible with other navigation modes"
         echo "B4M LiDAR mode is a dedicated navigation system"
         exit 1
@@ -229,7 +261,7 @@ fi
 
 # B4M Ping mode incompatibility checks
 if [ "$B4M_PING" = true ]; then
-    if [ "$EXPLORE_MODE" = true ] || [ "$REGRESSION_MODE" = true ] || [ "$LOCALIZATION_TEST" = true ] || [ "$NAVIGATION_PERFORMANCE_TEST" = true ] || [ "$B4M_LIDAR" = true ]; then
+    if [ "$EXPLORE_MODE" = true ] || [ "$B4M_API" = true ] || [ "$REGRESSION_MODE" = true ] || [ "$LOCALIZATION_TEST" = true ] || [ "$NAVIGATION_PERFORMANCE_TEST" = true ] || [ "$B4M_LIDAR" = true ]; then
         echo "ERROR: --b4m-ping is incompatible with other modes"
         echo "B4M Ping is a standalone API testing tool"
         exit 1
@@ -419,6 +451,184 @@ if [ "$EXPLORE_MODE" = true ]; then
     while true; do
         sleep 30
         echo "🗺️  Exploration continues... (Ctrl+C to stop)"
+        echo "   Check RViz to see mapping progress"
+    done
+fi
+
+# Handle B4M API mode (duplicate of exploration mode for API integration)
+if [ "$B4M_API" = true ]; then
+    echo "🔌 B4M API MODE"
+    echo "======================================"
+    echo "Launching B4M API mode with Cartographer mapping (identical to --explore)"
+    
+    if [ "$SIMULATION_MODE" = true ]; then
+        echo "Mode: Gazebo Classic Simulation with Exploration World"
+        WORLD_NAME="exploration_test_classic"  # Use exploration-specific world
+    else  
+        echo "Mode: Real Robot B4M API Exploration"
+    fi
+    
+    echo ""
+    echo "This mode will:"
+    echo "- Launch Cartographer for real-time SLAM mapping"
+    echo "- Start autonomous exploration with obstacle avoidance" 
+    echo "- Build a map while navigating safely"
+    echo "- Stop exploration when area is sufficiently mapped"
+    echo "- Provide API endpoints for external integration"
+    echo ""
+    
+    # FIX: Ensure clean state before launching B4M API
+    echo "🧹 ENSURING CLEAN STATE FOR B4M API"
+    echo "======================================"
+    echo "Cleaning up any existing ROS2 processes to prevent TF conflicts..."
+    ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1
+    sleep 3
+    echo "✅ System cleanup completed"
+    echo ""
+    
+    # Launch B4M API sequence
+    echo "🚀 B4M API LAUNCH SEQUENCE"
+    echo "======================================"
+    
+    if [ "$SIMULATION_MODE" = true ]; then
+        # Step 1: Launch Gazebo Classic simulation with exploration world
+        echo "🎮 Step 1: Starting Gazebo Classic simulation with exploration world"
+        ros2 launch yahboomcar_nav gazebo_classic_nav_launch.py world_name:=$WORLD_NAME > "$LOGS_DIR/b4m_api_gazebo_$TIMESTAMP.log" 2>&1 &
+        GAZEBO_PID=$!
+        echo "   Waiting for simulation initialization..."
+        sleep 10  # Give Gazebo more time to fully initialize and spawn robot
+        
+        # Verify laser scan is being published
+        echo "   Verifying laser scan topic..."
+        if timeout 5 ros2 topic echo /scan --once > /dev/null 2>&1; then
+            echo "   ✅ Laser scan topic active"
+        else
+            echo "   ⚠️  Warning: Laser scan topic not detected"
+        fi
+        
+        # Step 2: Launch robot bringup for EKF and sensor processing (CRITICAL FOR SIMULATION)
+        echo "🤖 Step 2: Starting robot sensor and control systems (EKF, IMU, etc.)"
+        echo "   This is required even in simulation to get filtered /odom from EKF"
+        cd "$WORKSPACE_ROOT" && . source_workspaces.sh && ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py use_sim_time:=true > "$LOGS_DIR/b4m_api_bringup_$TIMESTAMP.log" 2>&1 &
+        BRINGUP_PID=$!
+        echo "   Waiting for sensor initialization and EKF startup..."
+        sleep 12
+        
+        # FIX: Verify that /odom topic is being published before continuing (even in simulation)
+        echo "   Verifying odometry is available..."
+        timeout 10 ros2 topic echo /odom --once > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            echo "   ✅ Odometry topic verified"
+        else
+            echo "   ⚠️  Warning: /odom topic not ready, continuing anyway..."
+        fi
+        
+        # Step 3: Launch RViz for visualization
+        echo "📊 Step 3: Starting RViz for map visualization"
+        ros2 launch yahboomcar_nav display_launch.py use_sim_time:=true > "$LOGS_DIR/b4m_api_rviz_$TIMESTAMP.log" 2>&1 &
+        RVIZ_PID=$!
+        sleep 5  # Give RViz more time to connect to topics
+        
+    else
+        echo "   ⚠️  Make sure physical robot is powered on and ready"
+        echo "   ⚠️  Ensure exploration area is safe and obstacle-free"
+        read -p "   Press Enter when robot is ready for B4M API mode..."
+        
+        # Step 1: Launch robot bringup 
+        echo "🤖 Step 1: Starting robot sensor and control systems"
+        # Must source ALL workspaces including IMU for EKF to work properly
+        cd "$WORKSPACE_ROOT" && . source_workspaces.sh && ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py > "$LOGS_DIR/b4m_api_bringup_$TIMESTAMP.log" 2>&1 &
+        BRINGUP_PID=$!
+        echo "   Waiting for sensor initialization and EKF startup..."
+        sleep 12
+        
+        # FIX: Verify that /odom topic is being published before continuing
+        echo "   Verifying odometry is available..."
+        timeout 10 ros2 topic echo /odom --once > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            echo "   ✅ Odometry topic verified"
+        else
+            echo "   ⚠️  Warning: /odom topic not ready, continuing anyway..."
+        fi
+        
+        # Step 2: Launch RViz for visualization
+        echo "📊 Step 2: Starting RViz for map visualization"  
+        ros2 launch yahboomcar_nav display_launch.py use_sim_time:=false > "$LOGS_DIR/b4m_api_rviz_$TIMESTAMP.log" 2>&1 &
+        RVIZ_PID=$!
+        sleep 3
+    fi
+    
+    # Step 4: Launch TF bridge to connect odom_frame to odom
+    echo "🔗 Step 4: Creating TF bridge between odom_frame and odom"
+    ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 odom_frame odom > "$LOGS_DIR/b4m_api_tf_bridge_$TIMESTAMP.log" 2>&1 &
+    TF_BRIDGE_PID=$!
+    echo "   Bridge created: odom_frame → odom (connects Cartographer to robot)"
+    
+    # Step 5: Launch Cartographer SLAM for real-time mapping
+    echo "🗺️  Step 5: Starting Cartographer SLAM for real-time mapping"
+    if [ "$SIMULATION_MODE" = true ]; then
+        ros2 launch yahboomcar_nav map_cartographer_launch.py use_sim_time:=true > "$LOGS_DIR/b4m_api_cartographer_$TIMESTAMP.log" 2>&1 &
+    else
+        ros2 launch yahboomcar_nav map_cartographer_launch.py use_sim_time:=false > "$LOGS_DIR/b4m_api_cartographer_$TIMESTAMP.log" 2>&1 &
+    fi
+    CARTOGRAPHER_PID=$!
+    echo "   Waiting for SLAM system initialization..."
+    sleep 10  # Give Cartographer more time to initialize
+    
+    # Verify map topic is being published
+    echo "   Verifying map topic..."
+    if timeout 10 ros2 topic echo /map --once > /dev/null 2>&1; then
+        echo "   ✅ Map topic active"
+    else
+        echo "   ⚠️  Warning: Map topic not detected yet (may appear shortly)"
+        echo "   Checking available topics..."
+        ros2 topic list | grep -E "map|scan|tf" || true
+    fi
+    
+    # FIX: Verify TF tree is complete before starting exploration
+    echo "   Verifying TF tree integrity..."
+    timeout 10 ros2 run tf2_ros tf2_echo map base_link > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        echo "   ✅ TF tree verified (map → base_link transform available)"
+    else
+        echo "   ⚠️  TF tree not complete yet, waiting additional time..."
+        sleep 5
+        timeout 5 ros2 run tf2_ros tf2_echo map base_link > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            echo "   ✅ TF tree now ready"
+        else
+            echo "   ⚠️  Warning: TF tree may be incomplete, but continuing..."
+        fi
+    fi
+    
+    # Step 6: Start autonomous exploration
+    echo "🚀 Step 6: Starting autonomous exploration with obstacle avoidance"
+    cd "$WORKSPACE_ROOT" && . install/setup.bash && python3 "$WORKSPACE_ROOT/scripts/autonomous_exploration.py" > "$LOGS_DIR/b4m_api_autonomous_$TIMESTAMP.log" 2>&1 &
+    EXPLORATION_PID=$!
+    
+    echo ""
+    echo "✅ B4M API MODE ACTIVE"
+    echo "======================================"
+    echo "🔌 Robot is now in B4M API mode with autonomous exploration"
+    echo "📊 Monitor progress in RViz:"
+    echo "   - Map topic: /map (shows real-time SLAM mapping)"
+    echo "   - Robot position: /tf (robot location on map)"
+    echo "   - Laser scans: /scan (sensor readings)"
+    echo ""
+    echo "🛑 To stop B4M API mode:"
+    echo "   - Press Ctrl+C in this terminal, OR"
+    echo "   - Run: ./b4m_shutdown.sh --keep-agent"
+    echo ""
+    echo "⏳ The robot will explore and map autonomously"
+    echo "   External APIs can now interact with the robot"
+    
+    # Wait for user to stop or monitor the B4M API mode
+    trap 'echo "🛑 Stopping B4M API mode..."; [ ! -z "$EXPLORATION_PID" ] && kill $EXPLORATION_PID 2>/dev/null; [ ! -z "$CARTOGRAPHER_PID" ] && kill $CARTOGRAPHER_PID 2>/dev/null; [ ! -z "$TF_BRIDGE_PID" ] && kill $TF_BRIDGE_PID 2>/dev/null; [ ! -z "$RVIZ_PID" ] && kill $RVIZ_PID 2>/dev/null; [ ! -z "$BRINGUP_PID" ] && kill $BRINGUP_PID 2>/dev/null; if [ "$SIMULATION_MODE" = true ]; then [ ! -z "$GAZEBO_PID" ] && kill $GAZEBO_PID 2>/dev/null; fi; ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1; echo "✅ B4M API mode stopped"; exit 0' INT
+    
+    # Keep the script running and show periodic status
+    while true; do
+        sleep 30
+        echo "🔌 B4M API mode continues... (Ctrl+C to stop)"
         echo "   Check RViz to see mapping progress"
     done
 fi
