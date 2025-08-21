@@ -601,36 +601,34 @@ if [ "$B4M_API" = true ]; then
         fi
     fi
     
-    # Step 6: Start autonomous exploration
-    echo "🚀 Step 6: Starting autonomous exploration with obstacle avoidance"
-    cd "$WORKSPACE_ROOT" && . install/setup.bash && python3 "$WORKSPACE_ROOT/scripts/autonomous_exploration.py" > "$LOGS_DIR/b4m_api_autonomous_$TIMESTAMP.log" 2>&1 &
-    EXPLORATION_PID=$!
-    
+    # Step 6: Start B4M Spatial Interpreter with manual decisions
+    echo "🚀 Step 6: Starting B4M Spatial Interpreter with manual decisions"
+    echo "   Console will display spatial descriptions when obstacles detected"
+    echo "   User input required for navigation decisions"
     echo ""
-    echo "✅ B4M API MODE ACTIVE"
-    echo "======================================"
-    echo "🔌 Robot is now in B4M API mode with autonomous exploration"
-    echo "📊 Monitor progress in RViz:"
-    echo "   - Map topic: /map (shows real-time SLAM mapping)"
-    echo "   - Robot position: /tf (robot location on map)"
-    echo "   - Laser scans: /scan (sensor readings)"
-    echo ""
-    echo "🛑 To stop B4M API mode:"
-    echo "   - Press Ctrl+C in this terminal, OR"
-    echo "   - Run: ./b4m_shutdown.sh --keep-agent"
-    echo ""
-    echo "⏳ The robot will explore and map autonomously"
-    echo "   External APIs can now interact with the robot"
+    # Run in foreground (no &) to keep console interactive for user input
+    cd "$WORKSPACE_ROOT" && . install/setup.bash && python3 "$WORKSPACE_ROOT/scripts/b4m_spatial_interpreter.py" 2>&1 | tee "$LOGS_DIR/b4m_api_spatial_$TIMESTAMP.log"
+    # Note: Script will run until user stops it with Ctrl+C
     
-    # Wait for user to stop or monitor the B4M API mode
-    trap 'echo "🛑 Stopping B4M API mode..."; [ ! -z "$EXPLORATION_PID" ] && kill $EXPLORATION_PID 2>/dev/null; [ ! -z "$CARTOGRAPHER_PID" ] && kill $CARTOGRAPHER_PID 2>/dev/null; [ ! -z "$TF_BRIDGE_PID" ] && kill $TF_BRIDGE_PID 2>/dev/null; [ ! -z "$RVIZ_PID" ] && kill $RVIZ_PID 2>/dev/null; [ ! -z "$BRINGUP_PID" ] && kill $BRINGUP_PID 2>/dev/null; if [ "$SIMULATION_MODE" = true ]; then [ ! -z "$GAZEBO_PID" ] && kill $GAZEBO_PID 2>/dev/null; fi; ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1; echo "✅ B4M API mode stopped"; exit 0' INT
+    # The spatial interpreter runs in foreground and handles its own exit
+    # When it exits (user presses Ctrl+C), clean up the other processes
+    echo ""
+    echo "🛑 B4M Spatial Interpreter stopped"
+    echo "Cleaning up system processes..."
     
-    # Keep the script running and show periodic status
-    while true; do
-        sleep 30
-        echo "🔌 B4M API mode continues... (Ctrl+C to stop)"
-        echo "   Check RViz to see mapping progress"
-    done
+    # Clean up background processes
+    [ ! -z "$CARTOGRAPHER_PID" ] && kill $CARTOGRAPHER_PID 2>/dev/null
+    [ ! -z "$TF_BRIDGE_PID" ] && kill $TF_BRIDGE_PID 2>/dev/null
+    [ ! -z "$RVIZ_PID" ] && kill $RVIZ_PID 2>/dev/null
+    [ ! -z "$BRINGUP_PID" ] && kill $BRINGUP_PID 2>/dev/null
+    if [ "$SIMULATION_MODE" = true ]; then
+        [ ! -z "$GAZEBO_PID" ] && kill $GAZEBO_PID 2>/dev/null
+    fi
+    
+    # Final cleanup
+    ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1
+    echo "✅ B4M API mode stopped"
+    exit 0
 fi
 
 # Handle B4M LLM Navigation mode
