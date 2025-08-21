@@ -63,11 +63,18 @@ class B4MSpatialInterpreter(Node):
         self.just_turned = False  # Flag to ignore side obstacles after turning
         self.forward_start_time = 0  # Track forward movement after turning
         
+        # Movement tracking
+        self.distance_traveled = 0.0  # Distance since last stop
+        self.movement_start_time = time.time()  # When forward movement started
+        self.last_movement_time = time.time()  # For incremental distance calculation
+        
         # Turn tracking
         self.turn_start_time = 0
         self.min_turn_time = 1.0  # Minimum turn duration
         self.clear_readings_count = 0
         self.required_clear_readings = 3  # Need 3 consecutive clear readings
+        self.total_rotation = 0.0  # Total radians rotated during turn
+        self.turn_direction_text = ""  # LEFT, RIGHT, or AROUND
         
         # Control timer - runs at 10Hz for smooth control
         self.control_timer = self.create_timer(0.1, self.control_loop)
@@ -271,6 +278,16 @@ class B4MSpatialInterpreter(Node):
         print("\n" + "=" * 63)
         print("🤖 B4M SPATIAL INTERPRETER - OBSTACLE DETECTED")
         print("=" * 63)
+        
+        # Display movement since last stop
+        if self.distance_traveled > 0.01:  # Only show if moved more than 1cm
+            print("\n📏 Movement Since Last Stop:")
+            print("-" * 63)
+            elapsed_time = time.time() - self.movement_start_time
+            avg_speed = self.distance_traveled / elapsed_time if elapsed_time > 0 else 0
+            print(f"• Distance traveled: {self.distance_traveled:.2f}m forward")
+            print(f"• Time elapsed: {elapsed_time:.1f} seconds")
+            print(f"• Average speed: {avg_speed:.3f} m/s")
         print("\n📍 Current Situation:")
         print("-" * 63)
         print(f"FRONT:  {spatial_context['front']['description']}")
@@ -312,20 +329,27 @@ class B4MSpatialInterpreter(Node):
         """Execute the selected turn maneuver"""
         if turn_choice == 1:  # Left 90°
             self.turn_direction = 1
-            turn_desc = "LEFT"
+            self.turn_direction_text = "LEFT"
         elif turn_choice == 2:  # Right 90°
             self.turn_direction = -1
-            turn_desc = "RIGHT"
+            self.turn_direction_text = "RIGHT"
         else:  # Turn around 180°
             self.turn_direction = 1  # Default to left for 180°
-            turn_desc = "AROUND"
+            self.turn_direction_text = "AROUND"
             
-        print(f"\n🔄 Executing turn {turn_desc}...")
+        print(f"\n🔄 Executing turn {self.turn_direction_text}...")
         print("   (Will continue turning until path ahead is clear)")
         
+        # Reset tracking for new turn
         self.state = "turning"
         self.turn_start_time = time.time()
         self.clear_readings_count = 0
+        self.total_rotation = 0.0
+        
+        # Reset distance tracking for next segment
+        self.distance_traveled = 0.0
+        self.movement_start_time = time.time()
+        self.last_movement_time = time.time()
     
     def control_loop(self):
         """Main control loop for spatial interpreter"""
@@ -344,6 +368,9 @@ class B4MSpatialInterpreter(Node):
                 cmd.linear.x = 0.0
                 cmd.angular.z = 0.0
                 self.cmd_pub.publish(cmd)
+                
+                # Update last movement time before stopping
+                self.last_movement_time = time.time()
                 
                 # Analyze and display spatial context
                 spatial_context = self.analyze_spatial_context()
@@ -370,6 +397,12 @@ class B4MSpatialInterpreter(Node):
                 if not self.obstacle_detected:
                     cmd.linear.x = self.linear_speed
                     cmd.angular.z = 0.0
+                    
+                    # Track distance traveled
+                    current_time = time.time()
+                    time_delta = current_time - self.last_movement_time
+                    self.distance_traveled += self.linear_speed * time_delta
+                    self.last_movement_time = current_time
                 else:
                     # Obstacle detected but decision pending
                     cmd.linear.x = 0.0
@@ -384,6 +417,9 @@ class B4MSpatialInterpreter(Node):
             # Execute turn until path is clear
             cmd.linear.x = 0.0
             cmd.angular.z = self.angular_speed * self.turn_direction
+            
+            # Track rotation
+            self.total_rotation += abs(self.angular_speed * 0.1)  # 0.1 is the timer period
             
             # Check if minimum turn time has elapsed
             turn_duration = time.time() - self.turn_start_time
@@ -416,7 +452,14 @@ class B4MSpatialInterpreter(Node):
                     front_ranges = ranges[front_start:front_end + 1]
                     front_distance = np.min(front_ranges) if len(front_ranges) > 0 else 0
                     
-                    print(f"\n✅ Clear path detected ahead ({front_distance:.2f}m)\n")
+                    # Display turn summary
+                    total_degrees = math.degrees(self.total_rotation)
+                    turn_duration = time.time() - self.turn_start_time
+                    print(f"\n📐 Turn Complete:")
+                    print("-" * 63)
+                    print(f"• Total rotation: {total_degrees:.0f}° {self.turn_direction_text}")
+                    print(f"• Turn duration: {turn_duration:.1f} seconds")
+                    print(f"• Clear path detected ahead: {front_distance:.2f}m\n")
                 
                 # Resume forward movement (stay quiet)
                 self.state = "moving_forward"

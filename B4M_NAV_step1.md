@@ -77,6 +77,17 @@ This document describes the implementation of a simplified `b4m_spatial_interpre
   - This ensures robot always resumes with clear path ahead
 - No odometry or IMU required - purely LaserScan-based
 
+### 7. Movement & Rotation Tracking
+- **Forward Movement Tracking**: 
+  - Measures distance traveled between stops using time × velocity
+  - Displays total distance moved since last obstacle encounter
+  - Shows elapsed time and average speed
+- **Rotation Tracking**:
+  - Calculates total rotation angle during turns (angular_velocity × time)
+  - Reports direction (LEFT/RIGHT) and degrees rotated
+  - Shows turn duration to reach clear path
+- **Purpose**: Provides complete text-based spatial history for area mapping
+
 ## Spatial Description Format
 
 When an obstacle is detected, the system generates a text description based on laser scan analysis:
@@ -87,6 +98,12 @@ When an obstacle is detected, the system generates a text description based on l
 ═══════════════════════════════════════════════════════════════
 🤖 B4M SPATIAL INTERPRETER - OBSTACLE DETECTED
 ═══════════════════════════════════════════════════════════════
+
+📏 Movement Since Last Stop:
+───────────────────────────────────────────────────────────────
+• Distance traveled: 2.45m forward
+• Time elapsed: 30.6 seconds
+• Average speed: 0.08 m/s
 
 📍 Current Situation:
 ───────────────────────────────────────────────────────────────
@@ -346,7 +363,11 @@ Please select action (1-3): 2
    Continuing turn... front still blocked at 0.35m
    Continuing turn... front still blocked at 0.42m
    
-✅ Clear path detected ahead (0.85m)
+📐 Turn Complete:
+───────────────────────────────────────────────────────────────
+• Total rotation: 135° RIGHT
+• Turn duration: 2.7 seconds
+• Clear path detected ahead: 0.85m
 
 [Console returns to quiet mode - no output during forward movement]
 [No "Resuming forward movement" message - just continues silently]
