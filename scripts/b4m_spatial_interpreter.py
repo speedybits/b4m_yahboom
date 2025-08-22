@@ -54,7 +54,7 @@ class B4MSpatialInterpreter(Node):
         self.safe_distance = 0.40  # Resume when clear at 40cm
         
         # State management
-        self.state = "moving_forward"  # States: moving_forward, stopped_waiting, turning
+        self.state = "moving_forward"  # States: moving_forward, stopped_waiting, turning, moving_forward_manual
         self.turn_direction = 0  # 1 for left, -1 for right
         self.laser_data = None
         self.obstacle_detected = False
@@ -75,6 +75,13 @@ class B4MSpatialInterpreter(Node):
         self.required_clear_readings = 3  # Need 3 consecutive clear readings
         self.total_rotation = 0.0  # Total radians rotated during turn
         self.turn_direction_text = ""  # LEFT, RIGHT, or AROUND
+        
+        # Manual forward movement tracking
+        self.manual_forward_distance = 1.52  # 5 feet in meters
+        self.emergency_stop_distance = 0.10  # 10cm emergency detection
+        self.forward_target_distance = 0.0
+        self.forward_start_distance = 0.0
+        self.manual_forward_start_time = 0.0
         
         # Control timer - runs at 10Hz for smooth control
         self.control_timer = self.create_timer(0.1, self.control_loop)
@@ -298,8 +305,8 @@ class B4MSpatialInterpreter(Node):
         print("\n📊 Detailed Scan Analysis:")
         print("-" * 63)
         print(f"• Front sector (±15°):  Min: {spatial_context['front']['min']:.2f}m, Avg: {spatial_context['front']['avg']:.2f}m")
-        print(f"• Left sector (±45°):   Min: {spatial_context['left']['min']:.2f}m, Avg: {spatial_context['left']['avg']:.2f}m")
-        print(f"• Right sector (±45°):  Min: {spatial_context['right']['min']:.2f}m, Avg: {spatial_context['right']['avg']:.2f}m")
+        print(f"• Left sector (67.5°-112.5°):   Min: {spatial_context['left']['min']:.2f}m, Avg: {spatial_context['left']['avg']:.2f}m")
+        print(f"• Right sector (-112.5°--67.5°):  Min: {spatial_context['right']['min']:.2f}m, Avg: {spatial_context['right']['avg']:.2f}m")
         print(f"• Laser points: {len(self.laser_data.ranges)} readings covering 360°")
         
         print("\n🎯 Navigation Options:")
@@ -307,16 +314,17 @@ class B4MSpatialInterpreter(Node):
         print("1) Turn LEFT 90°")
         print("2) Turn RIGHT 90°")
         print("3) Turn AROUND 180°")
+        print("4) Move FORWARD - Continue straight for 5 feet or until obstacle")
         print()
         
     def get_user_decision(self):
         """Get navigation decision from user via blocking console input"""
         while True:
             try:
-                choice = input("Please select action (1-3): ")
-                if choice in ['1', '2', '3']:
+                choice = input("Please select action (1-4): ")
+                if choice in ['1', '2', '3', '4']:
                     return int(choice)
-                print("Invalid input. Please enter 1, 2, or 3.")
+                print("Invalid input. Please enter 1, 2, 3, or 4.")
             except KeyboardInterrupt:
                 print("\n\n🛑 User requested stop - shutting down...")
                 return None
@@ -326,30 +334,117 @@ class B4MSpatialInterpreter(Node):
                 return None
     
     def execute_turn(self, turn_choice):
-        """Execute the selected turn maneuver"""
+        """Execute the selected turn maneuver or manual forward movement"""
         if turn_choice == 1:  # Left 90°
             self.turn_direction = 1
             self.turn_direction_text = "LEFT"
+            print(f"\n🔄 Executing turn {self.turn_direction_text}...")
+            print("   (Will continue turning until path ahead is clear)")
+            
+            # Reset tracking for new turn
+            self.state = "turning"
+            self.turn_start_time = time.time()
+            self.clear_readings_count = 0
+            self.total_rotation = 0.0
+            
         elif turn_choice == 2:  # Right 90°
             self.turn_direction = -1
             self.turn_direction_text = "RIGHT"
-        else:  # Turn around 180°
+            print(f"\n🔄 Executing turn {self.turn_direction_text}...")
+            print("   (Will continue turning until path ahead is clear)")
+            
+            # Reset tracking for new turn
+            self.state = "turning"
+            self.turn_start_time = time.time()
+            self.clear_readings_count = 0
+            self.total_rotation = 0.0
+            
+        elif turn_choice == 3:  # Turn around 180°
             self.turn_direction = 1  # Default to left for 180°
             self.turn_direction_text = "AROUND"
+            print(f"\n🔄 Executing turn {self.turn_direction_text}...")
+            print("   (Will continue turning until path ahead is clear)")
             
-        print(f"\n🔄 Executing turn {self.turn_direction_text}...")
-        print("   (Will continue turning until path ahead is clear)")
+            # Reset tracking for new turn
+            self.state = "turning"
+            self.turn_start_time = time.time()
+            self.clear_readings_count = 0
+            self.total_rotation = 0.0
+            
+        else:  # Move forward (choice 4)
+            self.execute_manual_forward()
+            return
         
-        # Reset tracking for new turn
-        self.state = "turning"
-        self.turn_start_time = time.time()
-        self.clear_readings_count = 0
-        self.total_rotation = 0.0
-        
-        # Reset distance tracking for next segment
+        # Reset distance tracking for next segment (for turns only)
         self.distance_traveled = 0.0
         self.movement_start_time = time.time()
         self.last_movement_time = time.time()
+        
+    def execute_manual_forward(self):
+        """Execute manual forward movement for 5 feet or until obstacle detected"""
+        print(f"\n➡️ Moving forward for 5 feet (1.52m) or until obstacle...")
+        self.state = "moving_forward_manual"
+        self.forward_target_distance = self.manual_forward_distance
+        self.forward_start_distance = self.distance_traveled
+        self.manual_forward_start_time = time.time()
+        
+        # Reset obstacle detection for manual movement
+        self.obstacle_detected = False
+        self.user_decision_pending = False
+        
+    def validate_manual_forward_completion(self):
+        """Check if manual forward movement should complete"""
+        if self.laser_data is None:
+            return False
+            
+        # Get front distance for emergency stop check
+        ranges = np.array(self.laser_data.ranges)
+        ranges[np.isinf(ranges)] = self.laser_data.range_max
+        ranges[np.isnan(ranges)] = self.laser_data.range_max
+        ranges[ranges == 0.0] = self.laser_data.range_max
+        
+        num_readings = len(ranges)
+        angle_range = self.laser_data.angle_max - self.laser_data.angle_min
+        angle_increment = angle_range / (num_readings - 1) if num_readings > 1 else self.laser_data.angle_increment
+        
+        # Front sector (±15 degrees) for emergency detection
+        front_angle_rad = math.radians(15)
+        front_center_idx = int((0.0 - self.laser_data.angle_min) / angle_increment)
+        front_half_width = int(front_angle_rad / angle_increment)
+        front_start = max(0, front_center_idx - front_half_width)
+        front_end = min(num_readings - 1, front_center_idx + front_half_width)
+        front_ranges = ranges[front_start:front_end + 1]
+        min_front_distance = np.min(front_ranges) if len(front_ranges) > 0 else self.laser_data.range_max
+        
+        # Check emergency obstacle detection (10cm)
+        if min_front_distance <= self.emergency_stop_distance:
+            elapsed_time = time.time() - self.manual_forward_start_time
+            distance_moved = self.distance_traveled - self.forward_start_distance
+            print(f"\n📐 Forward Movement Stopped:")
+            print("-" * 63)
+            print(f"• Emergency stop - Obstacle at {min_front_distance:.2f}m")
+            print(f"• Distance traveled: {distance_moved:.2f}m ({distance_moved*3.28:.1f} feet)")
+            print(f"• Movement duration: {elapsed_time:.1f} seconds")
+            print(f"• Stopped by: Front obstacle at {min_front_distance:.2f}m")
+            return True
+        
+        # Check if target distance reached
+        distance_moved = self.distance_traveled - self.forward_start_distance
+        if distance_moved >= self.forward_target_distance:
+            elapsed_time = time.time() - self.manual_forward_start_time
+            print(f"\n📐 Forward Movement Complete:")
+            print("-" * 63)
+            print(f"• Target distance reached: {self.forward_target_distance:.2f}m (5 feet)")
+            print(f"• Movement duration: {elapsed_time:.1f} seconds")
+            print(f"• Average speed: {self.forward_target_distance/elapsed_time:.3f} m/s")
+            return True
+        
+        # Show progress update every 0.5m
+        if int(distance_moved * 2) > int((distance_moved - 0.1) * 2):
+            remaining = self.forward_target_distance - distance_moved
+            print(f"📏 Progress: {distance_moved:.2f}m moved, {remaining:.2f}m remaining")
+        
+        return False
     
     def control_loop(self):
         """Main control loop for spatial interpreter"""
@@ -491,6 +586,26 @@ class B4MSpatialInterpreter(Node):
                         front_distance = np.min(front_ranges) if len(front_ranges) > 0 else 0
                         
                         print(f"   Continuing turn... front still blocked at {front_distance:.2f}m")
+        
+        elif self.state == "moving_forward_manual":
+            # Manual forward movement for 5 feet or until obstacle
+            if self.validate_manual_forward_completion():
+                # Movement completed - return to normal operation
+                self.state = "moving_forward"
+                self.obstacle_detected = False
+                self.user_decision_pending = False
+                cmd.linear.x = 0.0
+                cmd.angular.z = 0.0
+            else:
+                # Continue moving forward
+                cmd.linear.x = self.linear_speed
+                cmd.angular.z = 0.0
+                
+                # Track distance traveled
+                current_time = time.time()
+                time_delta = current_time - self.last_movement_time
+                self.distance_traveled += self.linear_speed * time_delta
+                self.last_movement_time = current_time
         
         # Publish velocity command
         self.cmd_pub.publish(cmd)

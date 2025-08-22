@@ -64,10 +64,11 @@ This document describes the implementation of a simplified `b4m_spatial_interpre
 - Works identically in simulation and real robot modes
 
 ### 5. User Choice Execution
-- Always executes the user's selected turn direction
+- Always executes the user's selected action (turn or forward movement)
 - Respects user decision even if that direction appears blocked
-- Uses LaserScan during turn to find clear path
-- May turn more than requested angle if needed for clear path
+- For turns: Uses LaserScan during turn to find clear path, may turn more than requested angle
+- For forward movement: Moves exactly 5 feet (1.52m) or stops when obstacle detected
+- Forward movement option bypasses normal obstacle detection for requested distance
 
 ### 6. LaserScan-Based Turn Completion
 - After starting turn in user-selected direction, monitors LaserScan
@@ -77,7 +78,18 @@ This document describes the implementation of a simplified `b4m_spatial_interpre
   - This ensures robot always resumes with clear path ahead
 - No odometry or IMU required - purely LaserScan-based
 
-### 7. Movement & Rotation Tracking
+### 7. Manual Forward Movement (Option 4)
+- **Target Distance**: Exactly 5 feet (1.52 meters) when selected
+- **Override Behavior**: Temporarily bypasses normal 30cm obstacle detection
+- **Stopping Conditions**: 
+  - Reaches full 5-foot target distance, OR
+  - Detects obstacle within 10cm (emergency stop distance)
+- **Progress Tracking**: Shows real-time distance progress during movement
+- **Completion Report**: Displays total distance moved and reason for stopping
+- **State Management**: Uses special `moving_forward_manual` state
+- **Safety**: Maintains emergency obstacle detection at very close range (10cm)
+
+### 8. Movement & Rotation Tracking
 - **Forward Movement Tracking**: 
   - Measures distance traveled between stops using time × velocity
   - Displays total distance moved since last obstacle encounter
@@ -124,8 +136,9 @@ BEHIND: ✅ CLEAR   - Open space for at least 2.0m
 1) Turn LEFT 90°  - Clear path detected
 2) Turn RIGHT 90° - Narrow but passable
 3) Turn AROUND 180° - Return the way you came
+4) Move FORWARD - Continue straight for 5 feet or until obstacle
 
-Please select action (1-3): _
+Please select action (1-4): _
 ```
 
 ## Implementation Details
@@ -144,7 +157,7 @@ class B4MSpatialInterpreter(Node):
         self.stop_distance = 0.3  # Stop at 30cm (1 foot)
         
         # State management
-        self.state = "moving_forward"  # States: moving_forward, stopped, turning
+        self.state = "moving_forward"  # States: moving_forward, stopped, turning, moving_forward_manual
         self.turn_target = 0  # Target angle for turning
         self.turn_start_yaw = 0  # Starting yaw when turn begins
         
@@ -178,14 +191,14 @@ class B4MSpatialInterpreter(Node):
     def get_user_decision(self):
         """
         Get navigation decision from user via console input
-        Returns: Selected action (1, 2, or 3)
+        Returns: Selected action (1, 2, 3, or 4)
         """
         while True:
             try:
-                choice = input("\nPlease select action (1-3): ")
-                if choice in ['1', '2', '3']:
+                choice = input("\nPlease select action (1-4): ")
+                if choice in ['1', '2', '3', '4']:
                     return int(choice)
-                print("Invalid input. Please enter 1, 2, or 3.")
+                print("Invalid input. Please enter 1, 2, 3, or 4.")
             except KeyboardInterrupt:
                 return None  # Allow graceful exit
 ```
@@ -248,7 +261,7 @@ def execute_turn(self, turn_choice):
     Turn continues until front path is clear, even if exceeding initial angle
     
     Args:
-        turn_choice: 1 (left 90°), 2 (right 90°), or 3 (180°)
+        turn_choice: 1 (left 90°), 2 (right 90°), 3 (180°), or 4 (move forward)
     """
     if turn_choice == 1:  # Left 90°
         self.turn_direction = 1  # Positive angular velocity
@@ -256,13 +269,17 @@ def execute_turn(self, turn_choice):
     elif turn_choice == 2:  # Right 90°
         self.turn_direction = -1  # Negative angular velocity
         turn_description = "RIGHT"
-    else:  # Turn around 180°
+    elif turn_choice == 3:  # Turn around 180°
         self.turn_direction = 1  # Default to left for 180°
         turn_description = "AROUND"
-    
-    print(f"\n🔄 Executing turn {turn_description}...")
-    print("   (Will continue turning until path ahead is clear)")
-    self.state = "turning"
+        print(f"\n🔄 Executing turn {turn_description}...")
+        print("   (Will continue turning until path ahead is clear)")
+        self.state = "turning"
+    else:  # Move forward (choice 4)
+        print(f"\n➡️ Moving forward for 5 feet (1.52m) or until obstacle...")
+        self.state = "moving_forward_manual"
+        self.forward_target_distance = 1.52  # 5 feet in meters
+        self.forward_start_distance = self.distance_traveled
     
 def validate_turn_completion(self, laser_data):
     """
@@ -280,6 +297,47 @@ def validate_turn_completion(self, laser_data):
     else:
         # Continue turning in same direction
         return False
+
+def execute_manual_forward(self):
+    """
+    Execute manual forward movement for 5 feet or until obstacle detected
+    Uses emergency obstacle detection (10cm) during movement
+    """
+    print(f"\n➡️ Moving forward for 5 feet (1.52m) or until obstacle...")
+    self.state = "moving_forward_manual"
+    self.forward_target_distance = 1.52  # 5 feet in meters
+    self.forward_start_distance = self.distance_traveled
+    self.manual_forward_start_time = time.time()
+    
+def validate_manual_forward_completion(self, laser_data):
+    """
+    Check if manual forward movement should complete
+    
+    Returns:
+        bool: True if movement should stop, False to continue
+    """
+    # Check emergency obstacle detection (10cm)
+    front_distance = self.get_front_distance(laser_data)
+    if front_distance <= 0.10:  # Emergency stop at 10cm
+        print(f"\n📐 Forward Movement Stopped:")
+        print(f"• Emergency stop - Obstacle at {front_distance:.2f}m")
+        return True
+    
+    # Check if target distance reached
+    distance_moved = self.distance_traveled - self.forward_start_distance
+    if distance_moved >= self.forward_target_distance:
+        elapsed_time = time.time() - self.manual_forward_start_time
+        print(f"\n📐 Forward Movement Complete:")
+        print(f"• Target distance reached: {self.forward_target_distance:.2f}m (5 feet)")
+        print(f"• Movement duration: {elapsed_time:.1f} seconds")
+        return True
+    
+    # Show progress update every 0.5m
+    if int(distance_moved * 2) > int((distance_moved - 0.1) * 2):
+        remaining = self.forward_target_distance - distance_moved
+        print(f"📏 Progress: {distance_moved:.2f}m moved, {remaining:.2f}m remaining")
+    
+    return False
 ```
 
 ## Integration with b4m_launch.sh
@@ -353,8 +411,34 @@ BEHIND: ✅ CLEAR   - Corridor extends at least 3.0m
 1) Turn LEFT 90°  
 2) Turn RIGHT 90° 
 3) Turn AROUND 180°
+4) Move FORWARD - Continue straight for 5 feet or until obstacle
 
-Please select action (1-3): 2
+Please select action (1-4): 4
+
+➡️ Moving forward for 5 feet (1.52m) or until obstacle...
+
+📏 Forward Movement Progress:
+───────────────────────────────────────────────────────────────
+• Target distance: 1.52m (5 feet)
+• Distance traveled: 0.85m
+• Remaining: 0.67m
+• Status: Continuing forward movement
+
+[After reaching 5 feet or detecting obstacle:]
+
+📐 Forward Movement Complete:
+───────────────────────────────────────────────────────────────
+• Total distance: 1.52m (5 feet) - Target reached
+• Movement duration: 19.0 seconds
+• Average speed: 0.08 m/s
+
+[Or if stopped by obstacle:]
+
+📐 Forward Movement Stopped:
+───────────────────────────────────────────────────────────────
+• Distance traveled: 0.95m (3.1 feet) - Obstacle detected
+• Movement duration: 11.9 seconds
+• Stopped by: Front obstacle at 0.28m
 
 🔄 Executing turn RIGHT...
    (Will continue turning until path ahead is clear)
@@ -405,6 +489,19 @@ Please select action (1-3): 2
        │                      │
        ▼ Turn complete        │
        └──────────────────────┘
+       │
+       ▼ User selects Option 4
+┌──────────────┐
+│   MANUAL     │
+│   FORWARD    │
+│  MOVEMENT    │
+└──────┬───────┘
+       │
+       ▼ 5 feet reached OR obstacle
+       └──────────────────────┐
+                             │
+                             ▼
+                      [Resume normal operation]
 ```
 
 ## Configuration Parameters
@@ -426,6 +523,10 @@ NARROW_THRESHOLD = 0.60  # meters - consider narrow
 # Turn parameters
 TURN_PRECISION = 0.05    # radians - turn completion tolerance
 MIN_TURN_TIME = 1.0      # seconds - minimum turn duration
+
+# Manual forward movement parameters
+MANUAL_FORWARD_DISTANCE = 1.52  # meters - 5 feet target distance
+EMERGENCY_STOP_DISTANCE = 0.10  # meters - emergency obstacle detection during manual forward
 ```
 
 ## Benefits of This Approach
