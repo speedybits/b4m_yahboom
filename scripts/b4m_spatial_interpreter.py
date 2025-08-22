@@ -117,17 +117,17 @@ class B4MSpatialInterpreter(Node):
         front_ranges = ranges[front_start:front_end + 1]
         min_front_distance = np.min(front_ranges) if len(front_ranges) > 0 else msg.range_max
         
-        # Left sector (45° to 90°)
-        left_angle_start = math.radians(45)
-        left_angle_end = math.radians(90)
+        # Left sector (67.5° to 112.5° - 45° arc centered at 90°)
+        left_angle_start = math.radians(67.5)
+        left_angle_end = math.radians(112.5)
         left_start_idx = max(0, int((left_angle_start - msg.angle_min) / angle_increment))
         left_end_idx = min(num_readings - 1, int((left_angle_end - msg.angle_min) / angle_increment))
         left_ranges = ranges[left_start_idx:left_end_idx + 1] if left_end_idx >= left_start_idx else []
         min_left_distance = np.min(left_ranges) if len(left_ranges) > 0 else msg.range_max
         
-        # Right sector (-90° to -45°)
-        right_angle_start = math.radians(-90)
-        right_angle_end = math.radians(-45)
+        # Right sector (-112.5° to -67.5° - 45° arc centered at -90°)
+        right_angle_start = math.radians(-112.5)
+        right_angle_end = math.radians(-67.5)
         right_start_idx = max(0, int((right_angle_start - msg.angle_min) / angle_increment))
         right_end_idx = min(num_readings - 1, int((right_angle_end - msg.angle_min) / angle_increment))
         right_ranges = ranges[right_start_idx:right_end_idx + 1] if right_end_idx >= right_start_idx else []
@@ -168,11 +168,11 @@ class B4MSpatialInterpreter(Node):
         # Front sector (±15°)
         sectors['front'] = self.analyze_sector(ranges, -15, 15, self.laser_data.angle_min, angle_increment)
         
-        # Left sector (45° to 135°)
-        sectors['left'] = self.analyze_sector(ranges, 45, 135, self.laser_data.angle_min, angle_increment)
+        # Left sector (67.5° to 112.5° - 45° arc centered at 90°)
+        sectors['left'] = self.analyze_sector(ranges, 67.5, 112.5, self.laser_data.angle_min, angle_increment)
         
-        # Right sector (-135° to -45°)
-        sectors['right'] = self.analyze_sector(ranges, -135, -45, self.laser_data.angle_min, angle_increment)
+        # Right sector (-112.5° to -67.5° - 45° arc centered at -90°)
+        sectors['right'] = self.analyze_sector(ranges, -112.5, -67.5, self.laser_data.angle_min, angle_increment)
         
         # Behind sector (150° to -150°)
         sectors['behind'] = self.analyze_sector_behind(ranges, self.laser_data.angle_min, angle_increment)

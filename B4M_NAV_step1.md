@@ -115,8 +115,8 @@ BEHIND: ✅ CLEAR   - Open space for at least 2.0m
 📊 Detailed Scan Analysis:
 ───────────────────────────────────────────────────────────────
 • Front sector (±15°):  Min: 0.25m, Avg: 0.28m
-• Left sector (±45°):   Min: 1.20m, Avg: 1.85m  
-• Right sector (±45°):  Min: 0.40m, Avg: 0.65m
+• Left sector (67.5°-112.5°):   Min: 1.20m, Avg: 1.85m  
+• Right sector (-112.5°--67.5°):  Min: 0.40m, Avg: 0.65m
 • Laser points: 360 readings covering 360°
 
 🎯 Navigation Options:
@@ -155,8 +155,8 @@ class B4MSpatialInterpreter(Node):
         """
         return {
             'front': self.analyze_sector(laser_data, -15, 15),
-            'left': self.analyze_sector(laser_data, 45, 135),
-            'right': self.analyze_sector(laser_data, -135, -45),
+            'left': self.analyze_sector(laser_data, 67.5, 112.5),
+            'right': self.analyze_sector(laser_data, -112.5, -67.5),
             'behind': self.analyze_sector(laser_data, 150, -150),
             'closest_obstacle': min_distance,
             'recommended_action': self.get_recommendation()
@@ -344,8 +344,8 @@ BEHIND: ✅ CLEAR   - Corridor extends at least 3.0m
 📊 Detailed Scan Analysis:
 ───────────────────────────────────────────────────────────────
 • Front sector (±15°):  Min: 0.28m, Avg: 0.31m
-• Left sector (±45°):   Min: 1.50m, Avg: 2.20m  
-• Right sector (±45°):  Min: 0.22m, Avg: 0.35m
+• Left sector (67.5°-112.5°):   Min: 1.50m, Avg: 2.20m  
+• Right sector (-112.5°--67.5°):  Min: 0.22m, Avg: 0.35m
 • Laser points: 360 readings covering 360°
 
 🎯 Navigation Options:
@@ -417,8 +417,9 @@ STOP_DISTANCE = 0.30     # meters - 1 foot safety margin
 SAFE_DISTANCE = 0.40     # meters - resume when clear
 
 # Sector analysis parameters  
-FRONT_SECTOR_ANGLE = 15  # degrees - narrow front view
-SIDE_SECTOR_ANGLE = 45   # degrees - wide side view
+FRONT_SECTOR_ANGLE = 15  # degrees - narrow front view (±15°)
+LEFT_SECTOR_RANGE = (67.5, 112.5)   # degrees - 45° arc centered at 90°
+RIGHT_SECTOR_RANGE = (-112.5, -67.5) # degrees - 45° arc centered at -90°
 BLOCKED_THRESHOLD = 0.30 # meters - consider blocked
 NARROW_THRESHOLD = 0.60  # meters - consider narrow
 
