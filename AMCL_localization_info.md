@@ -110,9 +110,7 @@ The system includes 5 different AMCL configurations for testing:
 ./b4m_HA_launch.sh --regression
 # Uses dwb_nav_params.yaml configuration
 
-# Test specific parameter set
-./b4m_HA_launch.sh --regression --parameter-set indoor_optimized
-# Loads localization_test_params/indoor_optimized_amcl_params.yaml
+# Note: Parameter set testing functionality has been removed
 ```
 
 ### AMCL Monitoring During Tests

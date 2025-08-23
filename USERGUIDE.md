@@ -62,10 +62,7 @@ Runs comprehensive regression test suite with automated validation.
 | `--b4m-api` | Enable B4M API mode (duplicate of --explore for API integration) |
 | `--b4m-HA` | Enable Home Assistant MQTT integration features |
 | `--b4m-ping` | Test bike4mind API with random obstacle detection messages |
-| `--localization-test` | (Experimental) Enable localization quality and navigation performance testing |
-| `--tune-params` | (Experimental) Enable parameter tuning iterations (requires --localization-test) |
 | `--navigation-performance-test` | (Experimental) Execute 1x1m square navigation circuit testing |
-| `--parameter-set <name>` | (Experimental) Specify parameter set to test (baseline, indoor_optimized, high_precision, balanced, fast_convergence) |
 | `-h, --help` | Show help information |
 
 ## Home Assistant Integration (--b4m-HA)
@@ -262,12 +259,6 @@ Standalone API testing tool that:
 - Validates API response handling
 - Incompatible with other modes
 
-#### Localization Test Mode (--localization-test) [Experimental]
-Advanced testing for localization quality:
-- Measures AMCL performance metrics
-- Tests navigation accuracy
-- Can be combined with --tune-params for parameter optimization
-- Can use --parameter-set to test specific AMCL configurations
 
 #### Navigation Performance Test (--navigation-performance-test) [Experimental]
 Executes comprehensive 1x1m square navigation testing:
