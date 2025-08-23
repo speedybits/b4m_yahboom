@@ -59,7 +59,7 @@ Runs comprehensive regression test suite with automated validation.
 | `--simulation` | Launch in Gazebo Classic simulation mode |
 | `--regression` | Run comprehensive regression test suite (navigation + laser stability) |
 | `--explore` | Enable autonomous exploration mode with obstacle avoidance |
-| `--b4m-lidar` | Enable B4M LiDAR-based intelligent navigation with API |
+| `--b4m-api` | Enable B4M API mode (duplicate of --explore for API integration) |
 | `--b4m-HA` | Enable Home Assistant MQTT integration features |
 | `--b4m-ping` | Test bike4mind API with random obstacle detection messages |
 | `--localization-test` | (Experimental) Enable localization quality and navigation performance testing |
@@ -158,42 +158,26 @@ Runs regression tests with physical robot (requires robot to be powered on).
 ```
 Interactive mode with verbose logging for development work.
 
-### 6. B4M LiDAR Navigation Mode
+### 6. B4M API Mode
 
-#### Real Robot with AI Navigation
+#### Real Robot with B4M API
 ```bash
-./b4m_launch.sh --b4m-lidar
+./b4m_launch.sh --b4m-api
 ```
-Physical robot uses bike4mind API for intelligent obstacle navigation.
+Physical robot runs B4M Spatial Interpreter for manual navigation decisions.
 
-#### Simulation with AI Navigation
+#### Simulation with B4M API
 ```bash
-./b4m_launch.sh --simulation --b4m-lidar
+./b4m_launch.sh --simulation --b4m-api
 ```
-Simulated robot demonstrates API-based navigation in Gazebo.
+Simulated robot demonstrates spatial interpretation in Gazebo.
 
-**B4M LiDAR Features:**
-- **API Integration**: Connects to bike4mind API for obstacle analysis
-- **Natural Language**: Receives navigation suggestions in plain English
-- **Smart Cooldown**: 20-second API rate limiting
-- **Safe Distance**: Maintains 1-foot (30.48cm) minimum distance
-- **Real-time Topics**:
-  - `/b4m_lidar/status` - Current navigation state
-  - `/b4m_lidar/obstacle_info` - Detected obstacles
-  - `/b4m_lidar/api_cooldown` - API availability
-  - `/b4m_lidar/command` - Control interface
-
-**Control Commands:**
-```bash
-# Stop navigation
-ros2 topic pub -1 /b4m_lidar/command std_msgs/String '{data: stop}'
-
-# Resume navigation
-ros2 topic pub -1 /b4m_lidar/command std_msgs/String '{data: start}'
-
-# Reset system
-ros2 topic pub -1 /b4m_lidar/command std_msgs/String '{data: reset}'
-```
+**B4M API Features:**
+- **Spatial Interpretation**: Generates natural language descriptions of environment
+- **Manual Decision Mode**: User provides navigation decisions via console
+- **SLAM Integration**: Real-time mapping with Cartographer
+- **Obstacle Detection**: Uses laser scanner data for spatial awareness
+- **Interactive Console**: Displays spatial descriptions and waits for user input
 
 ### 7. Autonomous Exploration Mode
 
@@ -262,15 +246,13 @@ Available in both simulation and real robot modes:
 
 ### Special Testing Modes
 
-#### B4M LiDAR Mode (--b4m-lidar)
-Enables intelligent LiDAR-based navigation with bike4mind API integration:
-- Real-time obstacle detection and classification via API
-- Natural language navigation suggestions
-- API cooldown management (20 seconds between calls)
-- Stop distance: 30.48cm (1 foot) from obstacles
-- Publishes status on `/b4m_lidar/status` and `/b4m_lidar/obstacle_info`
-- Control via `/b4m_lidar/command` topic (stop/start/reset)
-- Works in both simulation and real robot modes
+#### B4M API Mode (--b4m-api)
+Enables B4M Spatial Interpreter for manual navigation decisions:
+- Generates natural language spatial descriptions
+- Interactive console for user navigation input
+- Integrates with Cartographer SLAM for mapping
+- Processes laser scanner data for obstacle detection
+- Functionally identical to --explore but with manual control
 - Incompatible with other navigation modes
 
 #### B4M Ping Mode (--b4m-ping)

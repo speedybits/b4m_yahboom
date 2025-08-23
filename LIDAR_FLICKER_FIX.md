@@ -2,7 +2,7 @@
 
 ## Problem Description
 
-When running the B4M system with `--simulation --simulated-b4m --b4m-nav` flags, the laser scan visualization in RViz would flicker between two states:
+When running the B4M system with `--simulation` flag, the laser scan visualization in RViz would flicker between two states:
 
 1. **State 1**: All robot links showing "Transform OK" 
 2. **State 2**: Robot links showing "No transform from [link_name] to..."
@@ -99,7 +99,7 @@ ros2 run tf2_tools view_frames
 ## Technical Details
 
 ### Why `--explore --simulation` Worked
-The `--explore` mode doesn't include the `--b4m-nav` flag, so it never launched the conflicting `yahboomcar_bringup_launch.py` that contained the duplicate robot description and EKF filter.
+The `--explore` mode doesn't launch the conflicting `yahboomcar_bringup_launch.py` that contained the duplicate robot description and EKF filter.
 
 ### Key Configuration Files Modified
 - `/home/mike/projects/b4m_yahboom/yahboomcar_bringup/launch/yahboomcar_bringup_launch.py`
@@ -121,7 +121,7 @@ This fix ensures that:
 
 ```bash
 # Test the fix
-./b4m_launch.sh --simulation --simulated-b4m --b4m-nav
+./b4m_launch.sh --simulation
 
 # Verify TF publishers
 ros2 topic info /tf
