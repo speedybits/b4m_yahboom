@@ -41,15 +41,15 @@ amcl:
 
 ## Parameter Set Comparison
 
-The system includes 5 different AMCL configurations for testing:
+**Note: Parameter set testing functionality has been removed as of the latest cleanup.** The system now uses a single, optimized AMCL configuration.
+
+The current system uses the following optimized AMCL configuration:
 
 | Parameter Set | max_particles | min_particles | update_min_a | update_min_d | Use Case |
 |---------------|---------------|---------------|--------------|--------------|----------|
 | **Current (dwb_nav_params)** | 3000 | 800 | 0.05 | 0.05 | Production regression testing |
-| **Baseline** | 2000 | 500 | 0.2 | 0.25 | Reference configuration |
-| **Indoor Optimized** | 1500 | 300 | 0.15 | 0.2 | Clean indoor environments |
-| **Fast Convergence** | 1200 | 200 | 0.1 | 0.15 | Rapid recovery scenarios |
-| **High Precision** | 2500 | 600 | 0.08 | 0.1 | Accuracy-critical applications |
+
+*Previous parameter sets (Baseline, Indoor Optimized, Fast Convergence, High Precision) have been removed to simplify the system.*
 
 ## Rotation Lock-On Mechanism Analysis
 
@@ -107,13 +107,11 @@ The system includes 5 different AMCL configurations for testing:
 
 ```bash
 # Default regression test
-./b4m_HA_launch.sh --regression
+./b4m_launch.sh --regression --simulation
 # Uses dwb_nav_params.yaml configuration
-
-# Test specific parameter set
-./b4m_HA_launch.sh --regression --parameter-set indoor_optimized
-# Loads localization_test_params/indoor_optimized_amcl_params.yaml
 ```
+
+*Note: Parameter set testing options have been removed to simplify the system.*
 
 ### AMCL Monitoring During Tests
 
@@ -191,15 +189,13 @@ max_particles: 5000     # More diversity (from 3000)
 pf_err: 0.02           # Stricter convergence (from 0.01)
 ```
 
-### Parameter Set Recommendations
+### Parameter Recommendations
 
-| Scenario | Recommended Set | Reasoning |
+| Scenario | Configuration | Reasoning |
 |----------|----------------|-----------|
-| **Production Deployment** | Current (dwb_nav_params) | Proven reliability in regression tests |
-| **Development/Testing** | Fast Convergence | Quicker iteration cycles |
-| **Precision Applications** | High Precision | Maximum accuracy requirements |
-| **Resource-Constrained** | Indoor Optimized | Lower computational requirements |
-| **Troubleshooting** | Baseline | Simple reference configuration |
+| **All Use Cases** | Current (dwb_nav_params) | Proven reliability and optimized for various scenarios |
+
+*Note: The system now uses a single, well-tuned parameter set that balances performance, accuracy, and computational efficiency for all use cases.*
 
 ## Integration with B4M System
 
@@ -208,7 +204,7 @@ pf_err: 0.02           # Stricter convergence (from 0.01)
 The AMCL parameters are loaded through the navigation launch sequence:
 
 ```bash
-# Step 5 in b4m_HA_launch.sh
+# Step 5 in b4m_launch.sh
 ros2 launch yahboomcar_nav navigation_dwb_launch.py \
     use_sim_time:=false \
     params_file:=/path/to/dwb_nav_params.yaml
@@ -221,8 +217,8 @@ ros2 launch yahboomcar_nav navigation_dwb_launch.py \
 ros2 param set /amcl max_particles 2000
 
 # Configuration file replacement (requires restart)
-cp localization_test_params/fast_convergence_amcl_params.yaml \
-   yahboomcar_nav/params/dwb_nav_params.yaml
+# Note: Alternative parameter files have been removed
+# Only dwb_nav_params.yaml is available
 ```
 
 ### Monitoring Commands
