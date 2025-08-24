@@ -255,6 +255,27 @@ Available in both simulation and real robot modes:
    - Integrates with SLAM for real-time mapping
    - Runs continuously until Ctrl+C
 
+### Navigation 2 Mode (`--nav`)
+
+Launch Navigation 2 with Cartographer SLAM for interactive goal-based navigation:
+
+1. **System Launch**: Initializes robot, sensors, and RViz
+2. **Cartographer SLAM**: Real-time mapping and localization  
+3. **Nav2 Stack**: Full navigation 2 system with path planning
+4. **Interactive Control**: Use RViz '2D Nav Goal' tool to set destinations
+   - Click '2D Nav Goal' button in RViz toolbar
+   - Click and drag on map to set goal position and orientation
+   - Robot plans optimal path avoiding obstacles
+   - Dynamically re-plans if path becomes blocked
+5. **Simultaneous SLAM**: Map builds while navigating to goals
+
+**Key features:**
+- **Goal-based navigation**: Set destinations through RViz interface
+- **Obstacle avoidance**: Dynamic path planning around obstacles
+- **Real-time mapping**: Cartographer builds map during navigation
+- **Path visualization**: See planned routes in RViz
+- **Compatible with simulation and real robot**
+
 ### Special Testing Modes
 
 #### B4M LiDAR Mode (--b4m-lidar)
