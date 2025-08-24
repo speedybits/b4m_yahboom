@@ -59,13 +59,8 @@ Runs comprehensive regression test suite with automated validation.
 | `--simulation` | Launch in Gazebo Classic simulation mode |
 | `--regression` | Run comprehensive regression test suite (navigation + laser stability) |
 | `--explore` | Enable autonomous exploration mode with obstacle avoidance |
-| `--b4m-lidar` | Enable B4M LiDAR-based intelligent navigation with API |
 | `--b4m-HA` | Enable Home Assistant MQTT integration features |
 | `--b4m-ping` | Test bike4mind API with random obstacle detection messages |
-| `--localization-test` | (Experimental) Enable localization quality and navigation performance testing |
-| `--tune-params` | (Experimental) Enable parameter tuning iterations (requires --localization-test) |
-| `--navigation-performance-test` | (Experimental) Execute 1x1m square navigation circuit testing |
-| `--parameter-set <name>` | (Experimental) Specify parameter set to test (baseline, indoor_optimized, high_precision, balanced, fast_convergence) |
 | `-h, --help` | Show help information |
 
 ## Home Assistant Integration (--b4m-HA)
