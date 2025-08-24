@@ -115,8 +115,8 @@ class B4MSpatialInterpreter(Node):
         # Check for obstacles in ANY direction (front, left, right)
         # This implements "stop at EVERY obstacle" behavior
         
-        # Front sector (±15 degrees)
-        front_angle_rad = math.radians(15)
+        # Front sector (±8 degrees) - narrower for more precise front detection
+        front_angle_rad = math.radians(8)
         front_center_idx = int((0.0 - msg.angle_min) / angle_increment)
         front_half_width = int(front_angle_rad / angle_increment)
         front_start = max(0, front_center_idx - front_half_width)
@@ -140,17 +140,9 @@ class B4MSpatialInterpreter(Node):
         right_ranges = ranges[right_start_idx:right_end_idx + 1] if right_end_idx >= right_start_idx else []
         min_right_distance = np.min(right_ranges) if len(right_ranges) > 0 else msg.range_max
         
-        # Stop at obstacles, but be smart about it after turning
-        if self.just_turned:
-            # After turning, only care about front obstacles to allow forward movement
-            self.obstacle_detected = min_front_distance <= self.stop_distance
-        else:
-            # Normal operation: stop at ANY obstacle within stop distance (30cm)
-            self.obstacle_detected = (
-                min_front_distance <= self.stop_distance or
-                min_left_distance <= self.stop_distance or
-                min_right_distance <= self.stop_distance
-            )
+        # Only stop for FRONT obstacles during forward movement
+        # Side obstacles are detected and reported but don't stop forward motion
+        self.obstacle_detected = min_front_distance <= self.stop_distance
         
         # Path is clear only when front has enough clearance
         self.path_clear = min_front_distance > self.safe_distance
@@ -172,8 +164,8 @@ class B4MSpatialInterpreter(Node):
         # Analyze each sector
         sectors = {}
         
-        # Front sector (±15°)
-        sectors['front'] = self.analyze_sector(ranges, -15, 15, self.laser_data.angle_min, angle_increment)
+        # Front sector (±8°) - narrower for more precise front detection
+        sectors['front'] = self.analyze_sector(ranges, -8, 8, self.laser_data.angle_min, angle_increment)
         
         # Left sector (67.5° to 112.5° - 45° arc centered at 90°)
         sectors['left'] = self.analyze_sector(ranges, 67.5, 112.5, self.laser_data.angle_min, angle_increment)

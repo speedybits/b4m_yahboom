@@ -59,6 +59,7 @@ Runs comprehensive regression test suite with automated validation.
 | `--simulation` | Launch in Gazebo Classic simulation mode |
 | `--regression` | Run comprehensive regression test suite (navigation + laser stability) |
 | `--explore` | Enable autonomous exploration mode with obstacle avoidance |
+| `--b4m-api` | Enable B4M API mode with interactive spatial interpreter |
 | `--b4m-HA` | Enable Home Assistant MQTT integration features |
 | `--b4m-ping` | Test bike4mind API with random obstacle detection messages |
 | `-h, --help` | Show help information |
@@ -288,6 +289,26 @@ Enables intelligent LiDAR-based navigation with bike4mind API integration:
 - Control via `/b4m_lidar/command` topic (stop/start/reset)
 - Works in both simulation and real robot modes
 - Incompatible with other navigation modes
+
+#### B4M API Mode (--b4m-api)
+Interactive spatial interpretation with obstacle analysis:
+- Launches Cartographer SLAM for real-time mapping
+- Runs B4M Spatial Interpreter in the same terminal (foreground)
+- Robot moves forward until obstacle detected
+- Provides detailed spatial descriptions (front/left/right/behind)
+- Interactive navigation choices (1-4 options) in same terminal
+- User selects action and robot continues
+- Logs spatial analysis to file for debugging
+- Works in both simulation and real robot modes
+- Incompatible with other navigation modes
+
+**How it works:**
+- Robot starts moving forward automatically
+- When obstacle detected, shows spatial analysis
+- Prompts for navigation choice: 1) Turn LEFT 90°, 2) Turn RIGHT 90°, 3) Turn AROUND 180°, 4) Move FORWARD
+- User selects option in same terminal where b4m_launch.sh was run
+- Robot executes choice and continues until next obstacle
+- Press Ctrl+C to stop and clean up
 
 #### B4M Ping Mode (--b4m-ping)
 Standalone API testing tool that:
