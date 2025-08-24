@@ -1042,36 +1042,40 @@ if [ "$B4M_API" = true ]; then
         fi
     fi
     
-    # Step 6: Start B4M Spatial Interpreter (instead of autonomous exploration)
-    echo "🧠 Step 6: Starting B4M Spatial Interpreter for API control"
-    cd "$WORKSPACE_ROOT" && . install/setup.bash && python3 "$WORKSPACE_ROOT/scripts/b4m_spatial_interpreter.py" > "$LOGS_DIR/b4m_api_spatial_$TIMESTAMP.log" 2>&1 &
-    B4M_API_PID=$!
-    
+    # Step 6: Start B4M Spatial Interpreter in foreground
+    echo "🧠 Step 6: Starting B4M Spatial Interpreter"
+    echo "   All output and interaction will happen in this terminal"
     echo ""
-    echo "✅ B4M API MODE ACTIVE"
-    echo "======================================"
-    echo "🧠 B4M Spatial Interpreter is now running for API control"
-    echo "📊 Monitor progress in RViz:"
-    echo "   - Map topic: /map (shows real-time SLAM mapping)"
-    echo "   - Robot position: /tf (robot location on map)"
-    echo "   - Laser scans: /scan (sensor readings)"
+    echo "======================================================="
+    echo "🧠 B4M Spatial Interpreter - Interactive Console" 
+    echo "======================================================="
+    echo "This console provides spatial descriptions and navigation control"
+    echo "when the robot encounters obstacles."
     echo ""
-    echo "🛑 To stop B4M API mode:"
-    echo "   - Press Ctrl+C in this terminal, OR"
-    echo "   - Run: ./b4m_shutdown.sh --keep-agent"
+    echo "🚀 Starting B4M Spatial Interpreter..."
+    echo "======================================================="
+    
+    # Run the spatial interpreter in foreground with logging
+    python3 "$WORKSPACE_ROOT/scripts/b4m_spatial_interpreter.py" 2>&1 | tee "$LOGS_DIR/b4m_api_spatial_$TIMESTAMP.log"
+    
+    # The spatial interpreter will run here in foreground
+    # When it exits (Ctrl+C or completion), we'll clean up
     echo ""
-    echo "🚀 B4M Spatial Interpreter provides API endpoints for external integration"
-    echo "   The robot can be controlled via API calls while building a map"
+    echo "✅ B4M API mode finished"
+    echo "🧹 Cleaning up..."
     
-    # Wait for user to stop or monitor the B4M API
-    trap 'echo "🛑 Stopping B4M API mode..."; [ ! -z "$B4M_API_PID" ] && kill $B4M_API_PID 2>/dev/null; [ ! -z "$CARTOGRAPHER_PID" ] && kill $CARTOGRAPHER_PID 2>/dev/null; [ ! -z "$TF_BRIDGE_PID" ] && kill $TF_BRIDGE_PID 2>/dev/null; [ ! -z "$RVIZ_PID" ] && kill $RVIZ_PID 2>/dev/null; [ ! -z "$BRINGUP_PID" ] && kill $BRINGUP_PID 2>/dev/null; if [ "$SIMULATION_MODE" = true ]; then [ ! -z "$GAZEBO_PID" ] && kill $GAZEBO_PID 2>/dev/null; fi; ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1; echo "✅ B4M API mode stopped"; exit 0' INT
+    # Clean up background processes
+    [ ! -z "$CARTOGRAPHER_PID" ] && kill $CARTOGRAPHER_PID 2>/dev/null
+    [ ! -z "$TF_BRIDGE_PID" ] && kill $TF_BRIDGE_PID 2>/dev/null  
+    [ ! -z "$RVIZ_PID" ] && kill $RVIZ_PID 2>/dev/null
+    [ ! -z "$BRINGUP_PID" ] && kill $BRINGUP_PID 2>/dev/null
+    if [ "$SIMULATION_MODE" = true ]; then
+        [ ! -z "$GAZEBO_PID" ] && kill $GAZEBO_PID 2>/dev/null
+    fi
     
-    # Keep the script running and show periodic status
-    while true; do
-        sleep 30
-        echo "🧠 B4M API mode active... (Ctrl+C to stop)"
-        echo "   Spatial interpreter running for API integration"
-    done
+    ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1
+    echo "✅ B4M API mode cleanup completed"
+    exit 0
 fi
 
 # Handle B4M Ping test mode
