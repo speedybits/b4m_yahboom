@@ -1265,8 +1265,8 @@ if [ "$OLLAMA_MODE" = true ]; then
     echo "🚀 Starting Ollama Spatial Interpreter..."
     echo "======================================================="
     
-    # Run the spatial interpreter in foreground with logging
-    python3 "$WORKSPACE_ROOT/scripts/b4m_spatial_interpreter.py" 2>&1 | tee "$LOGS_DIR/ollama_spatial_$TIMESTAMP.log"
+    # Run the spatial interpreter in foreground with logging, passing --ollama-mode flag
+    python3 "$WORKSPACE_ROOT/scripts/b4m_spatial_interpreter.py" --ollama-mode 2>&1 | tee "$LOGS_DIR/ollama_spatial_$TIMESTAMP.log"
     
     # The spatial interpreter will run here in foreground
     # When it exits (Ctrl+C or completion), we'll clean up

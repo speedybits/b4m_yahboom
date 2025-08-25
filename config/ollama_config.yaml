@@ -1,0 +1,33 @@
+# Ollama Configuration for B4M Robot Navigation
+# This file configures the Ollama LLM integration for autonomous navigation
+
+ollama:
+  host: localhost
+  port: 11434
+  model: llama3.2  # Can be changed to mistral, phi3, etc.
+  timeout: 5.0  # Maximum seconds to wait for response
+  
+generation:
+  temperature: 0.3  # Lower = more consistent decisions
+  top_p: 0.9
+  max_tokens: 100
+  format: json
+  stream: false
+  
+navigation:
+  confidence_threshold: 0.7  # Minimum confidence to execute action
+  fallback_mode: stop  # What to do on failure: stop, manual, or random
+  retry_attempts: 0  # No retries - stop immediately on failure
+  
+safety:
+  max_response_time: 5.0  # Maximum time to wait for Ollama
+  emergency_stop_distance: 0.10  # Emergency stop if obstacle within 10cm
+  enable_manual_override: true  # Allow Ctrl+C to stop
+  stop_while_thinking: true  # Robot stops while waiting for Ollama response
+
+# Prompt configuration
+prompt:
+  system_role: "You are a navigation AI for a robot. Make safe, logical navigation decisions based on spatial sensor data."
+  include_distance_traveled: true
+  include_behind_sensor: true  # Include rear sensor data for context
+  units: "metric"  # metric or imperial for distance display

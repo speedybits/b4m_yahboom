@@ -17,6 +17,122 @@ Features:
 Author: B4M Robot System
 """
 
+class OllamaNavigator:
+    """Handles Ollama API communication for navigation decisions"""
+    
+    def __init__(self, config):
+        self.config = config
+        self.api_url = f"http://{config['ollama']['host']}:{config['ollama']['port']}/api/generate"
+        self.model = config['ollama']['model']
+        self.timeout = config['ollama']['timeout']
+        
+    def generate_prompt(self, spatial_context):
+        """Generate navigation prompt from spatial context"""
+        # Format spatial description
+        description = []
+        description.append(f"FRONT: {spatial_context['front']['description']}")
+        description.append(f"LEFT: {spatial_context['left']['description']}")
+        description.append(f"RIGHT: {spatial_context['right']['description']}")
+        description.append(f"BEHIND: {spatial_context['behind']['description']}")
+        
+        if spatial_context.get('distance_traveled', 0) > 0.01:
+            description.append(f"\nDISTANCE TRAVELED: {spatial_context['distance_traveled']:.2f}m since last stop")
+        
+        spatial_desc = "\n".join(description)
+        
+        prompt = f"""You are a navigation AI for a robot. Based on the following spatial description, 
+decide the best action for the robot to take.
+
+CURRENT SITUATION:
+{spatial_desc}
+
+AVAILABLE ACTIONS:
+- "turn_left": Rotate 90 degrees to the left
+- "turn_right": Rotate 90 degrees to the right
+- "go_straight": Continue moving forward
+- "turn_around": Rotate 180 degrees
+
+SAFETY RULES:
+1. Never move forward if FRONT is BLOCKED (obstacle < 30cm)
+2. Prefer turning toward the direction with more open space
+3. Turn around only if all other directions are blocked
+4. When path is clear, prefer going straight
+
+Respond with a JSON object containing:
+- "action": one of the available actions
+- "reason": brief explanation for the decision
+- "confidence": confidence level (0.0 to 1.0)
+
+Example response:
+{{"action": "turn_left", "reason": "Front blocked, left side clear", "confidence": 0.95}}"""
+        
+        return prompt
+    
+    def get_navigation_decision(self, spatial_context):
+        """Get navigation decision from Ollama"""
+        try:
+            prompt = self.generate_prompt(spatial_context)
+            
+            payload = {
+                "model": self.model,
+                "prompt": prompt,
+                "format": "json",
+                "stream": False,
+                "options": {
+                    "temperature": self.config['generation']['temperature'],
+                    "top_p": self.config['generation']['top_p'],
+                    "num_predict": self.config['generation']['max_tokens']
+                }
+            }
+            
+            response = requests.post(
+                self.api_url,
+                json=payload,
+                timeout=self.timeout
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                decision = json.loads(result['response'])
+                
+                # Validate response
+                if self.validate_response(decision):
+                    return decision, prompt
+                else:
+                    return None, prompt
+            else:
+                return None, prompt
+                
+        except (requests.Timeout, requests.RequestException, json.JSONDecodeError) as e:
+            print(f"\n⚠️ Ollama error: {str(e)}")
+            return None, None
+    
+    def validate_response(self, response):
+        """Validate Ollama response format"""
+        valid_actions = ["turn_left", "turn_right", "go_straight", "turn_around"]
+        
+        if not isinstance(response, dict):
+            return False
+            
+        if "action" not in response:
+            return False
+            
+        if response["action"] not in valid_actions:
+            return False
+            
+        # Validate confidence if present
+        if "confidence" in response:
+            try:
+                confidence = float(response["confidence"])
+                if not 0.0 <= confidence <= 1.0:
+                    response["confidence"] = 0.5
+            except (ValueError, TypeError):
+                response["confidence"] = 0.5
+        else:
+            response["confidence"] = 0.5
+            
+        return True
+
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
@@ -29,10 +145,35 @@ import sys
 import select
 import termios
 import tty
+import argparse
+import os
+import yaml
+import requests
+import json
 
 class B4MSpatialInterpreter(Node):
-    def __init__(self):
+    def __init__(self, ollama_mode=False):
         super().__init__('b4m_spatial_interpreter')
+        
+        # Check if running in Ollama mode
+        self.ollama_mode = ollama_mode
+        self.ollama_navigator = None
+        
+        if self.ollama_mode:
+            # Load Ollama configuration
+            self.config = self.load_ollama_config()
+            if self.config:
+                self.ollama_navigator = OllamaNavigator(self.config)
+                self.get_logger().info("🦙 Ollama mode activated")
+                print("\n🦙 OLLAMA MODE ACTIVATED")
+                print("=" * 63)
+                print("Robot will use Ollama LLM for navigation decisions")
+                print(f"Model: {self.config['ollama']['model']}")
+                print(f"API: {self.config['ollama']['host']}:{self.config['ollama']['port']}")
+                print("=" * 63)
+            else:
+                self.get_logger().error("Failed to load Ollama configuration")
+                self.ollama_mode = False
         
         # Create QoS profile for reliable communication
         qos_profile = QoSProfile(depth=10)
@@ -87,13 +228,29 @@ class B4MSpatialInterpreter(Node):
         self.control_timer = self.create_timer(0.1, self.control_loop)
         
         # Initial startup message (only output during startup)
-        self.get_logger().info("🔌 B4M Spatial Interpreter initialized")
-        self.get_logger().info("   Robot will move forward until obstacle detected")
-        self.get_logger().info("   Console will stay quiet during normal operation")
-        print("\n✅ B4M SPATIAL INTERPRETER ACTIVE")
-        print("=" * 63)
-        print("🔌 Robot starting with B4M Spatial Interpreter\n")
+        if not self.ollama_mode:
+            self.get_logger().info("🔌 B4M Spatial Interpreter initialized")
+            self.get_logger().info("   Robot will move forward until obstacle detected")
+            self.get_logger().info("   Console will stay quiet during normal operation")
+            print("\n✅ B4M SPATIAL INTERPRETER ACTIVE")
+            print("=" * 63)
+            print("🔌 Robot starting with B4M Spatial Interpreter\n")
         # After this, stay quiet until obstacle detected
+    
+    def load_ollama_config(self):
+        """Load Ollama configuration from YAML file"""
+        config_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'config', 'ollama_config.yaml'
+        )
+        
+        try:
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f)
+                return config
+        except Exception as e:
+            print(f"⚠️ Error loading Ollama config: {e}")
+            return None
         
     def laser_callback(self, msg):
         """Process laser scan data for obstacle detection"""
@@ -309,6 +466,53 @@ class B4MSpatialInterpreter(Node):
         print("4) Move FORWARD - Continue straight for 5 feet or until obstacle")
         print()
         
+    def get_navigation_decision(self, spatial_context):
+        """Get navigation decision from Ollama or manual input"""
+        if self.ollama_mode and self.ollama_navigator:
+            # Get Ollama decision
+            print("\n🦙 Consulting Ollama for navigation decision...")
+            print("   (Robot stopped while waiting for response)")
+            
+            decision, prompt = self.ollama_navigator.get_navigation_decision(spatial_context)
+            
+            # Show prompt that was sent to Ollama
+            if prompt:
+                print("\n📝 OLLAMA PROMPT:")
+                print("-" * 63)
+                # Display the prompt
+                for line in prompt.split('\n')[:15]:  # Show first 15 lines
+                    if line.strip():  # Only show non-empty lines
+                        print(line[:63])  # Truncate long lines
+                if len(prompt.split('\n')) > 15:
+                    print("... [truncated for display]")
+                print("-" * 63)
+            
+            if decision:
+                print("\n✅ OLLAMA RESPONSE:")
+                print("-" * 63)
+                print(f"   Action: {decision['action'].upper()}")
+                print(f"   Reason: {decision.get('reason', 'No reason provided')}")
+                print(f"   Confidence: {decision.get('confidence', 0.5):.2f}")
+                print("-" * 63)
+                return self.map_ollama_to_choice(decision['action'])
+            else:
+                print("\n🛑 OLLAMA UNAVAILABLE - STOPPING")
+                print("   Ollama did not respond within timeout period")
+                print("   Robot stopping for safety")
+                return None  # Stop the robot
+        else:
+            return self.get_user_decision()
+    
+    def map_ollama_to_choice(self, action):
+        """Map Ollama action strings to choice numbers"""
+        mapping = {
+            "turn_left": 1,
+            "turn_right": 2,
+            "turn_around": 3,
+            "go_straight": 4
+        }
+        return mapping.get(action, None)  # Return None if unknown action
+    
     def get_user_decision(self):
         """Get navigation decision from user via blocking console input"""
         while True:
@@ -469,12 +673,20 @@ class B4MSpatialInterpreter(Node):
                     self.state = "stopped_waiting"
                     self.just_turned = False  # Reset flag when handling new obstacle
                     
-                    # Get user decision (blocking)
-                    decision = self.get_user_decision()
+                    # Get navigation decision (from Ollama or user)
+                    decision = self.get_navigation_decision(spatial_context)
                     if decision is None:
-                        # User wants to exit
-                        rclpy.shutdown()
-                        return
+                        # Ollama failed or user wants to exit - stop robot
+                        if self.ollama_mode:
+                            # In Ollama mode, stop and wait
+                            print("\n⚠️ System halted - manual intervention required")
+                            self.state = "stopped_waiting"
+                            self.user_decision_pending = False
+                            return
+                        else:
+                            # In manual mode, shutdown
+                            rclpy.shutdown()
+                            return
                     
                     # Execute the turn
                     self.execute_turn(decision)
@@ -604,10 +816,17 @@ class B4MSpatialInterpreter(Node):
 
 def main():
     """Main entry point for B4M Spatial Interpreter"""
-    rclpy.init()
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description='B4M Spatial Interpreter for robot navigation')
+    parser.add_argument('--ollama-mode', action='store_true',
+                       help='Enable Ollama LLM navigation mode')
+    args, unknown = parser.parse_known_args()
+    
+    # Initialize ROS2
+    rclpy.init(args=unknown)  # Pass remaining args to ROS2
     
     try:
-        interpreter = B4MSpatialInterpreter()
+        interpreter = B4MSpatialInterpreter(ollama_mode=args.ollama_mode)
         rclpy.spin(interpreter)
         
     except KeyboardInterrupt:
