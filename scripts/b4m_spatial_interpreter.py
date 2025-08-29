@@ -17,6 +17,119 @@ Features:
 Author: B4M Robot System
 """
 
+class OllamaNavigator:
+    """Handles Ollama API communication for navigation decisions"""
+    
+    def __init__(self, config):
+        self.config = config
+        self.api_url = f"http://{config['ollama']['host']}:{config['ollama']['port']}/api/generate"
+        self.model = config['ollama']['model']
+        self.timeout = config['ollama']['timeout']
+        
+    def generate_prompt(self, spatial_context):
+        """Generate navigation prompt from spatial context"""
+        # Format spatial description
+        description = []
+        description.append(f"FRONT: {spatial_context['front']['description']}")
+        description.append(f"LEFT: {spatial_context['left']['description']}")
+        description.append(f"RIGHT: {spatial_context['right']['description']}")
+        description.append(f"BEHIND: {spatial_context['behind']['description']}")
+        
+        if spatial_context.get('distance_traveled', 0) > 0.01:
+            description.append(f"\nDISTANCE TRAVELED: {spatial_context['distance_traveled']:.2f}m since last stop")
+        
+        spatial_desc = "\n".join(description)
+        
+        prompt = f"""Robot navigation decision needed. BLOCKED means impassable obstacle.
+
+SENSORS:
+{spatial_desc}
+
+ACTIONS: turn_left, turn_right, turn_around, go_straight
+
+RULE: If FRONT is BLOCKED, NEVER choose go_straight. Turn toward CLEAR direction.
+
+Reply JSON only: {{"action":"<choice>","reason":"<why>","confidence":<0-1>}}"""
+        
+        return prompt
+    
+    def get_navigation_decision(self, spatial_context):
+        """Get navigation decision from Ollama"""
+        # ULTRA DEBUG: Track API call entry
+        call_id = int(time.time() * 1000) % 10000  # Unique ID for this call
+        print(f"[{get_timestamp()}] 🔥 OLLAMA API CALL #{call_id} STARTING")
+        
+        try:
+            print(f"[{get_timestamp()}] 📋 Generating prompt for call #{call_id}...")
+            prompt = self.generate_prompt(spatial_context)
+            print(f"[{get_timestamp()}] 📋 Prompt generated for call #{call_id}, length: {len(prompt)} chars")
+            
+            payload = {
+                "model": self.model,
+                "prompt": prompt,
+                "format": "json",
+                "stream": False,
+                "options": {
+                    "temperature": self.config['generation']['temperature'],
+                    "top_p": self.config['generation']['top_p'],
+                    "num_predict": self.config['generation']['max_tokens']
+                }
+            }
+            
+            # Measure response time
+            print(f"[{get_timestamp()}] 🌍 Making HTTP POST request #{call_id} to {self.api_url}...")
+            start_time = time.time()
+            response = requests.post(
+                self.api_url,
+                json=payload,
+                timeout=self.timeout
+            )
+            response_time = time.time() - start_time
+            print(f"[{get_timestamp()}] 🌍 HTTP response #{call_id} received in {response_time:.3f}s, status: {response.status_code}")
+            
+            if response.status_code == 200:
+                result = response.json()
+                decision = json.loads(result['response'])
+                
+                # Validate response
+                if self.validate_response(decision):
+                    return decision, prompt, response_time
+                else:
+                    return None, prompt, response_time
+            else:
+                return None, prompt, response_time
+                
+        except (requests.Timeout, requests.RequestException, json.JSONDecodeError) as e:
+            print(f"[{get_timestamp()}] ⚠️ OLLAMA API CALL #{call_id} FAILED: {type(e).__name__}: {str(e)}")
+            return None, None, None
+    
+    def validate_response(self, response):
+        """Validate Ollama response format"""
+        valid_actions = ["turn_left", "turn_right", "go_straight", "turn_around"]
+        
+        if not isinstance(response, dict):
+            return False
+            
+        if "action" not in response:
+            return False
+            
+        if response["action"] not in valid_actions:
+            return False
+            
+        # Validate confidence if present
+        if "confidence" in response:
+            try:
+                confidence = float(response["confidence"])
+                if not 0.0 <= confidence <= 1.0:
+                    response["confidence"] = 0.5
+            except (ValueError, TypeError):
+                response["confidence"] = 0.5
+        else:
+            response["confidence"] = 0.5
+            
+        return True
+
+import sys
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
@@ -29,10 +142,46 @@ import sys
 import select
 import termios
 import tty
+import argparse
+import os
+import yaml
+import requests
+import json
+from datetime import datetime
+
+def get_timestamp():
+    """Get formatted timestamp for debug output"""
+    return datetime.now().strftime("%H:%M:%S.%f")[:-3]  # HH:MM:SS.mmm
+
+def print_flush(*args, **kwargs):
+    """Print with immediate flush to ensure real-time output"""
+    print(*args, **kwargs)
+    sys.stdout.flush()
 
 class B4MSpatialInterpreter(Node):
-    def __init__(self):
+    def __init__(self, ollama_mode=False):
         super().__init__('b4m_spatial_interpreter')
+        
+        # Check if running in Ollama mode
+        self.ollama_mode = ollama_mode
+        self.ollama_navigator = None
+        self.debug_verbose = False  # Disable verbose debug output by default
+        
+        if self.ollama_mode:
+            # Load Ollama configuration
+            self.config = self.load_ollama_config()
+            if self.config:
+                self.ollama_navigator = OllamaNavigator(self.config)
+                self.get_logger().info("🦙 Ollama mode activated")
+                print(f"\n[{get_timestamp()}] 🦙 OLLAMA MODE ACTIVATED")
+                print("=" * 63)
+                print(f"[{get_timestamp()}] Robot will use Ollama LLM for navigation decisions")
+                print(f"[{get_timestamp()}] Model: {self.config['ollama']['model']}")
+                print(f"[{get_timestamp()}] API: {self.config['ollama']['host']}:{self.config['ollama']['port']}")
+                print("=" * 63)
+            else:
+                self.get_logger().error("Failed to load Ollama configuration")
+                self.ollama_mode = False
         
         # Create QoS profile for reliable communication
         qos_profile = QoSProfile(depth=10)
@@ -50,7 +199,8 @@ class B4MSpatialInterpreter(Node):
         # Robot parameters
         self.linear_speed = 0.08  # Slow speed for safety (m/s)
         self.angular_speed = 0.5  # Turning speed (rad/s)
-        self.stop_distance = 0.30  # Stop at 30cm (1 foot)
+        self.stop_distance = 0.28  # Stop at 28cm to avoid noise flicker
+        self.clear_distance = 0.32  # Clear at 32cm to avoid noise flicker 
         self.safe_distance = 0.40  # Resume when clear at 40cm
         
         # State management
@@ -60,6 +210,12 @@ class B4MSpatialInterpreter(Node):
         self.obstacle_detected = False
         self.path_clear = True
         self.user_decision_pending = False
+        self.last_ollama_call_time = 0  # Rate limit Ollama calls
+        self.min_ollama_interval = 2.0  # Minimum 2 seconds between Ollama calls
+        self.last_progress_update_time = 0  # For 10-second progress updates
+        self.progress_update_interval = 10.0  # Progress update every 10 seconds
+        self.distance_at_last_progress = 0.0  # Distance when last progress was shown
+        self.processing_obstacle = False  # Flag to prevent re-entry during obstacle processing
         self.just_turned = False  # Flag to ignore side obstacles after turning
         self.forward_start_time = 0  # Track forward movement after turning
         
@@ -90,14 +246,53 @@ class B4MSpatialInterpreter(Node):
         self.get_logger().info("🔌 B4M Spatial Interpreter initialized")
         self.get_logger().info("   Robot will move forward until obstacle detected")
         self.get_logger().info("   Console will stay quiet during normal operation")
-        print("\n✅ B4M SPATIAL INTERPRETER ACTIVE")
-        print("=" * 63)
-        print("🔌 Robot starting with B4M Spatial Interpreter\n")
+        if not self.ollama_mode:
+            print("\n✅ B4M SPATIAL INTERPRETER ACTIVE")
+            print("=" * 63)
+            print("🔌 Robot starting with B4M Spatial Interpreter\n")
+        else:
+            print_flush("\n🦙 OLLAMA MODE ACTIVATED")
+            print_flush("=" * 63)
+            print_flush("Robot will use Ollama LLM for navigation decisions")
+            print_flush(f"Model: {self.config['ollama']['model']}")
+            print_flush(f"API: {self.config['ollama']['host']}:{self.config['ollama']['port']}")
+            print_flush("=" * 63)
+            print_flush(f"\n[{get_timestamp()}] 🤖 B4M Spatial Interpreter started")
         # After this, stay quiet until obstacle detected
+    
+    def load_ollama_config(self):
+        """Load Ollama configuration from YAML file"""
+        config_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'config', 'ollama_config.yaml'
+        )
+        
+        try:
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f)
+                return config
+        except Exception as e:
+            print(f"⚠️ Error loading Ollama config: {e}")
+            return None
         
     def laser_callback(self, msg):
         """Process laser scan data for obstacle detection"""
+        # ULTRA DEBUG: Track every laser callback
+        if hasattr(self, '_laser_callback_count'):
+            self._laser_callback_count += 1
+        else:
+            self._laser_callback_count = 1
+            
+        if self._laser_callback_count % 100 == 1:  # Log every 100th callback
+            print(f"[{get_timestamp()}] 🔍 LASER CALLBACK #{self._laser_callback_count} - State: {self.state}, Obstacle: {self.obstacle_detected}, Processing: {getattr(self, 'processing_obstacle', 'UNDEFINED')}")
+            
         self.laser_data = msg
+        
+        # Debug: Log first callback in Ollama mode
+        if self.ollama_mode and not hasattr(self, '_first_scan_logged'):
+            self._first_scan_logged = True
+            self.get_logger().info(f"First laser scan received, {len(msg.ranges)} points")
+            print_flush(f"[{get_timestamp()}] 📡 Laser scan data received - robot moving forward")
         
         # Analyze laser data for obstacles
         ranges = np.array(msg.ranges)
@@ -105,7 +300,9 @@ class B4MSpatialInterpreter(Node):
         # Handle infinite/invalid values
         ranges[np.isinf(ranges)] = msg.range_max
         ranges[np.isnan(ranges)] = msg.range_max
-        ranges[ranges == 0.0] = msg.range_max
+        # Filter out invalid readings: 0.0 and readings at/below range_min are sensor noise
+        ranges[ranges == 0.0] = msg.range_max  # Invalid reading - treat as clear
+        ranges[ranges <= msg.range_min] = msg.range_max  # Below sensor min range - treat as clear
         
         # Calculate laser parameters
         num_readings = len(ranges)
@@ -140,9 +337,25 @@ class B4MSpatialInterpreter(Node):
         right_ranges = ranges[right_start_idx:right_end_idx + 1] if right_end_idx >= right_start_idx else []
         min_right_distance = np.min(right_ranges) if len(right_ranges) > 0 else msg.range_max
         
-        # Only stop for FRONT obstacles during forward movement
+        # Only stop for FRONT obstacles during forward movement with hysteresis
         # Side obstacles are detected and reported but don't stop forward motion
-        self.obstacle_detected = min_front_distance <= self.stop_distance
+        prev_detected = self.obstacle_detected
+        
+        # Use hysteresis to prevent flicker: different thresholds for detection vs clearing
+        if not self.obstacle_detected:
+            # Currently clear - detect obstacle only if distance drops below stop_distance
+            self.obstacle_detected = min_front_distance <= self.stop_distance
+        else:
+            # Currently detected - clear obstacle only if distance rises above clear_distance  
+            self.obstacle_detected = min_front_distance <= self.clear_distance
+        
+        # ULTRA DEBUG: Track obstacle detection changes
+        if self.obstacle_detected != prev_detected:
+            print(f"[{get_timestamp()}] 🚨 OBSTACLE DETECTION CHANGED! Was: {prev_detected}, Now: {self.obstacle_detected}, Front: {min_front_distance:.3f}m, Processing: {getattr(self, 'processing_obstacle', 'UNDEFINED')}")
+        
+        # Simple obstacle detection - no debouncing to avoid infinite loops
+        if self.debug_verbose and self.obstacle_detected != prev_detected:
+            print(f"[{get_timestamp()}] 🚨 Obstacle detection changed! Now: {self.obstacle_detected}, Front dist: {min_front_distance:.2f}m")
         
         # Path is clear only when front has enough clearance
         self.path_clear = min_front_distance > self.safe_distance
@@ -155,7 +368,9 @@ class B4MSpatialInterpreter(Node):
         ranges = np.array(self.laser_data.ranges)
         ranges[np.isinf(ranges)] = self.laser_data.range_max
         ranges[np.isnan(ranges)] = self.laser_data.range_max
-        ranges[ranges == 0.0] = self.laser_data.range_max
+        # Filter out invalid readings: 0.0 and readings at/below range_min are sensor noise
+        ranges[ranges == 0.0] = self.laser_data.range_max  # Invalid reading - treat as clear
+        ranges[ranges <= self.laser_data.range_min] = self.laser_data.range_max  # Below sensor min range - treat as clear
         
         num_readings = len(ranges)
         angle_range = self.laser_data.angle_max - self.laser_data.angle_min
@@ -274,9 +489,9 @@ class B4MSpatialInterpreter(Node):
     
     def display_spatial_description(self, spatial_context):
         """Display formatted spatial description in console"""
-        print("\n" + "=" * 63)
-        print("🤖 B4M SPATIAL INTERPRETER - OBSTACLE DETECTED")
-        print("=" * 63)
+        print(f"\n[{get_timestamp()}] " + "=" * 63)
+        print(f"[{get_timestamp()}] 🤖 B4M SPATIAL INTERPRETER - OBSTACLE DETECTED")
+        print(f"[{get_timestamp()}] " + "=" * 63)
         
         # Display movement since last stop
         if self.distance_traveled > 0.01:  # Only show if moved more than 1cm
@@ -309,6 +524,60 @@ class B4MSpatialInterpreter(Node):
         print("4) Move FORWARD - Continue straight for 5 feet or until obstacle")
         print()
         
+    def get_navigation_decision(self, spatial_context):
+        """Get navigation decision from Ollama or manual input"""
+        if self.ollama_mode and self.ollama_navigator:
+            # Get Ollama decision
+            print(f"\n[{get_timestamp()}] 🦙 Consulting Ollama for navigation decision...")
+            print(f"[{get_timestamp()}]    (Robot stopped while waiting for response)")
+            
+            decision, prompt, response_time = self.ollama_navigator.get_navigation_decision(spatial_context)
+            
+            # Show prompt that was sent to Ollama
+            if prompt:
+                print("\n📝 OLLAMA PROMPT:")
+                print("-" * 63)
+                # Display the prompt
+                for line in prompt.split('\n')[:15]:  # Show first 15 lines
+                    if line.strip():  # Only show non-empty lines
+                        print(line[:63])  # Truncate long lines
+                if len(prompt.split('\n')) > 15:
+                    print("... [truncated for display]")
+                print("-" * 63)
+            
+            if decision:
+                print(f"\n✅ OLLAMA RESPONSE: (received in {response_time:.1f}s)")
+                print("-" * 63)
+                print(f"   Action: {decision['action'].upper()}")
+                print(f"   Reason: {decision.get('reason', 'No reason provided')}")
+                print(f"   Confidence: {decision.get('confidence', 0.5):.2f}")
+                print("-" * 63)
+                return self.map_ollama_to_choice(decision['action'])
+            else:
+                print(f"\n🛑 OLLAMA UNAVAILABLE - STOPPING")
+                if response_time:
+                    print(f"   Ollama did not respond within timeout period ({response_time:.1f}s)")
+                else:
+                    print("   Ollama did not respond within timeout period")
+                print("   Robot stopping for safety")
+                print("   ")
+                print("⚠️ MANUAL INTERVENTION REQUIRED")
+                print("   Please check Ollama service status or restart in manual mode")
+                print("   Use Ctrl+C to exit, then restart without --ollama flag")
+                return None  # Stop the robot
+        else:
+            return self.get_user_decision()
+    
+    def map_ollama_to_choice(self, action):
+        """Map Ollama action strings to choice numbers"""
+        mapping = {
+            "turn_left": 1,
+            "turn_right": 2,
+            "turn_around": 3,
+            "go_straight": 4
+        }
+        return mapping.get(action, None)  # Return None if unknown action
+    
     def get_user_decision(self):
         """Get navigation decision from user via blocking console input"""
         while True:
@@ -393,7 +662,9 @@ class B4MSpatialInterpreter(Node):
         ranges = np.array(self.laser_data.ranges)
         ranges[np.isinf(ranges)] = self.laser_data.range_max
         ranges[np.isnan(ranges)] = self.laser_data.range_max
-        ranges[ranges == 0.0] = self.laser_data.range_max
+        # Filter out invalid readings: 0.0 and readings at/below range_min are sensor noise
+        ranges[ranges == 0.0] = self.laser_data.range_max  # Invalid reading - treat as clear
+        ranges[ranges <= self.laser_data.range_min] = self.laser_data.range_max  # Below sensor min range - treat as clear
         
         num_readings = len(ranges)
         angle_range = self.laser_data.angle_max - self.laser_data.angle_min
@@ -440,9 +711,41 @@ class B4MSpatialInterpreter(Node):
     
     def control_loop(self):
         """Main control loop for spatial interpreter"""
+        # ULTRA DEBUG: Track control loop iterations
+        if not hasattr(self, '_control_loop_count'):
+            self._control_loop_count = 0
+        self._control_loop_count += 1
+        
+        # Log every 50th iteration (every 5 seconds at 10Hz) OR when processing obstacle
+        if (self._control_loop_count % 50 == 1) or getattr(self, 'processing_obstacle', False):
+            print(f"[{get_timestamp()}] 🔄 CONTROL LOOP #{self._control_loop_count} - State: {self.state}, Obstacle: {self.obstacle_detected}, Processing: {getattr(self, 'processing_obstacle', False)}, Pending: {self.user_decision_pending}")
+        
         if self.laser_data is None:
+            if self._control_loop_count % 50 == 1:
+                print(f"[{get_timestamp()}] ⚠️ No laser data available in control loop #{self._control_loop_count}")
             return
             
+        # Progress updates during free movement (every 10 seconds)
+        current_time = time.time()
+        if (self.state == "moving_forward" and not self.obstacle_detected and 
+            not self.user_decision_pending and 
+            current_time - self.last_progress_update_time >= self.progress_update_interval):
+            
+            # Only show progress if we've actually moved
+            distance_since_last = self.distance_traveled - self.distance_at_last_progress
+            if distance_since_last > 0.1:  # At least 10cm of movement
+                print_flush(f"[{get_timestamp()}] 📏 Progress: {self.distance_traveled:.1f}m traveled, continuing forward")
+                self.last_progress_update_time = current_time
+                self.distance_at_last_progress = self.distance_traveled
+        
+        # Debug: Log control loop state periodically (only if verbose debug enabled)
+        if self.debug_verbose:
+            if not hasattr(self, '_loop_count'):
+                self._loop_count = 0
+            self._loop_count += 1
+            if self._loop_count % 100 == 0:  # Every 10 seconds at 10Hz
+                print(f"[{get_timestamp()}] 🔄 DEBUG: Control loop active - State: {self.state}, Obstacle: {self.obstacle_detected}, Pending: {self.user_decision_pending}")
+        
         cmd = Twist()
         
         if self.state == "moving_forward":
@@ -450,7 +753,18 @@ class B4MSpatialInterpreter(Node):
             if self.just_turned and time.time() - self.forward_start_time > 2.0:
                 self.just_turned = False
                 
-            if self.obstacle_detected and not self.user_decision_pending:
+            if self.obstacle_detected and not self.user_decision_pending and not self.processing_obstacle:
+                # ULTRA DEBUG: Log entry into obstacle processing
+                print(f"[{get_timestamp()}] 🔥 ENTERING OBSTACLE PROCESSING - State: {self.state}, Flags: obstacle={self.obstacle_detected}, pending={self.user_decision_pending}, processing={self.processing_obstacle}")
+                
+                # Set processing flag to prevent re-entry
+                self.processing_obstacle = True
+                print(f"[{get_timestamp()}] 🔒 PROCESSING FLAG SET TO TRUE")
+                
+                # Announce obstacle detection
+                print(f"[{get_timestamp()}] 🚨 Obstacle detected - stopping for analysis")
+                if self.debug_verbose:
+                    print(f"\n[{get_timestamp()}] 🔍 DEBUG: Obstacle detected! State: {self.state}, Decision pending: {self.user_decision_pending}")
                 # Stop and wait for user input
                 cmd.linear.x = 0.0
                 cmd.angular.z = 0.0
@@ -460,8 +774,11 @@ class B4MSpatialInterpreter(Node):
                 self.last_movement_time = time.time()
                 
                 # Analyze and display spatial context
+                print(f"[{get_timestamp()}] 🔍 DEBUG: Analyzing spatial context...")
                 spatial_context = self.analyze_spatial_context()
+                print(f"[{get_timestamp()}] 🔍 DEBUG: Spatial context result: {spatial_context is not None}")
                 if spatial_context:
+                    print(f"[{get_timestamp()}] 🔍 DEBUG: Displaying spatial description...")
                     self.display_spatial_description(spatial_context)
                     
                     # Set flag to prevent re-displaying and reset just_turned
@@ -469,16 +786,53 @@ class B4MSpatialInterpreter(Node):
                     self.state = "stopped_waiting"
                     self.just_turned = False  # Reset flag when handling new obstacle
                     
-                    # Get user decision (blocking)
-                    decision = self.get_user_decision()
-                    if decision is None:
-                        # User wants to exit
-                        rclpy.shutdown()
-                        return
+                    # Rate limit Ollama calls to prevent system overload
+                    current_time = time.time()
+                    if self.ollama_mode:
+                        time_since_last_call = current_time - self.last_ollama_call_time
+                        if time_since_last_call < self.min_ollama_interval:
+                            print(f"[{get_timestamp()}] ⏰ Rate limiting: Waiting {self.min_ollama_interval - time_since_last_call:.1f}s before next Ollama call")
+                            self.processing_obstacle = False  # Reset flag
+                            return  # Skip this cycle to rate limit
+                        self.last_ollama_call_time = current_time
                     
-                    # Execute the turn
-                    self.execute_turn(decision)
-                    self.user_decision_pending = False
+                    # Get navigation decision (from Ollama or user) with timeout protection
+                    try:
+                        print(f"[{get_timestamp()}] 🔥 ABOUT TO CALL OLLAMA - Current time: {time.time():.3f}")
+                        print(f"[{get_timestamp()}] 🦙 Calling Ollama API... (timeout={self.config['ollama']['timeout']}s)")
+                        start_time = time.time()
+                        decision = self.get_navigation_decision(spatial_context)
+                        end_time = time.time()
+                        print(f"[{get_timestamp()}] 💬 Ollama call completed in {end_time - start_time:.3f}s, decision: {decision}")
+                        
+                        if decision is None:
+                            # Ollama failed or user wants to exit - stop robot
+                            if self.ollama_mode:
+                                # In Ollama mode, stop and wait
+                                print("\n⚠️ System halted - manual intervention required")
+                                self.state = "stopped_waiting"
+                                self.user_decision_pending = False
+                                self.processing_obstacle = False
+                                return
+                            else:
+                                # In manual mode, shutdown
+                                self.processing_obstacle = False
+                                rclpy.shutdown()
+                                return
+                        
+                        # Execute the turn
+                        print(f"[{get_timestamp()}] ⚙️ Executing turn decision: {decision}")
+                        self.execute_turn(decision)
+                        self.user_decision_pending = False
+                        self.processing_obstacle = False
+                        
+                    except Exception as e:
+                        print(f"[{get_timestamp()}] ⚠️ Critical error in navigation decision: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        self.processing_obstacle = False
+                        self.user_decision_pending = False
+                        return
             else:
                 # No obstacle or already handling - continue forward
                 if not self.obstacle_detected:
@@ -525,7 +879,7 @@ class B4MSpatialInterpreter(Node):
                     ranges = np.array(self.laser_data.ranges)
                     ranges[np.isinf(ranges)] = self.laser_data.range_max
                     ranges[np.isnan(ranges)] = self.laser_data.range_max
-                    ranges[ranges == 0.0] = self.laser_data.range_max
+                    ranges[ranges == 0.0] = self.laser_data.range_min  # 0.0 means too close!
                     
                     num_readings = len(ranges)
                     angle_range = self.laser_data.angle_max - self.laser_data.angle_min
@@ -539,20 +893,15 @@ class B4MSpatialInterpreter(Node):
                     front_ranges = ranges[front_start:front_end + 1]
                     front_distance = np.min(front_ranges) if len(front_ranges) > 0 else 0
                     
-                    # Display turn summary
-                    total_degrees = math.degrees(self.total_rotation)
-                    turn_duration = time.time() - self.turn_start_time
-                    print(f"\n📐 Turn Complete:")
-                    print("-" * 63)
-                    print(f"• Total rotation: {total_degrees:.0f}° {self.turn_direction_text}")
-                    print(f"• Turn duration: {turn_duration:.1f} seconds")
-                    print(f"• Clear path detected ahead: {front_distance:.2f}m\n")
+                    # Display turn completion messages matching documentation format
+                    print(f"\n[{get_timestamp()}] ✅ Turn complete - path ahead is clear")
                 
-                # Resume forward movement (stay quiet)
+                # Resume forward movement
                 self.state = "moving_forward"
                 self.obstacle_detected = False  # Reset for next obstacle
                 self.just_turned = True  # Ignore side obstacles briefly after turning
                 self.forward_start_time = time.time()  # Start timer for forward movement
+                print(f"[{get_timestamp()}] ➡️ Resuming forward movement")
             elif not min_turn_elapsed:
                 # Still in minimum turn time
                 pass
@@ -563,7 +912,7 @@ class B4MSpatialInterpreter(Node):
                         ranges = np.array(self.laser_data.ranges)
                         ranges[np.isinf(ranges)] = self.laser_data.range_max
                         ranges[np.isnan(ranges)] = self.laser_data.range_max
-                        ranges[ranges == 0.0] = self.laser_data.range_max
+                        ranges[ranges == 0.0] = self.laser_data.range_min  # 0.0 means too close!
                         
                         num_readings = len(ranges)
                         angle_range = self.laser_data.angle_max - self.laser_data.angle_min
@@ -601,13 +950,42 @@ class B4MSpatialInterpreter(Node):
         
         # Publish velocity command
         self.cmd_pub.publish(cmd)
+        
+        # Debug: Show when movement state changes (only if verbose debug enabled)
+        if self.debug_verbose:
+            if not hasattr(self, '_last_cmd'):
+                self._last_cmd = {'linear': 0, 'angular': 0}
+            if cmd.linear.x != self._last_cmd['linear'] or cmd.angular.z != self._last_cmd['angular']:
+                if cmd.linear.x > 0:
+                    print(f"[{get_timestamp()}] 🤖 DEBUG: Moving forward at {cmd.linear.x:.3f} m/s")
+                elif cmd.angular.z != 0:
+                    print(f"[{get_timestamp()}] 🤖 DEBUG: Turning at {cmd.angular.z:.3f} rad/s")
+                elif cmd.linear.x == 0 and cmd.angular.z == 0:
+                    print(f"[{get_timestamp()}] 🤖 DEBUG: Stopped - State: {self.state}")
+                self._last_cmd = {'linear': cmd.linear.x, 'angular': cmd.angular.z}
 
 def main():
     """Main entry point for B4M Spatial Interpreter"""
-    rclpy.init()
+    # Force unbuffered output for real-time console display
+    sys.stdout = sys.__stdout__
+    sys.stderr = sys.__stderr__
+    
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description='B4M Spatial Interpreter for robot navigation')
+    parser.add_argument('--ollama-mode', action='store_true',
+                       help='Enable Ollama LLM navigation mode')
+    parser.add_argument('--debug-verbose', action='store_true',
+                       help='Enable verbose debug output')
+    args, unknown = parser.parse_known_args()
+    
+    # Initialize ROS2
+    rclpy.init(args=unknown)  # Pass remaining args to ROS2
     
     try:
-        interpreter = B4MSpatialInterpreter()
+        interpreter = B4MSpatialInterpreter(ollama_mode=args.ollama_mode)
+        if args.debug_verbose:
+            interpreter.debug_verbose = True
+            print(f"[{get_timestamp()}] 📢 Verbose debug output enabled")
         rclpy.spin(interpreter)
         
     except KeyboardInterrupt:
