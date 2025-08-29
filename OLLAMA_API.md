@@ -231,6 +231,9 @@ The Ollama mode is activated by launching with the `--ollama` flag:
 ```bash
 ./b4m_launch.sh --ollama              # Real robot with Ollama
 ./b4m_launch.sh --ollama --simulation  # Simulation with Ollama
+
+# For debugging with verbose output:
+./b4m_launch.sh --ollama --simulation --debug-verbose
 ```
 
 This flag causes `b4m_launch.sh` to pass `--ollama-mode` argument to the spatial interpreter.
@@ -249,7 +252,7 @@ ollama:
   host: localhost
   port: 11434
   model: llama3.2
-  timeout: 5.0
+  timeout: 5.0  # Reduced from 30s to prevent system blocking
   
 generation:
   temperature: 0.3
@@ -264,10 +267,13 @@ navigation:
   retry_attempts: 0  # No retries - stop immediately on failure
   
 safety:
-  max_response_time: 5.0
+  max_response_time: 3.0  # Maximum time to wait for Ollama (safety cutoff)
   emergency_stop_distance: 0.10
   enable_manual_override: true
   stop_while_thinking: true  # Robot stops while waiting for Ollama response
+  rate_limiting:
+    min_ollama_interval: 2.0  # Minimum seconds between Ollama calls
+    obstacle_detection_debounce: 3  # Require 3 consistent readings
 ```
 
 ## Implementation Integration Points
@@ -396,13 +402,139 @@ When Ollama fails or times out, the system will:
 
 ### Safety Mechanisms
 
-1. **Response Timeout**: Maximum 5 seconds for LLM response
-2. **Confidence Threshold**: Ignore low-confidence decisions
-3. **Manual Override**: Allow user to interrupt at any time
-4. **Emergency Stop**: Immediate stop if obstacle detected during execution
-5. **Validation**: Strict response format validation
+1. **Response Timeout**: Maximum 5 seconds for LLM response (3 seconds safety cutoff)
+2. **Rate Limiting**: Minimum 2 seconds between Ollama API calls to prevent system overload
+3. **Obstacle Detection Debouncing**: Requires 3 consistent readings to confirm obstacles
+4. **Confidence Threshold**: Ignore low-confidence decisions
+5. **Manual Override**: Allow user to interrupt at any time
+6. **Emergency Stop**: Immediate stop if obstacle detected during execution
+7. **Validation**: Strict response format validation
+8. **Debug Verbosity Control**: Minimal output by default, verbose mode available with `--debug-verbose`
 
 ## Console Output and User Experience
+
+### User Experience Scenarios
+
+The following sections show what users will see in their terminal when running `./b4m_launch.sh --ollama --simulation`.
+
+#### Scenario 1: Robot Moving Freely (No Obstacles)
+
+When the robot is moving forward without encountering obstacles, the console output is minimal to prevent information overload:
+
+```
+🦙 OLLAMA MODE ACTIVATED
+===============================================================
+Robot will use Ollama LLM for navigation decisions
+Model: llama3.2:latest
+API: localhost:11434
+===============================================================
+
+[14:32:15.123] 🤖 B4M Spatial Interpreter started
+[14:32:15.456] 📡 Laser scan data received - robot moving forward
+[14:32:25.789] 📏 Progress: 2.5m traveled, continuing forward
+[14:32:35.012] 📏 Progress: 5.0m traveled, continuing forward
+[14:32:45.345] 📏 Progress: 7.5m traveled, continuing forward
+```
+
+**Expected delays:**
+- Initial startup: 2-3 seconds
+- Progress updates: Every 10 seconds while moving freely
+- No Ollama calls during free movement (saves API calls and system resources)
+
+#### Scenario 2: Robot Encounters Wall (Obstacle Detection)
+
+When the robot detects a wall or obstacle in front, it triggers the Ollama decision-making process:
+
+```
+[14:33:12.678] 🚨 Obstacle detected - stopping for analysis
+
+===============================================================
+🤖 B4M SPATIAL INTERPRETER - OBSTACLE DETECTED
+===============================================================
+
+📏 Movement Since Last Stop:
+---------------------------------------------------------------
+• Distance traveled: 3.42m forward
+• Time elapsed: 22.3 seconds
+• Average speed: 0.153 m/s
+
+📍 Current Situation:
+---------------------------------------------------------------
+FRONT:  ⚠️ BLOCKED - Wall at 0.25m (10 inches)
+LEFT:   ✅ CLEAR   - Open space, nearest obstacle at 1.23m
+RIGHT:  ⚠️ NARROW  - Wall at 0.45m (18 inches)
+BEHIND: ✅ CLEAR   - Open space for at least 2.1m
+
+📊 Detailed Scan Analysis:
+---------------------------------------------------------------
+• Front sector (±15°):  Min: 0.25m, Avg: 0.28m
+• Left sector (67.5°-112.5°):   Min: 1.23m, Avg: 1.85m
+• Right sector (-112.5°--67.5°):  Min: 0.45m, Avg: 0.67m
+• Laser points: 360 readings covering 360°
+
+🎯 Navigation Options:
+---------------------------------------------------------------
+1) Turn LEFT 90°
+2) Turn RIGHT 90°
+3) Turn AROUND 180°
+4) Move FORWARD - Continue straight for 5 feet or until obstacle
+
+[14:33:13.789] 🦙 Consulting Ollama for navigation decision...
+[14:33:13.790]    (Robot stopped while waiting for response)
+
+✅ OLLAMA RESPONSE: (received in 1.2s)
+---------------------------------------------------------------
+   Action: TURN_LEFT
+   Reason: Front blocked, left side has most open space
+   Confidence: 0.92
+---------------------------------------------------------------
+
+[14:33:15.012] 🔄 Executing turn LEFT...
+[14:33:15.013]    (Will continue turning until path ahead is clear)
+
+[14:33:18.456] ✅ Turn complete - path ahead is clear
+[14:33:18.457] ➡️ Resuming forward movement
+
+[14:33:28.789] 📏 Progress: 2.1m traveled, continuing forward
+```
+
+**Expected delays:**
+- Obstacle detection to analysis display: < 0.5 seconds
+- Analysis display to Ollama query: < 0.2 seconds  
+- Ollama response time: 1-3 seconds (typically 1.2s)
+- Response parsing to action execution: < 0.1 seconds
+- Turn execution time: 3-4 seconds for 90° turn
+- Resume forward movement: Immediate after turn completion
+
+#### Error Scenario: Ollama Unavailable
+
+If Ollama fails to respond or times out:
+
+```
+[14:35:45.123] 🚨 Obstacle detected - stopping for analysis
+
+[Analysis display as above...]
+
+[14:35:46.234] 🦙 Consulting Ollama for navigation decision...
+[14:35:46.235]    (Robot stopped while waiting for response)
+
+[14:35:51.240] ⏰ Rate limiting: Waiting 0.8s before next Ollama call
+[14:35:52.045] 🦙 Consulting Ollama for navigation decision...
+
+[14:35:57.050] 🛑 OLLAMA UNAVAILABLE - STOPPING
+   Ollama did not respond within timeout period (5.0s)
+   Robot stopping for safety
+   
+⚠️ MANUAL INTERVENTION REQUIRED
+   Please check Ollama service status or restart in manual mode
+   Use Ctrl+C to exit, then restart without --ollama flag
+```
+
+**Expected delays:**
+- Initial Ollama timeout: 5 seconds
+- Rate limiting wait: 0.8 seconds (if needed)
+- Second attempt timeout: 5 seconds
+- Total delay before stopping: ~11 seconds maximum
 
 ### Output Flow
 
@@ -500,6 +632,25 @@ BEHIND: ✅ CLEAR   - Open space for at least 2.1m
 - Consistent JSON formatting
 - Good spatial reasoning
 - Low resource usage
+
+## Known Issues and Solutions
+
+### System Stability Issues (Fixed)
+- **Problem**: Running `--ollama` mode caused system disruption and unresponsiveness
+- **Root Causes**:
+  - Excessive debug output flooding console (hundreds of messages per second)
+  - No rate limiting on Ollama API calls during obstacle detection flicker
+  - 30-second timeout blocking entire ROS node during API calls
+- **Solutions Applied**:
+  - Disabled verbose debug output by default (use `--debug-verbose` to enable)
+  - Added 2-second minimum interval between Ollama API calls
+  - Reduced timeout from 30s to 5s to prevent blocking
+  - Added obstacle detection debouncing (3 consistent readings required)
+
+### Console Output Management
+- **Default Mode**: Minimal output showing only navigation decisions and actions
+- **Debug Mode**: Use `--debug-verbose` flag for detailed diagnostic output
+- **Rate Limiting**: Prevents console flooding from rapid obstacle detection changes
 
 ## Future Enhancements
 
