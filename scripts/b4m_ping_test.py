@@ -21,13 +21,17 @@ class B4MPingTest:
             print("ERROR: B4M_API_KEY environment variable not set!")
             print("Please set it: export B4M_API_KEY='your_key_here'")
             sys.exit(1)
+        
+        # Get user ID from environment variable or use default
+        self.user_id = os.environ.get('B4M_USER_ID', '65563f622213b120cd1d9592')
+        if self.user_id != '65563f622213b120cd1d9592':
+            print(f"Using custom user ID: {self.user_id}")
             
         # B4M API endpoint (as documented in B4M_API.md)
         self.api_url = "https://app.bike4mind.com/api/ai/llm"
         
         # Create persistent session ID for context continuity
         self.session_id = f"robot_ping_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        self.user_id = "65563f622213b120cd1d9592"  # Default user ID from B4M_API.md
         
         # Obstacle detection parameters
         self.directions = ["left", "front", "right", "behind"]
@@ -88,7 +92,7 @@ class B4MPingTest:
         return message
     
     def send_ping_request(self, message):
-        """Send a ping request to B4M API"""
+        """Send a ping request to B4M API with polling support"""
         headers = {
             "X-API-Key": self.api_key,
             "Content-Type": "application/json"
@@ -117,6 +121,7 @@ class B4MPingTest:
         try:
             print(f"\n📤 Sending request to B4M API...")
             print(f"   Session ID: {self.session_id}")
+            print(f"   User ID: {self.user_id}")
             print(f"   Model: gpt-4o-mini")
             print(f"   Message length: {len(message)} characters")
             
@@ -130,9 +135,20 @@ class B4MPingTest:
             elapsed_time = time.time() - start_time
             
             if response.status_code == 200:
-                result = response.json()
-                print(f"\n✅ Response received in {elapsed_time:.2f} seconds")
-                return result
+                initial_result = response.json()
+                print(f"\n✅ Initial response received in {elapsed_time:.2f} seconds")
+                
+                # Check if we need to poll for the result
+                if 'status' in initial_result:
+                    return self.poll_for_response(initial_result, headers)
+                else:
+                    # Direct response (no polling needed)
+                    return initial_result
+            elif response.status_code == 202:
+                # Accepted - need to poll
+                initial_result = response.json()
+                print(f"\n⏳ Request accepted, polling for response...")
+                return self.poll_for_response(initial_result, headers)
             else:
                 print(f"\n❌ API Error: Status {response.status_code}")
                 print(f"   Response: {response.text}")
@@ -147,6 +163,66 @@ class B4MPingTest:
         except json.JSONDecodeError as e:
             print(f"\n❌ Failed to parse response JSON: {str(e)}")
             return None
+    
+    def poll_for_response(self, initial_response, headers):
+        """Poll for the final response if needed"""
+        # Try to get quest ID or polling URL from initial response
+        quest_id = initial_response.get('questId') or initial_response.get('id')
+        
+        if not quest_id:
+            print("⚠️ No quest ID found in response, returning initial response")
+            return initial_response
+        
+        # Construct polling URL (might need adjustment based on actual API)
+        poll_url = f"https://app.bike4mind.com/api/ai/llm/{quest_id}"
+        
+        print(f"📊 Polling for quest ID: {quest_id}")
+        
+        max_polls = 30  # Maximum 30 seconds of polling
+        poll_interval = 1.0  # Poll every 1 second
+        
+        for i in range(max_polls):
+            time.sleep(poll_interval)
+            
+            try:
+                poll_response = requests.get(
+                    poll_url,
+                    headers=headers,
+                    timeout=5.0
+                )
+                
+                if poll_response.status_code == 200:
+                    result = poll_response.json()
+                    
+                    # Check if response is complete
+                    if result.get('status') == 'done' or result.get('status') == 'completed':
+                        print(f"✅ Final response received after {i+1} polls")
+                        return result
+                    elif result.get('status') == 'error':
+                        print(f"❌ Error in processing: {result.get('error', 'Unknown error')}")
+                        return None
+                    else:
+                        # Still processing
+                        status = result.get('status', 'processing')
+                        print(f"   Poll {i+1}: Status = {status}", end='\r')
+                elif poll_response.status_code == 404:
+                    # Quest might not exist yet or different endpoint
+                    # Try alternate approach - GET with session ID
+                    alt_url = f"https://app.bike4mind.com/api/ai/llm?sessionId={self.session_id}&questId={quest_id}"
+                    alt_response = requests.get(alt_url, headers=headers, timeout=5.0)
+                    
+                    if alt_response.status_code == 200:
+                        result = alt_response.json()
+                        if result.get('status') == 'done':
+                            print(f"✅ Final response received after {i+1} polls (alternate endpoint)")
+                            return result
+                
+            except Exception as e:
+                print(f"\n⚠️ Polling error: {str(e)}")
+                continue
+        
+        print(f"\n⏰ Polling timeout after {max_polls} attempts")
+        return None
     
     def display_response(self, response):
         """Display the B4M API response"""
