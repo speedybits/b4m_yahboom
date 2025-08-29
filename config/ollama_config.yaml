@@ -4,11 +4,11 @@
 ollama:
   host: localhost
   port: 11434
-  model: llama3.2  # Can be changed to mistral, phi3, etc.
-  timeout: 5.0  # Maximum seconds to wait for response
+  model: llama3.2:latest  # Can be changed to mistral, phi3, etc.
+  timeout: 15.0  # Increased to 15s for llama3.2 model response time
   
 generation:
-  temperature: 0.3  # Lower = more consistent decisions
+  temperature: 0.1  # Very low for deterministic obstacle avoidance
   top_p: 0.9
   max_tokens: 100
   format: json
@@ -20,7 +20,7 @@ navigation:
   retry_attempts: 0  # No retries - stop immediately on failure
   
 safety:
-  max_response_time: 5.0  # Maximum time to wait for Ollama
+  max_response_time: 3.0  # Maximum time to wait for Ollama (safety cutoff)
   emergency_stop_distance: 0.10  # Emergency stop if obstacle within 10cm
   enable_manual_override: true  # Allow Ctrl+C to stop
   stop_while_thinking: true  # Robot stops while waiting for Ollama response
