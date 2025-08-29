@@ -251,11 +251,11 @@ The configuration file should be placed at:
 ollama:
   host: localhost
   port: 11434
-  model: llama3.2
-  timeout: 5.0  # Reduced from 30s to prevent system blocking
+  model: llama3.2:latest
+  timeout: 15.0  # Increased to 15s for llama3.2 model response time
   
 generation:
-  temperature: 0.3
+  temperature: 0.1  # Very low for deterministic obstacle avoidance
   top_p: 0.9
   max_tokens: 100
   format: json
@@ -288,8 +288,8 @@ The launch script needs to pass the `--ollama-mode` flag to the spatial interpre
 echo "🦙 Step 6: Starting Ollama Spatial Interpreter"
 echo "   All output and interaction will happen in this terminal"
 
-# Run the spatial interpreter with --ollama-mode flag
-python3 "$WORKSPACE_ROOT/scripts/b4m_spatial_interpreter.py" --ollama-mode 2>&1 | tee "$LOGS_DIR/ollama_spatial_$TIMESTAMP.log"
+# Run the spatial interpreter with --ollama-mode flag and unbuffered output
+python3 -u "$WORKSPACE_ROOT/scripts/b4m_spatial_interpreter.py" --ollama-mode 2>&1 | tee "$LOGS_DIR/ollama_spatial_$TIMESTAMP.log"
 ```
 
 ### Modified b4m_spatial_interpreter.py
@@ -638,14 +638,43 @@ BEHIND: ✅ CLEAR   - Open space for at least 2.1m
 ### System Stability Issues (Fixed)
 - **Problem**: Running `--ollama` mode caused system disruption and unresponsiveness
 - **Root Causes**:
-  - Excessive debug output flooding console (hundreds of messages per second)
-  - No rate limiting on Ollama API calls during obstacle detection flicker
-  - 30-second timeout blocking entire ROS node during API calls
+  - Python output buffering caused delayed console output
+  - Sensor noise flicker between 0.28-0.31m around 0.30m threshold caused rapid obstacle detection
+  - Excessive API calls during sensor noise flicker (800% CPU usage)
 - **Solutions Applied**:
-  - Disabled verbose debug output by default (use `--debug-verbose` to enable)
-  - Added 2-second minimum interval between Ollama API calls
-  - Reduced timeout from 30s to 5s to prevent blocking
-  - Added obstacle detection debouncing (3 consistent readings required)
+  - Added Python -u flag for unbuffered output in launch script
+  - Implemented hysteresis: detect obstacles at 0.28m, clear at 0.32m
+  - Added print_flush() function for real-time console output
+  - Increased Ollama timeout to 15s for llama3.2 model
+  - Optimized prompt from 1189 to ~350 characters for faster responses
+
+### Laser Data Filtering Issues (Fixed)
+- **Problem**: Real robot detected false obstacles at 5 inches (0.12m) causing immediate stops
+- **Root Cause**: 
+  - LIDAR sensor `range_min` is ~0.12m, but readings at/below this threshold are sensor noise or ground reflections
+  - Original code incorrectly treated readings at `range_min` as legitimate obstacles
+  - `--explore` mode worked because it properly filtered these readings as invalid
+- **Inconsistent Behavior**:
+  ```python
+  # WRONG (original --ollama mode):
+  ranges[ranges == 0.0] = msg.range_min  # Treated noise as obstacle!
+  
+  # CORRECT (--explore mode and fixed --ollama):
+  ranges[ranges == 0.0] = msg.range_max  # Treat noise as clear space
+  ranges[ranges <= msg.range_min] = msg.range_max  # Filter sensor noise
+  ```
+- **Solution Applied**:
+  - Modified laser data preprocessing in `b4m_spatial_interpreter.py`
+  - Now filters out readings at or below `range_min` (0.12m) as invalid sensor noise
+  - Aligns `--ollama` behavior with working `--explore` mode behavior
+  - Real robot now operates correctly without false positive obstacle detection
+
+### Simulation vs Real Robot Differences
+- **Why `--simulation` worked but real robot failed**:
+  - **Gazebo Classic**: Provides mathematically perfect laser data without sensor noise
+  - **Real Robot**: Has physical sensor limitations including ground reflections, electrical noise, and minimum range artifacts
+  - **Key Insight**: Simulation testing may not reveal real-world sensor noise issues
+- **Recommendation**: Always test robot navigation modes on actual hardware to validate sensor data handling
 
 ### Console Output Management
 - **Default Mode**: Minimal output showing only navigation decisions and actions

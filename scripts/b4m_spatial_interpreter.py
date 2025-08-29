@@ -300,7 +300,9 @@ class B4MSpatialInterpreter(Node):
         # Handle infinite/invalid values
         ranges[np.isinf(ranges)] = msg.range_max
         ranges[np.isnan(ranges)] = msg.range_max
-        ranges[ranges == 0.0] = msg.range_min  # 0.0 means too close!
+        # Filter out invalid readings: 0.0 and readings at/below range_min are sensor noise
+        ranges[ranges == 0.0] = msg.range_max  # Invalid reading - treat as clear
+        ranges[ranges <= msg.range_min] = msg.range_max  # Below sensor min range - treat as clear
         
         # Calculate laser parameters
         num_readings = len(ranges)
@@ -366,7 +368,9 @@ class B4MSpatialInterpreter(Node):
         ranges = np.array(self.laser_data.ranges)
         ranges[np.isinf(ranges)] = self.laser_data.range_max
         ranges[np.isnan(ranges)] = self.laser_data.range_max
-        ranges[ranges == 0.0] = self.laser_data.range_min  # 0.0 means too close!
+        # Filter out invalid readings: 0.0 and readings at/below range_min are sensor noise
+        ranges[ranges == 0.0] = self.laser_data.range_max  # Invalid reading - treat as clear
+        ranges[ranges <= self.laser_data.range_min] = self.laser_data.range_max  # Below sensor min range - treat as clear
         
         num_readings = len(ranges)
         angle_range = self.laser_data.angle_max - self.laser_data.angle_min
@@ -658,7 +662,9 @@ class B4MSpatialInterpreter(Node):
         ranges = np.array(self.laser_data.ranges)
         ranges[np.isinf(ranges)] = self.laser_data.range_max
         ranges[np.isnan(ranges)] = self.laser_data.range_max
-        ranges[ranges == 0.0] = self.laser_data.range_min  # 0.0 means too close!
+        # Filter out invalid readings: 0.0 and readings at/below range_min are sensor noise
+        ranges[ranges == 0.0] = self.laser_data.range_max  # Invalid reading - treat as clear
+        ranges[ranges <= self.laser_data.range_min] = self.laser_data.range_max  # Below sensor min range - treat as clear
         
         num_readings = len(ranges)
         angle_range = self.laser_data.angle_max - self.laser_data.angle_min

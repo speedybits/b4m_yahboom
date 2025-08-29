@@ -60,6 +60,7 @@ Runs comprehensive regression test suite with automated validation.
 | `--regression` | Run comprehensive regression test suite (navigation + laser stability) |
 | `--explore` | Enable autonomous exploration mode with obstacle avoidance |
 | `--b4m-api` | Enable B4M API mode with interactive spatial interpreter |
+| `--ollama` | Enable Ollama LLM mode for AI-powered autonomous navigation |
 | `--b4m-HA` | Enable Home Assistant MQTT integration features |
 | `--b4m-ping` | Test bike4mind API with random obstacle detection messages |
 | `-h, --help` | Show help information |
@@ -106,6 +107,8 @@ The `--b4m-HA` flag controls whether MQTT and Home Assistant features are enable
 |----------|---------|--------------|
 | **Explore with REAL robot** | `./b4m_launch.sh --explore` | Physical robot explores real environment |
 | **Explore in simulation** | `./b4m_launch.sh --simulation --explore` | Simulated robot explores in Gazebo Classic |
+| **Ollama AI navigation - real robot** | `./b4m_launch.sh --ollama` | Physical robot with LLM-powered autonomous navigation |
+| **Ollama AI navigation - simulation** | `./b4m_launch.sh --simulation --ollama` | Simulated robot with LLM decision-making |
 | **Regular real robot launch** | `./b4m_launch.sh` | Basic robot setup without MQTT |
 | **Real robot with Home Assistant** | `./b4m_launch.sh --b4m-HA` | Full system with MQTT/HA integration |
 | **Regular simulation launch** | `./b4m_launch.sh --simulation` | Basic simulation without MQTT |
@@ -154,7 +157,36 @@ Runs regression tests with physical robot (requires robot to be powered on).
 ```
 Interactive mode with verbose logging for development work.
 
-### 6. B4M LiDAR Navigation Mode
+### 6. Ollama LLM Navigation Mode
+
+#### Real Robot with Ollama AI Navigation
+```bash
+# Prerequisites: ollama serve, ollama pull llama3.2:latest
+./b4m_launch.sh --ollama
+```
+Physical robot uses Ollama LLM for fully autonomous obstacle navigation decisions.
+
+#### Simulation with Ollama AI Navigation
+```bash
+# Prerequisites: ollama serve, ollama pull llama3.2:latest
+./b4m_launch.sh --simulation --ollama
+```
+Simulated robot demonstrates LLM-powered navigation in Gazebo Classic.
+
+**Ollama LLM Features:**
+- **Fully Autonomous**: No user input required - LLM makes all decisions
+- **Real-time Decision Making**: Obstacle analysis and navigation choices in 3-15 seconds
+- **Confidence Scoring**: Each decision includes confidence level (0.0-1.0)
+- **Reasoning Output**: LLM explains why it chose each action
+- **Hysteresis Protection**: Prevents sensor noise from causing decision flicker
+- **Safety Timeouts**: Robot stops if LLM takes too long to respond
+- **Real-time Topics**:
+  - Console output shows all LLM decisions and reasoning
+  - Same spatial analysis as B4M API mode but automated
+  - Timestamps on all navigation events
+- **Control**: Only Ctrl+C to stop (fully autonomous otherwise)
+
+### 7. B4M LiDAR Navigation Mode
 
 #### Real Robot with AI Navigation
 ```bash
@@ -309,6 +341,51 @@ Interactive spatial interpretation with obstacle analysis:
 - User selects option in same terminal where b4m_launch.sh was run
 - Robot executes choice and continues until next obstacle
 - Press Ctrl+C to stop and clean up
+
+#### Ollama LLM Mode (--ollama)
+AI-powered autonomous navigation using Large Language Models for decision-making:
+- Launches Cartographer SLAM for real-time mapping
+- Runs Ollama LLM integration in the same terminal (foreground)
+- Robot moves forward until obstacle detected
+- LLM analyzes spatial data and makes autonomous navigation decisions
+- Real-time decision logging with confidence scores and reasoning
+- Fully autonomous operation - no user interaction required
+- Works in both simulation and real robot modes
+- Incompatible with other navigation modes
+
+**Prerequisites:**
+- Ollama service running locally: `ollama serve`
+- Ollama model downloaded: `ollama pull llama3.2:latest` (or model specified in config)
+- Configuration file: `config/ollama_config.yaml`
+
+**How it works:**
+- Robot starts moving forward automatically
+- When obstacle detected at 28cm, robot stops and waits for LLM decision
+- Spatial sensor data sent to Ollama API as structured prompt
+- LLM responds with JSON decision: action, reason, and confidence
+- Robot executes LLM decision and continues autonomously
+- Obstacle detection uses hysteresis (detect at 28cm, clear at 32cm) to prevent sensor noise
+- Real-time unbuffered output shows all decisions and reasoning
+- Press Ctrl+C to stop and clean up
+
+**Expected terminal output example:**
+```
+[2024-12-08 15:42:17] 🤖 Ollama Navigator initialized
+[2024-12-08 15:42:18] Moving forward...
+[2024-12-08 15:42:23] 🛑 OBSTACLE DETECTED - Stopping robot
+[2024-12-08 15:42:23] 📡 Calling Ollama API...
+[2024-12-08 15:42:25] 🤖 LLM Decision: turn_right (confidence: 0.85)
+[2024-12-08 15:42:25] 💭 Reasoning: Front blocked, right path clear for safe navigation
+[2024-12-08 15:42:25] ↩️  Executing: turn_right
+[2024-12-08 15:42:28] ✅ Turn complete, path clear - resuming forward
+```
+
+**Safety features:**
+- Robot stops completely while waiting for Ollama response (3-15 second timeout)
+- Emergency stop distance: 10cm (overrides all other behavior)
+- Manual override: Ctrl+C stops immediately
+- Confidence threshold: 0.7 minimum to execute LLM decisions
+- Fallback: Robot stops if LLM confidence too low or API fails
 
 #### B4M Ping Mode (--b4m-ping)
 Standalone API testing tool that:
