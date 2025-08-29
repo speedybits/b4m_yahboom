@@ -15,7 +15,7 @@
 #   --b4m-api:                      Enable B4M API mode (duplicate of --explore for API integration)
 #   --ollama:                       Enable Ollama mode (duplicate of --b4m-api for Ollama LLM integration)
 #   --b4m-HA:                       (Experimental) Enable Home Assistant MQTT integration features
-#   --b4m-ping:                     Test bike4mind API with random obstacle detection messages
+#   --b4m-ping:                     Test B4M API with robot navigation messages
 #   --navigation-performance-test:  (Untested) Execute 1x1m square navigation circuit testing
 #   --setup-wifi:                   Interactive WiFi setup wizard for robot configuration
 
@@ -104,7 +104,7 @@ for arg in "$@"; do
             echo "  --b4m-api:                      Enable B4M API mode (duplicate of --explore for API integration)"
             echo "  --ollama:                       Enable Ollama mode (duplicate of --b4m-api for Ollama LLM integration)"
 	    echo "  --b4m-HA:                       (Experimental) Enable Home Assistant MQTT integration features"
-            echo "  --b4m-ping:                     Test bike4mind API with random obstacle detection messages"
+            echo "  --b4m-ping:                     Test B4M API with robot navigation messages"
 	    echo "  --navigation-performance-test:  (Untested) Execute 1x1m square navigation circuit testing"
 	    echo "  --setup-wifi:                   Interactive WiFi setup wizard for robot configuration"
             exit 0
@@ -1293,16 +1293,16 @@ fi
 if [ "$B4M_PING" = true ]; then
     echo "📡 B4M PING API TEST MODE"
     echo "================================="
-    echo "Testing bike4mind API with random obstacle detection messages"
+    echo "Testing B4M API with robot navigation messages"
     echo ""
     echo "This test will:"
-    echo "- Generate random obstacle reports (left/front/right directions)"
-    echo "- Send messages to bike4mind API endpoint"
-    echo "- Display API responses in real-time"
-    echo "- Wait for keypress between messages"
-    echo "- Exit on CTRL+C"
+    echo "- Generate random obstacle scenarios for robot navigation"
+    echo "- Send navigation requests to B4M API endpoint"
+    echo "- Display navigation decisions and API responses"
+    echo "- Maintain session context across requests"
+    echo "- Press ENTER between tests, CTRL+C to exit"
     echo ""
-    echo "API endpoint: https://app.bike4mind.com/api/chat"
+    echo "API endpoint: https://app.bike4mind.com/api/ai/llm"
     
     # Check for API key in environment
     if [ -z "$B4M_API_KEY" ]; then
