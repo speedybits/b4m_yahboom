@@ -9,6 +9,9 @@ We must make sure that only the environment variable is used. We never want to c
 Here is the CURL POST request
 ==========================================
 
+IMPORTANT: The sessionId (68b1dc95ae477e08d46e11de) must be an existing session in your B4M account.
+You cannot create arbitrary session IDs - they must already exist in the system.
+
 curl -X POST \
   -H "X-API-Key: YOUR_API_KEY_HERE" \
   -H "Content-Type: application/json" \
@@ -179,7 +182,7 @@ The B4M API integration provides the same autonomous navigation capabilities as 
 
 2. **Network Connectivity**: Internet access to reach app.bike4mind.com
 
-3. **Session Management**: The system will maintain a persistent sessionId for context continuity
+3. **Valid Session ID**: You need a valid sessionId from your B4M account (cannot create arbitrary session IDs)
 
 ## Launch Command
 

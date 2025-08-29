@@ -30,8 +30,8 @@ class B4MPingTest:
         # B4M API endpoint (as documented in B4M_API.md)
         self.api_url = "https://app.bike4mind.com/api/ai/llm"
         
-        # Create persistent session ID for context continuity
-        self.session_id = f"robot_ping_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        # Use the sessionId from B4M_API.md (must be an existing session)
+        self.session_id = os.environ.get('B4M_SESSION_ID', '68b1dc95ae477e08d46e11de')
         
         # Obstacle detection parameters
         self.directions = ["left", "front", "right", "behind"]
@@ -112,7 +112,7 @@ class B4MPingTest:
             },
             "promptMeta": {
                 "session": {
-                    "id": self.session_id,
+                    "id": self.session_id,  # Must match sessionId above
                     "userId": self.user_id
                 }
             }
@@ -274,9 +274,13 @@ class B4MPingTest:
         print("\n🤖 B4M API PING TEST")
         print("=" * 60)
         print(f"Endpoint: {self.api_url}")
-        print(f"Session: {self.session_id}")
+        print(f"Session ID: {self.session_id}")
+        print(f"User ID: {self.user_id}")
         print("API Key: [CONFIGURED VIA ENVIRONMENT]")
         print("=" * 60)
+        if self.session_id != '68b1dc95ae477e08d46e11de':
+            print("\n⚠️  Using custom session ID from B4M_SESSION_ID environment variable")
+            print("   Make sure this is a valid session for your account!")
         print("\nPress ENTER to send a test message, or CTRL+C to exit\n")
         
         test_count = 0

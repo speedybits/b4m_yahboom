@@ -1312,6 +1312,15 @@ if [ "$B4M_PING" = true ]; then
         exit 1
     fi
     echo "API key: [CONFIGURED VIA ENVIRONMENT]"
+    
+    # Check for valid session ID
+    if [ -z "$B4M_SESSION_ID" ]; then
+        echo "Using default session ID from documentation: 68b1dc95ae477e08d46e11de"
+        echo "   (This may fail if you don't have access to this session)"
+        echo "   To use your own session: export B4M_SESSION_ID='your_session_id'"
+    else
+        echo "Using custom session ID: $B4M_SESSION_ID"
+    fi
     echo ""
     
     # Make script executable if needed
