@@ -11,18 +11,30 @@ We are integrating the B4M API with a robot navigation system. The robot sends s
 
 ## Specific Questions
 
-### 1. Polling Endpoint
+### 1. Polling Endpoint ⚠️ URGENT - BLOCKING INTEGRATION
 **What is the correct endpoint to poll for completed quest responses?**
 
-We've tried:
+🚨 **CRITICAL ISSUE:** We can successfully send requests and get quest IDs, but cannot retrieve the completed responses.
+
+✅ **WORKING:** POST to `/api/ai/llm` returns quest ID `68b24ad64ba19af3c8baf40e`
+❌ **FAILING:** All polling endpoints return 404 or incomplete data
+
+**Endpoints we've tried (all failing):**
 - `/api/messages/{questId}` - 404 Not Found
 - `/api/quests/{questId}` - 404 Not Found  
 - `/api/ai/llm/{questId}` - 404 Not Found
+- `/api/ai/messages/{questId}` - 404 Not Found
+- `/api/ai/quests/{questId}` - 404 Not Found
+- `/api/sessions/{sessionId}/messages/{questId}` - 404 Not Found
 - `/api/sessions/{sessionId}` - Returns 200 but only session metadata, no messages
-- `/api/ai/llm?questId={questId}` - Various responses
+- `/api/ai/llm?questId={questId}` - Various responses but no replies
 - And 15+ other variations
 
-**Expected answer:** The exact URL pattern for polling, e.g., `GET https://app.bike4mind.com/api/???/{questId}`
+**CONFIRMED TIMING:** Now using 7-second intervals, 15 attempts (105 seconds total) as specified.
+
+**URGENT NEED:** The exact URL pattern for polling, e.g., `GET https://app.bike4mind.com/api/???/{questId}`
+
+**Latest Quest ID for Testing:** `68b24ad64ba19af3c8baf40e` (you can check this quest on your end)
 
 ### 2. Response Timing ✅ RESOLVED
 **How long should we typically wait before the response is ready for polling?**
