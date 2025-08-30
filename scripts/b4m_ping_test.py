@@ -31,7 +31,7 @@ class B4MPingTest:
         self.api_url = "https://app.bike4mind.com/api/ai/llm"
         
         # Use the sessionId from B4M_API.md (must be an existing session)
-        self.session_id = os.environ.get('B4M_SESSION_ID', '68b1dc95ae477e08d46e11de')
+        self.session_id = os.environ.get('B4M_SESSION_ID', '68b1e0fcac3f77504fce09b5')
         
         # Obstacle detection parameters
         self.directions = ["left", "front", "right", "behind"]
@@ -139,11 +139,19 @@ class B4MPingTest:
                 print(f"\n✅ Initial response received in {elapsed_time:.2f} seconds")
                 
                 # Check if we need to poll for the result
-                if 'status' in initial_result:
+                # B4M API returns status "running" when processing, empty replies when not ready
+                if (initial_result.get('status') == 'running' or 
+                    (initial_result.get('replies') is not None and len(initial_result.get('replies', [])) == 0)):
+                    print("   Status: Processing... need to poll for result")
                     return self.poll_for_response(initial_result, headers)
-                else:
-                    # Direct response (no polling needed)
+                elif 'replies' in initial_result and len(initial_result.get('replies', [])) > 0:
+                    # Direct response with content
+                    print("   Status: Complete with replies")
                     return initial_result
+                else:
+                    # Unclear status, try polling anyway
+                    print("   Status: Unclear, attempting to poll...")
+                    return self.poll_for_response(initial_result, headers)
             elif response.status_code == 202:
                 # Accepted - need to poll
                 initial_result = response.json()
@@ -278,7 +286,7 @@ class B4MPingTest:
         print(f"User ID: {self.user_id}")
         print("API Key: [CONFIGURED VIA ENVIRONMENT]")
         print("=" * 60)
-        if self.session_id != '68b1dc95ae477e08d46e11de':
+        if self.session_id != '68b1e0fcac3f77504fce09b5':
             print("\n⚠️  Using custom session ID from B4M_SESSION_ID environment variable")
             print("   Make sure this is a valid session for your account!")
         print("\nPress ENTER to send a test message, or CTRL+C to exit\n")

@@ -27,8 +27,8 @@ def debug_api_call():
     print(f"User ID: {user_id}")
     print()
     
-    # Create a unique session ID
-    session_id = f"debug_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    # Use the session ID from B4M_API.md (must be existing session)
+    session_id = os.environ.get('B4M_SESSION_ID', '68b1e0fcac3f77504fce09b5')
     
     url = "https://app.bike4mind.com/api/ai/llm"
     headers = {
