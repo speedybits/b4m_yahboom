@@ -110,10 +110,10 @@ def main():
             "session": f"robot_nav_{datetime.now().strftime('%Y%m%d_%H%M%S')}_4",
             "user": api_key.split('_')[0] if '_' in api_key else "user"
         },
-        # Original from documentation
+        # Original from documentation (updated)
         {
-            "desc": "Original documentation values",
-            "session": "68b1dc95ae477e08d46e11de",
+            "desc": "Updated documentation values",
+            "session": "68b1e0fcac3f77504fce09b5",
             "user": "65563f622213b120cd1d9592"
         },
         # Try without userId field but with session

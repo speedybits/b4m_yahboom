@@ -16,8 +16,8 @@ curl -X POST \
   -H "X-API-Key: YOUR_API_KEY_HERE" \
   -H "Content-Type: application/json" \
   -d '{
-  "sessionId": "68b1dc95ae477e08d46e11de",
-  "message": "Hello! Can you help me with my project?",
+  "sessionId": "68b1e0fcac3f77504fce09b5",
+  "message": "What are some neat things about R2D2?",
   "historyCount": 10,
   "fabFileIds": [],
   "messageFileIds": [],
@@ -29,135 +29,74 @@ curl -X POST \
   },
   "promptMeta": {
     "session": {
-      "id": "68b1dc95ae477e08d46e11de",
+      "id": "68b1e0fcac3f77504fce09b5",
       "userId": "65563f622213b120cd1d9592"
     }
   }
 }' \
   https://app.bike4mind.com/api/ai/llm
 
-
 ==========================================
 Here is the response received from polling
 ==========================================
 
-
 {
-  "sessionId": "68b1dc95ae477e08d46e11de",
-  "timestamp": "2025-08-29T23:08:52.886Z",
+  "sessionId": "68b1e0fcac3f77504fce09b5",
+  "timestamp": "2025-08-30T00:00:55.865Z",
   "type": "message",
-  "prompt": "Hello! Can you help me with my project?",
+  "prompt": "What are some neat things about R2D2?",
   "fabFileIds": [],
   "agentIds": [],
-  "replies": [
-    "Of course! I'd be happy to help with your project. What do you need assistance with? Please provide some details about the topic and what you're looking for!"
-  ],
+  "replies": [],
   "images": [],
   "promptMeta": {
     "model": {
+      "name": "gpt-4o-mini",
       "parameters": {
         "temperature": 0.7,
         "maxTokens": 500
-      },
-      "name": "gpt-4o-mini"
-    },
-    "tokenUsage": {
-      "inputTokens": 281,
-      "outputTokens": 34,
-      "totalTokens": 315,
-      "actualInputTokens": 219,
-      "actualOutputTokens": 32
+      }
     },
     "context": {
       "attachedFiles": [],
       "knowledgeBaseEntries": [],
-      "messageHistoryLength": 4,
+      "messageHistoryLength": 0,
       "requestedHistoryCount": 10,
-      "totalMessageCount": 1
+      "totalMessageCount": 0
     },
     "performance": {
+      "totalResponseTime": 0,
+      "contextRetrievalTime": 0,
+      "modelInferenceTime": 0,
       "streamingPerformance": {
-        "chunkCount": 1,
-        "totalStreamTime": 998,
-        "totalChars": 157,
-        "charsPerSecond": 157
+        "chunkCount": 0,
+        "totalStreamTime": 0,
+        "totalChars": 0,
+        "charsPerSecond": 0
       },
-      "totalResponseTime": 4790,
-      "contextRetrievalTime": 3732,
-      "modelInferenceTime": 995,
-      "firstTokenTime": 4728,
-      "featureExecutionTimes": {
-        "abilitySetup": 2,
-        "essentialDataFetch": 171,
-        "modelSetup": 4,
-        "historyLoading": 3555,
-        "artifactProcessing": 1,
-        "onCompleteFeatures": 39
-      },
-      "databaseOperationTimes": {
-        "initialQuestSave": 45,
-        "finalQuestSave": 49,
-        "organizationUpdate": 35
-      }
+      "featureExecutionTimes": {},
+      "databaseOperationTimes": {}
     },
     "session": {
-      "id": "68b1dc95ae477e08d46e11de",
+      "id": "68b1e0fcac3f77504fce09b5",
       "userId": "65563f622213b120cd1d9592"
     },
-    "functionCalls": [],
-    "prompt": "Hello! Can you help me with my project?",
-    "questId": "68b233044ba19af3c8baf0e9",
     "replyIds": [],
     "generatedImageReferences": [],
     "promptErrors": [],
     "warnings": [],
-    "statusLog": [
-      {
-        "status": "Processing your request...",
-        "timestamp": "2025-08-29T23:08:56.380Z"
-      },
-      {
-        "status": "Spinning up...",
-        "timestamp": "2025-08-29T23:08:56.528Z"
-      },
-      {
-        "status": "Reviewing previous messages...",
-        "timestamp": "2025-08-29T23:08:56.558Z"
-      },
-      {
-        "status": "Gathering data sources...",
-        "timestamp": "2025-08-29T23:08:56.600Z"
-      },
-      {
-        "status": "Processing data sources...",
-        "timestamp": "2025-08-29T23:08:56.600Z"
-      },
-      {
-        "status": "Crunched the context...",
-        "timestamp": "2025-08-29T23:08:56.694Z"
-      },
-      {
-        "status": "Generating insights...",
-        "timestamp": "2025-08-29T23:09:00.113Z"
-      },
-      {
-        "status": "Completed Quest",
-        "timestamp": "2025-08-29T23:09:01.171Z"
-      }
-    ]
+    "functionCalls": [],
+    "statusLog": []
   },
-  "status": "done",
+  "status": "running",
   "pinned": false,
   "deletedAt": null,
   "researchModeResults": [],
-  "createdAt": "2025-08-29T23:08:53.009Z",
-  "updatedAt": "2025-08-29T23:09:01.291Z",
+  "createdAt": "2025-08-30T00:00:55.906Z",
+  "updatedAt": "2025-08-30T00:00:55.906Z",
   "__v": 0,
-  "creditsUsed": 1,
-  "reply": null,
-  "id": "68b233044ba19af3c8baf0e9"
+  "id": "68b23f3796f873a3cbbb187a"
 }
-
 
 ================================================
 Robot Navigation Integration
@@ -212,7 +151,7 @@ The robot will send spatial context to B4M API using this prompt structure:
 
 ```json
 {
-  "sessionId": "robot_nav_session_[timestamp]",
+  "sessionId": "68b1e0fcac3f77504fce09b5",
   "message": "You are a navigation AI for a robot. Based on the following spatial description, decide the best action for the robot to take.\n\nCURRENT SITUATION:\nFRONT: BLOCKED - Wall at 0.25m (10 inches)\nLEFT: CLEAR - Open space, nearest obstacle at 1.23m\nRIGHT: NARROW - Wall at 0.45m (18 inches)\nBEHIND: CLEAR - Open space for at least 2.1m\n\nAVAILABLE ACTIONS:\n- \"turn_left\": Rotate 90 degrees to the left\n- \"turn_right\": Rotate 90 degrees to the right\n- \"go_straight\": Continue moving forward\n- \"turn_around\": Rotate 180 degrees\n\nRespond with a JSON object containing:\n- \"action\": one of the available actions\n- \"reason\": brief explanation for the decision\n- \"confidence\": confidence level (0.0 to 1.0)\n\nExample: {\"action\": \"turn_left\", \"reason\": \"Front blocked, left side clear\", \"confidence\": 0.95}",
   "historyCount": 10,
   "fabFileIds": [],
@@ -225,7 +164,7 @@ The robot will send spatial context to B4M API using this prompt structure:
   },
   "promptMeta": {
     "session": {
-      "id": "robot_nav_session_[timestamp]",
+      "id": "68b1e0fcac3f77504fce09b5",
       "userId": "65563f622213b120cd1d9592"
     }
   }
@@ -261,8 +200,8 @@ class B4MNavigator:
         if not self.api_key:
             raise ValueError("B4M_API_KEY environment variable not set")
         
-        # Create persistent session ID for context continuity
-        self.session_id = f"robot_nav_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        # Use existing session ID from your B4M account
+        self.session_id = os.environ.get('B4M_SESSION_ID', '68b1e0fcac3f77504fce09b5')
         self.user_id = "65563f622213b120cd1d9592"  # Default user ID
         
     def get_navigation_decision(self, spatial_context):
@@ -350,7 +289,7 @@ The console output will be identical to Ollama mode, just with B4M branding:
 Robot will use B4M Cloud LLM for navigation decisions
 Model: gpt-4o-mini
 API: app.bike4mind.com
-Session: robot_nav_20250830_143215
+Session: 68b1e0fcac3f77504fce09b5
 ===============================================================
 
 [14:32:15.123] 🤖 B4M Spatial Interpreter started

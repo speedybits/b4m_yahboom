@@ -1315,7 +1315,7 @@ if [ "$B4M_PING" = true ]; then
     
     # Check for valid session ID
     if [ -z "$B4M_SESSION_ID" ]; then
-        echo "Using default session ID from documentation: 68b1dc95ae477e08d46e11de"
+        echo "Using default session ID from documentation: 68b1e0fcac3f77504fce09b5"
         echo "   (This may fail if you don't have access to this session)"
         echo "   To use your own session: export B4M_SESSION_ID='your_session_id'"
     else
