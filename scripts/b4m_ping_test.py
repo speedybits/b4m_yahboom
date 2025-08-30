@@ -181,8 +181,13 @@ class B4MPingTest:
             print("⚠️ No quest ID found in response, returning initial response")
             return initial_response
         
-        # Construct polling URL (might need adjustment based on actual API)
-        poll_url = f"https://app.bike4mind.com/api/ai/llm/{quest_id}"
+        # Try different polling endpoints based on the API structure
+        poll_endpoints = [
+            f"https://app.bike4mind.com/api/quests/{quest_id}",  # Quest-specific endpoint
+            f"https://app.bike4mind.com/api/ai/llm/{quest_id}",  # LLM with quest ID
+            f"https://app.bike4mind.com/api/ai/llm?questId={quest_id}",  # Query param
+            f"https://app.bike4mind.com/api/ai/llm?sessionId={self.session_id}&questId={quest_id}"  # Both params
+        ]
         
         print(f"📊 Polling for quest ID: {quest_id}")
         
@@ -192,42 +197,51 @@ class B4MPingTest:
         for i in range(max_polls):
             time.sleep(poll_interval)
             
-            try:
-                poll_response = requests.get(
-                    poll_url,
-                    headers=headers,
-                    timeout=5.0
-                )
-                
-                if poll_response.status_code == 200:
-                    result = poll_response.json()
+            # Try each polling endpoint
+            for endpoint_idx, poll_url in enumerate(poll_endpoints):
+                try:
+                    poll_response = requests.get(
+                        poll_url,
+                        headers=headers,
+                        timeout=10.0  # Increased timeout
+                    )
                     
-                    # Check if response is complete
-                    if result.get('status') == 'done' or result.get('status') == 'completed':
-                        print(f"✅ Final response received after {i+1} polls")
-                        return result
-                    elif result.get('status') == 'error':
-                        print(f"❌ Error in processing: {result.get('error', 'Unknown error')}")
-                        return None
-                    else:
-                        # Still processing
-                        status = result.get('status', 'processing')
-                        print(f"   Poll {i+1}: Status = {status}", end='\r')
-                elif poll_response.status_code == 404:
-                    # Quest might not exist yet or different endpoint
-                    # Try alternate approach - GET with session ID
-                    alt_url = f"https://app.bike4mind.com/api/ai/llm?sessionId={self.session_id}&questId={quest_id}"
-                    alt_response = requests.get(alt_url, headers=headers, timeout=5.0)
-                    
-                    if alt_response.status_code == 200:
-                        result = alt_response.json()
-                        if result.get('status') == 'done':
-                            print(f"✅ Final response received after {i+1} polls (alternate endpoint)")
+                    if poll_response.status_code == 200:
+                        result = poll_response.json()
+                        
+                        # Check if response is complete (has replies with content)
+                        if result.get('replies') and len(result.get('replies', [])) > 0:
+                            print(f"\n✅ Final response received after {i+1} polls from endpoint {endpoint_idx+1}")
+                            print(f"   Successful endpoint: {poll_url}")
                             return result
-                
-            except Exception as e:
-                print(f"\n⚠️ Polling error: {str(e)}")
-                continue
+                        elif result.get('status') == 'done':
+                            print(f"\n✅ Final response received after {i+1} polls (status=done)")
+                            return result
+                        elif result.get('status') == 'error':
+                            print(f"\n❌ Error in processing: {result.get('error', 'Unknown error')}")
+                            return None
+                        else:
+                            # Still processing
+                            status = result.get('status', 'processing')
+                            if endpoint_idx == 0:  # Only print status from first endpoint to avoid spam
+                                print(f"   Poll {i+1}: Status = {status}, trying endpoint {endpoint_idx+1}/4", end='\r')
+                            continue  # Try next endpoint
+                            
+                    elif poll_response.status_code == 404:
+                        # This endpoint doesn't exist, try next one
+                        continue
+                        
+                except requests.Timeout:
+                    if endpoint_idx == 0:  # Only print timeout from first endpoint
+                        print(f"\n⚠️ Poll {i+1}: Timeout on endpoint {endpoint_idx+1}, trying next...")
+                    continue  # Try next endpoint
+                except Exception as e:
+                    if endpoint_idx == 0:  # Only print error from first endpoint
+                        print(f"\n⚠️ Poll {i+1}: Error on endpoint {endpoint_idx+1}: {str(e)}")
+                    continue  # Try next endpoint
+            
+            # If we get here, all endpoints failed for this poll iteration
+            # Continue to next poll cycle
         
         print(f"\n⏰ Polling timeout after {max_polls} attempts")
         return None
