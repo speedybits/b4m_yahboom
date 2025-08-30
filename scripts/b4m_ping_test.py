@@ -195,9 +195,10 @@ class B4MPingTest:
         ]
         
         print(f"📊 Polling for quest ID: {quest_id}")
+        print("   Polling every 7 seconds, up to 15 attempts (105 seconds max)")
         
-        max_polls = 30  # Maximum 30 seconds of polling
-        poll_interval = 1.0  # Poll every 1 second
+        max_polls = 15  # Maximum 15 polling attempts
+        poll_interval = 7.0  # Poll every 7 seconds
         
         for i in range(max_polls):
             time.sleep(poll_interval)
@@ -247,7 +248,7 @@ class B4MPingTest:
                         
                         # Still processing - continue to next endpoint
                         if endpoint_idx == 0:  # Only print status from first endpoint to avoid spam
-                            print(f"   Poll {i+1}: Status = '{status}', trying endpoint {endpoint_idx+1}/8", end='\r')
+                            print(f"   Poll {i+1}/15: Status = '{status}', trying endpoint {endpoint_idx+1}/8", end='\r')
                         continue  # Try next endpoint
                             
                     elif poll_response.status_code == 404:
@@ -266,7 +267,7 @@ class B4MPingTest:
             # If we get here, all endpoints failed for this poll iteration
             # Continue to next poll cycle
         
-        print(f"\n⏰ Polling timeout after {max_polls} attempts")
+        print(f"\n⏰ Polling timeout after {max_polls} attempts (105 seconds)")
         return None
     
     

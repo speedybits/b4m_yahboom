@@ -24,15 +24,13 @@ We've tried:
 
 **Expected answer:** The exact URL pattern for polling, e.g., `GET https://app.bike4mind.com/api/???/{questId}`
 
-### 2. Response Timing
+### 2. Response Timing ✅ RESOLVED
 **How long should we typically wait before the response is ready for polling?**
 
 Our current observations:
 - Initial POST response time: ~2 seconds
 - Response contains `"status": "running"` and empty `"replies": []`
-- We poll every 1 second for up to 30 seconds
-
-**Expected answer:** Typical processing time range (e.g., "2-10 seconds for simple prompts")
+- ✅ **UPDATED:** Poll every 7 seconds for up to 15 attempts (105 seconds total)
 
 ### 3. Response Format
 **What does the completed response structure look like when polling succeeds?**

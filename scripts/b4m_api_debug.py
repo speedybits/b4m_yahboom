@@ -93,9 +93,9 @@ def debug_api_call():
                         f"https://app.bike4mind.com/api/ai/llm?sessionId={session_id}"
                     ]
                     
-                    for poll_attempt in range(10):  # Try polling for 10 seconds
-                        time.sleep(1)
-                        print(f"\n🔄 Polling attempt {poll_attempt + 1}...")
+                    for poll_attempt in range(15):  # Try polling 15 times
+                        time.sleep(7)  # Wait 7 seconds between polls
+                        print(f"\n🔄 Polling attempt {poll_attempt + 1}/15 (after {(poll_attempt + 1) * 7} seconds)...")
                         
                         for endpoint in poll_endpoints:
                             try:
