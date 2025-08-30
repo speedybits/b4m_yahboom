@@ -210,21 +210,31 @@ class B4MPingTest:
                         result = poll_response.json()
                         
                         # Check if response is complete (has replies with content)
-                        if result.get('replies') and len(result.get('replies', [])) > 0:
+                        has_replies = result.get('replies') and len(result.get('replies', [])) > 0
+                        status = result.get('status', 'unknown')
+                        
+                        # Debug logging for first few polls
+                        if i < 3 and endpoint_idx == 0:
+                            print(f"\n   Debug Poll {i+1}: endpoint={poll_url}")
+                            print(f"   Response keys: {list(result.keys())}")
+                            print(f"   Status: '{status}', Replies: {len(result.get('replies', []))} items")
+                            if 'replies' in result:
+                                print(f"   Replies content: {result['replies']}")
+                        
+                        if has_replies:
                             print(f"\n✅ Final response received after {i+1} polls from endpoint {endpoint_idx+1}")
                             print(f"   Successful endpoint: {poll_url}")
                             return result
-                        elif result.get('status') == 'done':
+                        elif status == 'done':
                             print(f"\n✅ Final response received after {i+1} polls (status=done)")
                             return result
-                        elif result.get('status') == 'error':
+                        elif status == 'error':
                             print(f"\n❌ Error in processing: {result.get('error', 'Unknown error')}")
                             return None
                         else:
                             # Still processing
-                            status = result.get('status', 'processing')
                             if endpoint_idx == 0:  # Only print status from first endpoint to avoid spam
-                                print(f"   Poll {i+1}: Status = {status}, trying endpoint {endpoint_idx+1}/4", end='\r')
+                                print(f"   Poll {i+1}: Status = '{status}', trying endpoint {endpoint_idx+1}/4", end='\r')
                             continue  # Try next endpoint
                             
                     elif poll_response.status_code == 404:
