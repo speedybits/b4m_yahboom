@@ -181,17 +181,16 @@ class B4MPingTest:
             print("⚠️ No quest ID found in response, returning initial response")
             return initial_response
         
-        # Try different polling endpoints - focus on direct quest/message endpoints
-        # The B4M_API.md response shows type: "message", so try message endpoints first
+        # Try polling variations of the documented /api/ai/llm endpoint
         poll_endpoints = [
-            f"https://app.bike4mind.com/api/messages/{quest_id}",  # Direct message endpoint
-            f"https://app.bike4mind.com/api/ai/messages/{quest_id}",  # AI messages endpoint
-            f"https://app.bike4mind.com/api/sessions/{self.session_id}/messages/{quest_id}",  # Session messages
-            f"https://app.bike4mind.com/api/quests/{quest_id}",  # Quest-specific endpoint
-            f"https://app.bike4mind.com/api/ai/quests/{quest_id}",  # AI quest endpoint
-            f"https://app.bike4mind.com/api/ai/llm/{quest_id}",  # LLM with quest ID
+            f"https://app.bike4mind.com/api/ai/llm/{quest_id}",  # Direct quest ID path
+            f"https://app.bike4mind.com/api/ai/llm/status/{quest_id}",  # Status subpath
+            f"https://app.bike4mind.com/api/ai/llm/response/{quest_id}",  # Response subpath
+            f"https://app.bike4mind.com/api/ai/llm/result/{quest_id}",  # Result subpath
             f"https://app.bike4mind.com/api/ai/llm?questId={quest_id}",  # Query param
-            f"https://app.bike4mind.com/api/ai/llm?sessionId={self.session_id}&questId={quest_id}"  # Both params
+            f"https://app.bike4mind.com/api/ai/llm?id={quest_id}",  # ID param
+            f"https://app.bike4mind.com/api/ai/llm?sessionId={self.session_id}&questId={quest_id}",  # Both params
+            f"https://app.bike4mind.com/api/ai/llm?sessionId={self.session_id}&id={quest_id}",  # Session + ID
         ]
         
         print(f"📊 Polling for quest ID: {quest_id}")

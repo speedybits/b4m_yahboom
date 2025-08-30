@@ -20,25 +20,27 @@ def test_polling_endpoints(quest_id, session_id, api_key, user_id):
         "Content-Type": "application/json"
     }
     
-    # Comprehensive list of possible polling endpoints
+    # Focus on /api/ai/llm endpoint variations since that's the documented POST endpoint
     endpoints = [
-        f"https://app.bike4mind.com/api/quests/{quest_id}",
-        f"https://app.bike4mind.com/api/quest/{quest_id}",
+        # Direct /api/ai/llm variations (highest priority)
         f"https://app.bike4mind.com/api/ai/llm/{quest_id}",
-        f"https://app.bike4mind.com/api/ai/quest/{quest_id}",
+        f"https://app.bike4mind.com/api/ai/llm/status/{quest_id}",
+        f"https://app.bike4mind.com/api/ai/llm/response/{quest_id}",
+        f"https://app.bike4mind.com/api/ai/llm/result/{quest_id}",
+        f"https://app.bike4mind.com/api/ai/llm/quest/{quest_id}",
         f"https://app.bike4mind.com/api/ai/llm?questId={quest_id}",
         f"https://app.bike4mind.com/api/ai/llm?id={quest_id}",
-        f"https://app.bike4mind.com/api/ai/llm?sessionId={session_id}",
         f"https://app.bike4mind.com/api/ai/llm?sessionId={session_id}&questId={quest_id}",
         f"https://app.bike4mind.com/api/ai/llm?sessionId={session_id}&id={quest_id}",
-        f"https://app.bike4mind.com/api/sessions/{session_id}/quests/{quest_id}",
-        f"https://app.bike4mind.com/api/sessions/{session_id}/quest/{quest_id}",
-        f"https://app.bike4mind.com/api/sessions/{session_id}",
-        f"https://app.bike4mind.com/api/sessions/{session_id}/latest",
+        f"https://app.bike4mind.com/api/ai/llm?sessionId={session_id}",
+        # Other possible patterns (lower priority)
+        f"https://app.bike4mind.com/api/quests/{quest_id}",
+        f"https://app.bike4mind.com/api/quest/{quest_id}",
         f"https://app.bike4mind.com/api/responses/{quest_id}",
         f"https://app.bike4mind.com/api/response/{quest_id}",
         f"https://app.bike4mind.com/api/messages/{quest_id}",
         f"https://app.bike4mind.com/api/message/{quest_id}",
+        f"https://app.bike4mind.com/api/sessions/{session_id}",
     ]
     
     print(f"\n🔍 Testing {len(endpoints)} possible polling endpoints:")
