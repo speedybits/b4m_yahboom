@@ -9,7 +9,7 @@ We must make sure that only the environment variable is used. We never want to c
 Here is the CURL POST request
 ==========================================
 
-IMPORTANT: The sessionId (68b1dc95ae477e08d46e11de) must be an existing session in your B4M account.
+IMPORTANT: The sessionId must be an existing session in your B4M account.
 You cannot create arbitrary session IDs - they must already exist in the system.
 
 curl -X POST \
