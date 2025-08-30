@@ -181,10 +181,14 @@ class B4MPingTest:
             print("⚠️ No quest ID found in response, returning initial response")
             return initial_response
         
-        # Try different polling endpoints based on the API structure
+        # Try different polling endpoints - focus on direct quest/message endpoints
+        # The B4M_API.md response shows type: "message", so try message endpoints first
         poll_endpoints = [
-            f"https://app.bike4mind.com/api/sessions/{self.session_id}",  # Session endpoint (found by detective)
+            f"https://app.bike4mind.com/api/messages/{quest_id}",  # Direct message endpoint
+            f"https://app.bike4mind.com/api/ai/messages/{quest_id}",  # AI messages endpoint
+            f"https://app.bike4mind.com/api/sessions/{self.session_id}/messages/{quest_id}",  # Session messages
             f"https://app.bike4mind.com/api/quests/{quest_id}",  # Quest-specific endpoint
+            f"https://app.bike4mind.com/api/ai/quests/{quest_id}",  # AI quest endpoint
             f"https://app.bike4mind.com/api/ai/llm/{quest_id}",  # LLM with quest ID
             f"https://app.bike4mind.com/api/ai/llm?questId={quest_id}",  # Query param
             f"https://app.bike4mind.com/api/ai/llm?sessionId={self.session_id}&questId={quest_id}"  # Both params
@@ -210,56 +214,40 @@ class B4MPingTest:
                     if poll_response.status_code == 200:
                         result = poll_response.json()
                         
-                        # Handle different response types based on endpoint
-                        if endpoint_idx == 0:  # Session endpoint
-                            quest_response = self.find_quest_in_session(result, quest_id)
-                            if quest_response:
-                                print(f"\n✅ Final response found in session after {i+1} polls")
-                                print(f"   Successful endpoint: {poll_url}")
-                                return quest_response
+                        # Check if this is a valid quest/message response
+                        has_replies = result.get('replies') and len(result.get('replies', [])) > 0
+                        status = result.get('status', 'unknown')
+                        response_type = result.get('type', 'unknown')
+                        
+                        # Debug logging for first few polls on first few endpoints
+                        if i < 3 and endpoint_idx < 3:
+                            print(f"\n   Debug Poll {i+1}: endpoint={poll_url.split('/')[-1]}")
+                            print(f"   Response keys: {list(result.keys())}")
+                            print(f"   Type: '{response_type}', Status: '{status}', Replies: {len(result.get('replies', []))} items")
                             
-                            # Debug logging for session endpoint
-                            if i < 3:
-                                print(f"\n   Debug Poll {i+1}: session endpoint")
-                                print(f"   Session keys: {list(result.keys())}")
-                                if 'messages' in result:
-                                    messages = result.get('messages', [])
-                                    print(f"   Found {len(messages)} messages in session")
-                                    # Look for our quest
-                                    for msg in messages[-5:]:  # Check last 5 messages
-                                        msg_id = msg.get('id') or msg.get('questId')
-                                        if msg_id == quest_id:
-                                            print(f"   Found our quest! Status: {msg.get('status', 'unknown')}")
-                                            print(f"   Replies: {len(msg.get('replies', []))} items")
-                                            break
-                        else:
-                            # Direct quest endpoint
-                            has_replies = result.get('replies') and len(result.get('replies', [])) > 0
-                            status = result.get('status', 'unknown')
+                            # Show questId to confirm this is our quest
+                            result_quest_id = result.get('questId') or result.get('id')
+                            if result_quest_id:
+                                print(f"   Quest ID: {result_quest_id} {'✓' if result_quest_id == quest_id else '✗'}")
                             
-                            # Debug logging for first few polls
-                            if i < 3 and endpoint_idx == 1:  # Only show debug for second endpoint
-                                print(f"\n   Debug Poll {i+1}: quest endpoint={poll_url}")
-                                print(f"   Response keys: {list(result.keys())}")
-                                print(f"   Status: '{status}', Replies: {len(result.get('replies', []))} items")
-                                if 'replies' in result and result['replies']:
-                                    print(f"   Replies content: {result['replies']}")
-                            
-                            if has_replies:
-                                print(f"\n✅ Final response received after {i+1} polls from endpoint {endpoint_idx+1}")
-                                print(f"   Successful endpoint: {poll_url}")
-                                return result
-                            elif status == 'done':
-                                print(f"\n✅ Final response received after {i+1} polls (status=done)")
-                                return result
-                            elif status == 'error':
-                                print(f"\n❌ Error in processing: {result.get('error', 'Unknown error')}")
-                                return None
+                            if 'replies' in result and result['replies']:
+                                print(f"   Replies: {result['replies']}")
+                        
+                        # Check if response is complete
+                        if has_replies:
+                            print(f"\n✅ Final response received after {i+1} polls from endpoint {endpoint_idx+1}")
+                            print(f"   Successful endpoint: {poll_url}")
+                            return result
+                        elif status == 'done':
+                            print(f"\n✅ Final response received after {i+1} polls (status=done)")
+                            return result
+                        elif status == 'error':
+                            print(f"\n❌ Error in processing: {result.get('error', 'Unknown error')}")
+                            return None
                         
                         # Still processing - continue to next endpoint
                         if endpoint_idx == 0:  # Only print status from first endpoint to avoid spam
-                            status = result.get('status', 'processing')
-                            print(f"   Poll {i+1}: Status = '{status}', trying endpoint {endpoint_idx+1}/5", end='\r')
+                            print(f"   Poll {i+1}: Status = '{status}', trying endpoint {endpoint_idx+1}/8", end='\r')
                         continue  # Try next endpoint
                             
                     elif poll_response.status_code == 404:
@@ -281,40 +269,6 @@ class B4MPingTest:
         print(f"\n⏰ Polling timeout after {max_polls} attempts")
         return None
     
-    def find_quest_in_session(self, session_data, quest_id):
-        """Search for a specific quest within session data"""
-        
-        # Look for messages/quests in various possible locations
-        possible_locations = [
-            session_data.get('messages', []),
-            session_data.get('quests', []),
-            session_data.get('items', []),
-            session_data.get('history', []),
-            session_data.get('responses', [])
-        ]
-        
-        for location in possible_locations:
-            if not isinstance(location, list):
-                continue
-                
-            for item in location:
-                if not isinstance(item, dict):
-                    continue
-                    
-                # Check various ID fields
-                item_id = (item.get('id') or 
-                          item.get('questId') or 
-                          item.get('_id') or 
-                          item.get('messageId'))
-                
-                if item_id == quest_id:
-                    # Found our quest! Check if it has replies
-                    if item.get('replies') and len(item.get('replies', [])) > 0:
-                        return item
-                    elif item.get('status') == 'done' or item.get('status') == 'completed':
-                        return item
-        
-        return None
     
     def display_response(self, response):
         """Display the B4M API response"""
