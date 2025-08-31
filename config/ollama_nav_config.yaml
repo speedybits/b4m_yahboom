@@ -15,6 +15,7 @@ navigation:
   min_goal_distance: 1.0         # Minimum distance for new goals (meters)
   max_goal_distance: 5.0         # Maximum distance for safety (meters)
   exploration_weight: 0.5        # Balance between exploration and navigation (0.5 = equal)
+  analysis_interval: 30.0        # Time between spatial analysis cycles (seconds)
   
 safety:
   obstacle_clearance: 0.5        # Minimum clearance from obstacles (meters)

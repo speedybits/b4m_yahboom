@@ -44,11 +44,12 @@ class OllamaBasicSpatial(Node):
         
         # State tracking
         self.last_analysis_time = 0
-        self.analysis_interval = 10.0  # Analyze every 10 seconds
+        self.analysis_interval = self.config.get('navigation', {}).get('analysis_interval', 30.0)
         self.latest_laser_data = None
         
         self.get_logger().info('✅ Ollama Basic Spatial Analysis initialized')
         self.get_logger().info(f'📡 Connected to Ollama at {self.ollama_url}')
+        self.get_logger().info(f'⏱️  Analysis interval: {self.analysis_interval}s (3x longer for goal completion)')
         
     def load_config(self):
         """Load configuration from ollama_nav_config.yaml"""
@@ -74,7 +75,8 @@ class OllamaBasicSpatial(Node):
                 },
                 'navigation': {
                     'min_goal_distance': 1.0,
-                    'max_goal_distance': 5.0
+                    'max_goal_distance': 5.0,
+                    'analysis_interval': 30.0
                 }
             }
     
