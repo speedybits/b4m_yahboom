@@ -16,6 +16,7 @@ navigation:
   max_goal_distance: 5.0         # Maximum distance for safety (meters)
   exploration_weight: 0.5        # Balance between exploration and navigation (0.5 = equal)
   analysis_interval: 30.0        # Time between spatial analysis cycles (seconds)
+  rotation_probability: 0.5      # Probability of rotation vs movement goals (0.5 = 50/50)
   
 safety:
   obstacle_clearance: 0.5        # Minimum clearance from obstacles (meters)
