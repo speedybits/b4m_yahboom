@@ -15,6 +15,7 @@ import math
 import yaml
 import os
 import time
+import random
 
 class OllamaBasicSpatial(Node):
     """Basic Ollama spatial analysis for navigation goal suggestions"""
@@ -47,9 +48,11 @@ class OllamaBasicSpatial(Node):
         self.analysis_interval = self.config.get('navigation', {}).get('analysis_interval', 30.0)
         self.latest_laser_data = None
         
+        rotation_prob = self.config.get('navigation', {}).get('rotation_probability', 0.5)
         self.get_logger().info('✅ Ollama Basic Spatial Analysis initialized')
         self.get_logger().info(f'📡 Connected to Ollama at {self.ollama_url}')
         self.get_logger().info(f'⏱️  Analysis interval: {self.analysis_interval}s (3x longer for goal completion)')
+        self.get_logger().info(f'🔄 Rotation probability: {rotation_prob*100:.0f}% (robot will rotate in place vs move)')
         
     def load_config(self):
         """Load configuration from ollama_nav_config.yaml"""
@@ -76,7 +79,8 @@ class OllamaBasicSpatial(Node):
                 'navigation': {
                     'min_goal_distance': 1.0,
                     'max_goal_distance': 5.0,
-                    'analysis_interval': 30.0
+                    'analysis_interval': 30.0,
+                    'rotation_probability': 0.5
                 }
             }
     
@@ -179,6 +183,13 @@ class OllamaBasicSpatial(Node):
     
     def query_ollama_for_goal(self, spatial_context):
         """Query Ollama for navigation goal suggestion with fallback"""
+        
+        # Check if we should rotate in place (configurable probability)
+        rotation_prob = self.config.get('navigation', {}).get('rotation_probability', 0.5)
+        if random.random() < rotation_prob:
+            self.get_logger().info('🔄 Selecting rotation-in-place goal for better scanning')
+            return self.generate_rotation_goal()
+        
         # First try simple rule-based goal selection
         fallback_goal = self.generate_fallback_goal(spatial_context)
         
@@ -288,6 +299,21 @@ class OllamaBasicSpatial(Node):
                 'reasoning': 'Emergency fallback: Move forward 1m'
             }
     
+    def generate_rotation_goal(self):
+        """Generate a rotation-in-place goal (same position, new orientation)"""
+        
+        # Choose a random new orientation (0-360 degrees)
+        rotation_angles = [45, 90, 135, 180, 225, 270, 315]  # 8 cardinal/ordinal directions
+        target_angle = random.choice(rotation_angles)
+        target_angle_rad = math.radians(target_angle)
+        
+        return {
+            'goal_x': 0.0,  # Stay in current position
+            'goal_y': 0.0,  # Stay in current position  
+            'goal_orientation': target_angle_rad,  # New orientation
+            'reasoning': f'Rotation in place to face {target_angle}° for better spatial scanning'
+        }
+    
     def publish_navigation_goal(self, goal_data):
         """Publish navigation goal to RViz"""
         try:
@@ -295,25 +321,48 @@ class OllamaBasicSpatial(Node):
             goal_msg.header.stamp = self.get_clock().now().to_msg()
             goal_msg.header.frame_id = 'map'
             
-            # Set position from Ollama suggestion
+            # Set position from goal data
             goal_msg.pose.position.x = float(goal_data['goal_x'])
             goal_msg.pose.position.y = float(goal_data['goal_y'])
             goal_msg.pose.position.z = 0.0
             
-            # Set orientation (facing forward)
-            goal_msg.pose.orientation.x = 0.0
-            goal_msg.pose.orientation.y = 0.0
-            goal_msg.pose.orientation.z = 0.0
-            goal_msg.pose.orientation.w = 1.0
+            # Set orientation (handle both movement and rotation goals)
+            if 'goal_orientation' in goal_data:
+                # Rotation goal - convert angle to quaternion
+                yaw = goal_data['goal_orientation']
+                goal_msg.pose.orientation.x = 0.0
+                goal_msg.pose.orientation.y = 0.0
+                goal_msg.pose.orientation.z = math.sin(yaw / 2.0)
+                goal_msg.pose.orientation.w = math.cos(yaw / 2.0)
+            else:
+                # Movement goal - face forward (default orientation)
+                goal_msg.pose.orientation.x = 0.0
+                goal_msg.pose.orientation.y = 0.0
+                goal_msg.pose.orientation.z = 0.0
+                goal_msg.pose.orientation.w = 1.0
             
-            # Validate goal distance
+            # Validate goal distance (skip validation for rotation-in-place goals)
             distance = math.sqrt(goal_data['goal_x']**2 + goal_data['goal_y']**2)
-            min_dist = self.config['navigation']['min_goal_distance']
-            max_dist = self.config['navigation']['max_goal_distance']
+            is_rotation_goal = distance < 0.1  # Very small movement = rotation goal
             
-            if min_dist <= distance <= max_dist:
+            if is_rotation_goal:
+                # Always allow rotation goals
+                should_publish = True
+                goal_type = "rotation"
+            else:
+                # Validate movement goals
+                min_dist = self.config['navigation']['min_goal_distance']
+                max_dist = self.config['navigation']['max_goal_distance']
+                should_publish = min_dist <= distance <= max_dist
+                goal_type = "movement"
+            
+            if should_publish:
                 self.goal_publisher.publish(goal_msg)
-                self.get_logger().info(f'🎯 Published navigation goal: ({goal_data["goal_x"]}, {goal_data["goal_y"]})')
+                if goal_type == "rotation":
+                    angle_deg = math.degrees(goal_data.get('goal_orientation', 0))
+                    self.get_logger().info(f'🔄 Published rotation goal: face {angle_deg:.0f}° (staying at current position)')
+                else:
+                    self.get_logger().info(f'🎯 Published movement goal: ({goal_data["goal_x"]}, {goal_data["goal_y"]})')
             else:
                 self.get_logger().warn(f'⚠️  Goal distance {distance:.1f}m outside safe range [{min_dist}, {max_dist}]')
                 
