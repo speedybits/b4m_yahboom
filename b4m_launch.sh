@@ -1263,14 +1263,14 @@ if [ "$OLLAMA_NAV_BASIC_MODE" = true ]; then
     
     if [[ "$enable_ollama" =~ ^[Yy]$ ]]; then
         echo "🧠 Step 7: Starting Ollama Basic Spatial Analysis"
-        echo "   This will analyze surroundings every 10 seconds and suggest navigation goals"
+        echo "   This will analyze surroundings every 30 seconds and suggest navigation goals"
         python3 scripts/ollama_basic_spatial.py > "$LOGS_DIR/ollama_spatial_$TIMESTAMP.log" 2>&1 &
         OLLAMA_PID=$!
         echo "   ✅ Ollama spatial analysis started (PID: $OLLAMA_PID)"
         echo ""
         echo "🤖 AUTONOMOUS NAVIGATION ACTIVE"
         echo "======================================"
-        echo "   - Robot will analyze surroundings every 10 seconds"
+        echo "   - Robot will analyze surroundings every 30 seconds"
         echo "   - Ollama LLM will suggest navigation goals based on spatial context"
         echo "   - Goals will appear as RViz markers and robot will navigate to them"
         echo "   - Check logs for Ollama reasoning: $LOGS_DIR/ollama_spatial_$TIMESTAMP.log"
@@ -1288,7 +1288,7 @@ if [ "$OLLAMA_NAV_BASIC_MODE" = true ]; then
         sleep 30
         if [ ! -z "$OLLAMA_PID" ]; then
             echo "🧭 Ollama Navigation Basic active with AI... (Ctrl+C to stop)"
-            echo "   Robot analyzing surroundings and suggesting goals via Ollama LLM"
+            echo "   Robot analyzing surroundings every 30 seconds and suggesting goals via Ollama LLM"
             echo "   Check Ollama logs: $LOGS_DIR/ollama_spatial_$TIMESTAMP.log"
         else
             echo "🧭 Ollama Navigation Basic active... (Ctrl+C to stop)"
