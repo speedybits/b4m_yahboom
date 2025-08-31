@@ -260,6 +260,7 @@ spatial_context:
   
 safety:
   emergency_stop_distance: 0.15
+  one_foot_decision_trigger: 0.305  # Stop for new decision when obstacle within 1 foot (0.305m)
   max_forward_distance: 10.0  # Maximum distance for single forward command
   max_turn_angle: 360  # Maximum turn angle in degrees
   enable_manual_override: true
@@ -318,7 +319,8 @@ Key aspects of the advanced mode implementation:
 - Robot immediately stops when ANY trigger condition is met:
   - Distance traveled ≥ configured interval (e.g., 5m)
   - Time elapsed ≥ configured interval (e.g., 30s)  
-  - Obstacle detected within emergency stop distance
+  - Obstacle detected within emergency stop distance (front-facing)
+  - **360° Obstacle Detection**: Any obstacle within 1 foot (0.305m) in ANY direction
 - No command completion - immediate stop and new decision
 
 **Obstacle During Movement:**
@@ -497,6 +499,44 @@ DETECTED FEATURES:
 [14:34:15.123] 🔄 Turning right 90°...
 ```
 
+### Example 5: 1-Foot Obstacle Detection Trigger
+
+```
+[14:35:10.234] ➡️ Moving forward continuously...
+[14:35:12.567] 📏 Progress: 2.1m traveled
+[14:35:14.890] 🔄 Decision point reached - stopping for 360° analysis
+   Trigger: Obstacle within 1 foot detected (closest: 0.28m = 0.9 feet)
+
+===============================================================
+🌐 360° SPATIAL ANALYSIS (1-FOOT PROXIMITY TRIGGER)
+===============================================================
+
+You are a mobile robot with 360-degree vision. Here's what surrounds you:
+
+SURROUNDING ENVIRONMENT:
+• front: CLEAR - open space for at least 2.1m
+• right-side: PASSABLE - nearest object at 0.28m
+• back-left: CLEAR - open space for at least 4.8m
+
+NAVIGATION ANALYSIS:
+• Clearest path: back-left  
+• Blocked directions: 2 of 24 sectors
+• Average clearance: 2.87m
+
+🦙 Consulting Ollama for navigation decision...
+
+💭 OLLAMA RESPONSE: Turn -45 degrees, and then move ahead 2 meters or until we reach an obstacle.
+
+🎯 PARSED COMMAND:
+   • Turn: -45° (left rotation)
+   • Move: 2.0 meters forward
+   • Parse method: structured
+
+[14:35:18.123] 🔄 Turning left 45°...
+[14:35:19.456] ✅ Turn complete
+[14:35:19.789] ➡️ Moving forward 2.0m or until obstacle...
+```
+
 ## Testing Strategy
 
 ### Unit Tests
@@ -544,12 +584,13 @@ DETECTED FEATURES:
 ### Multi-layer Safety System
 
 1. **Continuous Obstacle Monitoring**: Even during movement between decisions
-2. **Command Validation**: Verify all commands are safe before execution
-3. **Distance Limiting**: Cap maximum movement distances
-4. **Collision Prediction**: Anticipate collisions based on current trajectory
-5. **Emergency Override**: Manual intervention always available
-6. **Timeout Protection**: Stop if Ollama doesn't respond within timeout
-7. **Sanity Checks**: Verify parsed commands make spatial sense
+2. **360° Proximity Detection**: Stop for new decision when any obstacle within 1 foot
+3. **Command Validation**: Verify all commands are safe before execution
+4. **Distance Limiting**: Cap maximum movement distances
+5. **Collision Prediction**: Anticipate collisions based on current trajectory
+6. **Emergency Override**: Manual intervention always available
+7. **Timeout Protection**: Stop if Ollama doesn't respond within timeout
+8. **Sanity Checks**: Verify parsed commands make spatial sense
 
 ## Future Enhancements
 
