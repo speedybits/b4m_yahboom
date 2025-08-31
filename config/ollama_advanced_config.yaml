@@ -33,6 +33,7 @@ spatial_context:
   
 safety:
   emergency_stop_distance: 0.15
+  one_foot_decision_trigger: 0.305  # Stop for new decision when obstacle within 1 foot (0.305m)
   max_forward_distance: 10.0  # Maximum distance for single forward command
   max_turn_angle: 360  # Maximum turn angle in degrees
   enable_manual_override: true

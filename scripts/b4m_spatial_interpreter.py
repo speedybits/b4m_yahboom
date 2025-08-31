@@ -1283,10 +1283,43 @@ class B4MSpatialInterpreter(Node):
         time_trigger = (current_time - self.last_decision_time >= 
                        self.config['navigation']['decision_interval_time'])
         
-        # Emergency obstacle trigger
+        # Emergency obstacle trigger (basic front obstacle detection)
         emergency_trigger = self.obstacle_detected
         
-        return distance_trigger or time_trigger or emergency_trigger
+        # 360-degree obstacle detection (1 foot = 0.305m in any direction)
+        obstacle_1_foot_trigger = self.detect_obstacle_within_1_foot()
+        
+        return distance_trigger or time_trigger or emergency_trigger or obstacle_1_foot_trigger
+    
+    def detect_obstacle_within_1_foot(self):
+        """Detect if any obstacle is within 1 foot (configurable) in any direction"""
+        if self.laser_data is None:
+            return False
+            
+        ranges = self.get_clean_laser_ranges()
+        if len(ranges) == 0:
+            return False
+        
+        # Get threshold from config (default 1 foot = 0.305m)
+        one_foot_threshold = self.config.get('safety', {}).get('one_foot_decision_trigger', 0.305)
+        
+        # Find minimum distance in all directions
+        min_distance_all_directions = np.min(ranges)
+        
+        return min_distance_all_directions < one_foot_threshold
+    
+    def get_clean_laser_ranges(self):
+        """Get cleaned laser scan ranges for analysis"""
+        if self.laser_data is None:
+            return np.array([])
+            
+        ranges = np.array(self.laser_data.ranges)
+        ranges[np.isinf(ranges)] = self.laser_data.range_max
+        ranges[np.isnan(ranges)] = self.laser_data.range_max
+        ranges[ranges == 0.0] = self.laser_data.range_max  # Invalid readings
+        ranges[ranges <= self.laser_data.range_min] = self.laser_data.range_max  # Below sensor min
+        
+        return ranges
     
     def execute_advanced_navigation_command(self, parsed_command):
         """Execute a parsed advanced navigation command"""
@@ -1334,12 +1367,22 @@ class B4MSpatialInterpreter(Node):
             
             # Stop and make a decision
             print(f"\n[{get_timestamp()}] 🔄 Decision point reached - stopping for 360° analysis")
-            if self.distance_since_last_decision >= self.config['navigation']['decision_interval_distance']:
+            
+            # Determine and report the trigger reason
+            distance_trigger = self.distance_since_last_decision >= self.config['navigation']['decision_interval_distance']
+            time_trigger = time.time() - self.last_decision_time >= self.config['navigation']['decision_interval_time']
+            emergency_trigger = self.obstacle_detected
+            one_foot_trigger = self.detect_obstacle_within_1_foot()
+            
+            if distance_trigger:
                 print(f"   Trigger: Distance ({self.distance_since_last_decision:.1f}m >= {self.config['navigation']['decision_interval_distance']}m)")
-            elif time.time() - self.last_decision_time >= self.config['navigation']['decision_interval_time']:
+            elif time_trigger:
                 print(f"   Trigger: Time ({time.time() - self.last_decision_time:.1f}s >= {self.config['navigation']['decision_interval_time']}s)")
-            elif self.obstacle_detected:
-                print(f"   Trigger: Emergency obstacle detected")
+            elif emergency_trigger:
+                print(f"   Trigger: Emergency front obstacle detected")
+            elif one_foot_trigger:
+                min_dist = np.min(self.get_clean_laser_ranges()) if self.laser_data else 0
+                print(f"   Trigger: Obstacle within 1 foot detected (closest: {min_dist:.2f}m = {min_dist*3.28:.1f} feet)")
                 
             cmd.linear.x = 0.0
             cmd.angular.z = 0.0
