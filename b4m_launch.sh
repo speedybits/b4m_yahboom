@@ -4,7 +4,7 @@
 # This script automates the launch process for the B4M Robot 
 # Each step will be launched in a separate terminal with user confirmation
 #
-# Usage: ./b4m_launch.sh [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--nav] [--b4m-api] [--ollama] [--ollama-advanced] [--b4m-HA] [--b4m-ping] [--navigation-performance-test] [--setup-wifi] [--skip-rebuild]
+# Usage: ./b4m_launch.sh [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--nav] [--b4m-api] [--ollama] [--ollama-advanced] [--ollama-nav] [--ollama-nav-basic] [--b4m-HA] [--b4m-ping] [--navigation-performance-test] [--setup-wifi] [--skip-rebuild]
 #   --skip-agent:                   Skip the Micro-ROS agent launch (Step 1)
 #   --only-agent:                   Launch ONLY the Micro-ROS agent (Step 1) and exit
 #   --debug:                        Enable verbose debug logging
@@ -15,6 +15,8 @@
 #   --b4m-api:                      Enable B4M API mode (duplicate of --explore for API integration)
 #   --ollama:                       Enable Ollama mode (basic cardinal directions)
 #   --ollama-advanced:              Enable Ollama Advanced mode (360° spatial context)
+#   --ollama-nav:                   Enable Ollama Navigation mode (LLM-guided Nav2 goal selection)
+#   --ollama-nav-basic:             Enable basic Ollama Navigation mode (copy of --nav for testing)
 #   --b4m-HA:                       (Experimental) Enable Home Assistant MQTT integration features
 #   --b4m-ping:                     Test bike4mind API with random obstacle detection messages
 #   --navigation-performance-test:  (Untested) Execute 1x1m square navigation circuit testing
@@ -31,6 +33,7 @@ NAV_MODE=false
 B4M_API=false
 OLLAMA_MODE=false
 OLLAMA_ADVANCED_MODE=false
+OLLAMA_NAV_MODE=false
 B4M_PING=false
 B4M_HA=false
 NAVIGATION_PERFORMANCE_TEST=false
@@ -78,6 +81,14 @@ for arg in "$@"; do
             OLLAMA_ADVANCED_MODE=true
             shift
             ;;
+        --ollama-nav)
+            OLLAMA_NAV_MODE=true
+            shift
+            ;;
+        --ollama-nav-basic)
+            OLLAMA_NAV_BASIC_MODE=true
+            shift
+            ;;
         --b4m-ping)
             B4M_PING=true
             shift
@@ -99,7 +110,7 @@ for arg in "$@"; do
             shift
             ;;
         -h|--help)
-            echo "Usage: $0 [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--nav] [--b4m-api] [--ollama] [--ollama-advanced] [--b4m-HA] [--b4m-ping] [--navigation-performance-test] [--setup-wifi] [--skip-rebuild]"
+            echo "Usage: $0 [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--nav] [--b4m-api] [--ollama] [--ollama-advanced] [--ollama-nav] [--ollama-nav-basic] [--b4m-HA] [--b4m-ping] [--navigation-performance-test] [--setup-wifi] [--skip-rebuild]"
             echo "  --skip-agent:                   Skip the Micro-ROS agent launch (Step 1)"
             echo "  --only-agent:                   Launch ONLY the Micro-ROS agent (Step 1) and exit"
             echo "  --debug:                        Enable verbose debug logging"
@@ -110,6 +121,8 @@ for arg in "$@"; do
             echo "  --b4m-api:                      Enable B4M API mode (duplicate of --explore for API integration)"
             echo "  --ollama:                       Enable Ollama mode (basic cardinal directions)"
             echo "  --ollama-advanced:              Enable Ollama Advanced mode (360° spatial context)"
+            echo "  --ollama-nav:                   Enable Ollama Navigation mode (LLM-guided Nav2 goal selection)"
+            echo "  --ollama-nav-basic:             Enable basic Ollama Navigation mode (copy of --nav for testing)"
 	    echo "  --b4m-HA:                       (Experimental) Enable Home Assistant MQTT integration features"
             echo "  --b4m-ping:                     Test bike4mind API with random obstacle detection messages"
 	    echo "  --navigation-performance-test:  (Untested) Execute 1x1m square navigation circuit testing"
@@ -214,6 +227,16 @@ if [ "$OLLAMA_MODE" = true ] && [ "$OLLAMA_ADVANCED_MODE" = true ]; then
     echo "Choose either basic or advanced Ollama integration"
     exit 1
 fi
+if [ "$OLLAMA_MODE" = true ] && [ "$OLLAMA_NAV_MODE" = true ]; then
+    echo "ERROR: --ollama and --ollama-nav modes cannot be used together"
+    echo "Choose either basic Ollama or Nav2-integrated Ollama mode"
+    exit 1
+fi
+if [ "$OLLAMA_ADVANCED_MODE" = true ] && [ "$OLLAMA_NAV_MODE" = true ]; then
+    echo "ERROR: --ollama-advanced and --ollama-nav modes cannot be used together"
+    echo "Choose either advanced spatial context or Nav2-integrated mode"
+    exit 1
+fi
 
 if [ "$B4M_API" = true ] && [ "$OLLAMA_ADVANCED_MODE" = true ]; then
     echo "ERROR: --b4m-api mode is incompatible with --ollama-advanced mode"
@@ -238,10 +261,77 @@ if [ "$OLLAMA_ADVANCED_MODE" = true ] && [ "$NAVIGATION_PERFORMANCE_TEST" = true
     echo "Both modes require different robot control patterns"
     exit 1
 fi
+if [ "$OLLAMA_NAV_MODE" = true ] && [ "$EXPLORE_MODE" = true ]; then
+    echo "ERROR: --ollama-nav mode is incompatible with --explore mode"
+    echo "Both modes provide different navigation approaches"
+    exit 1
+fi
+if [ "$OLLAMA_NAV_MODE" = true ] && [ "$NAV_MODE" = true ]; then
+    echo "ERROR: --ollama-nav mode is incompatible with --nav mode"
+    echo "Ollama-nav already includes Navigation 2 functionality"
+    exit 1
+fi
+if [ "$OLLAMA_NAV_MODE" = true ] && [ "$B4M_API" = true ]; then
+    echo "ERROR: --ollama-nav mode is incompatible with --b4m-api mode"
+    echo "Both modes provide different navigation approaches"
+    exit 1
+fi
+if [ "$OLLAMA_NAV_MODE" = true ] && [ "$REGRESSION_MODE" = true ]; then
+    echo "ERROR: --ollama-nav mode is incompatible with --regression mode"
+    echo "Ollama navigation requires LLM service while regression runs automated tests"
+    exit 1
+fi
+if [ "$OLLAMA_NAV_MODE" = true ] && [ "$NAVIGATION_PERFORMANCE_TEST" = true ]; then
+    echo "ERROR: --ollama-nav mode is incompatible with --navigation-performance-test mode"
+    echo "Both modes require different robot control patterns"
+    exit 1
+fi
+
+# Ollama Nav Basic mode incompatibility checks
+if [ "$OLLAMA_NAV_BASIC_MODE" = true ] && [ "$EXPLORE_MODE" = true ]; then
+    echo "ERROR: --ollama-nav-basic mode is incompatible with --explore mode"
+    echo "Both modes provide different navigation approaches"
+    exit 1
+fi
+if [ "$OLLAMA_NAV_BASIC_MODE" = true ] && [ "$NAV_MODE" = true ]; then
+    echo "ERROR: --ollama-nav-basic mode is incompatible with --nav mode"
+    echo "Ollama-nav-basic is a copy of --nav functionality"
+    exit 1
+fi
+if [ "$OLLAMA_NAV_BASIC_MODE" = true ] && [ "$B4M_API" = true ]; then
+    echo "ERROR: --ollama-nav-basic mode is incompatible with --b4m-api mode"
+    echo "Both modes provide different navigation approaches"
+    exit 1
+fi
+if [ "$OLLAMA_NAV_BASIC_MODE" = true ] && [ "$OLLAMA_MODE" = true ]; then
+    echo "ERROR: --ollama-nav-basic mode is incompatible with --ollama mode"
+    echo "Both modes provide different navigation approaches"
+    exit 1
+fi
+if [ "$OLLAMA_NAV_BASIC_MODE" = true ] && [ "$OLLAMA_ADVANCED_MODE" = true ]; then
+    echo "ERROR: --ollama-nav-basic mode is incompatible with --ollama-advanced mode"
+    echo "Both modes provide different navigation approaches"
+    exit 1
+fi
+if [ "$OLLAMA_NAV_BASIC_MODE" = true ] && [ "$OLLAMA_NAV_MODE" = true ]; then
+    echo "ERROR: --ollama-nav-basic mode is incompatible with --ollama-nav mode"
+    echo "Both modes provide different Ollama navigation approaches"
+    exit 1
+fi
+if [ "$OLLAMA_NAV_BASIC_MODE" = true ] && [ "$REGRESSION_MODE" = true ]; then
+    echo "ERROR: --ollama-nav-basic mode is incompatible with --regression mode"  
+    echo "Ollama navigation basic requires manual control while regression runs automated tests"
+    exit 1
+fi
+if [ "$OLLAMA_NAV_BASIC_MODE" = true ] && [ "$NAVIGATION_PERFORMANCE_TEST" = true ]; then
+    echo "ERROR: --ollama-nav-basic mode is incompatible with --navigation-performance-test mode"
+    echo "Both modes require different robot control patterns"
+    exit 1
+fi
 
 # B4M Ping mode incompatibility checks
 if [ "$B4M_PING" = true ]; then
-    if [ "$EXPLORE_MODE" = true ] || [ "$NAV_MODE" = true ] || [ "$B4M_API" = true ] || [ "$OLLAMA_MODE" = true ] || [ "$OLLAMA_ADVANCED_MODE" = true ] || [ "$REGRESSION_MODE" = true ] || [ "$NAVIGATION_PERFORMANCE_TEST" = true ]; then
+    if [ "$EXPLORE_MODE" = true ] || [ "$NAV_MODE" = true ] || [ "$B4M_API" = true ] || [ "$OLLAMA_MODE" = true ] || [ "$OLLAMA_ADVANCED_MODE" = true ] || [ "$OLLAMA_NAV_MODE" = true ] || [ "$OLLAMA_NAV_BASIC_MODE" = true ] || [ "$REGRESSION_MODE" = true ] || [ "$NAVIGATION_PERFORMANCE_TEST" = true ]; then
         echo "ERROR: --b4m-ping is incompatible with other modes"
         echo "B4M Ping is a standalone API testing tool"
         exit 1
@@ -967,6 +1057,247 @@ if [ "$NAV_MODE" = true ]; then
     done
 fi
 
+# Handle Ollama Navigation Basic mode (exact copy of Navigation 2 mode with SLAM for testing)
+if [ "$OLLAMA_NAV_BASIC_MODE" = true ]; then
+    echo "🧭 OLLAMA NAVIGATION BASIC MODE (Nav2 Copy)"
+    echo "======================================"
+    echo "Launching Navigation 2 with Cartographer SLAM (copy of --nav for testing)"
+    
+    if [ "$SIMULATION_MODE" = true ]; then
+        echo "Mode: Gazebo Classic Simulation with Navigation World"
+        WORLD_NAME="exploration_test_classic"  # Use exploration world for navigation
+    else  
+        echo "Mode: Real Robot Navigation with SLAM"
+    fi
+    
+    echo ""
+    echo "This mode will:"
+    echo "- Launch Cartographer for real-time SLAM mapping"
+    echo "- Start Navigation 2 stack for path planning and obstacle avoidance"
+    echo "- Allow goal setting via RViz 2D Nav Goal tool"
+    echo "- Build and use map simultaneously for navigation"
+    echo "- (Future: Add automatic 2D pose setting and Ollama features)"
+    echo ""
+    
+    # Ensure clean state before launching
+    echo "🧹 ENSURING CLEAN STATE FOR NAVIGATION"
+    echo "======================================"
+    echo "Cleaning up any existing ROS2 processes to prevent TF conflicts..."
+    ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1
+    sleep 3
+    echo "✅ System cleanup completed"
+    echo ""
+    
+    # Launch navigation sequence
+    echo "🚀 NAVIGATION 2 LAUNCH SEQUENCE"
+    echo "======================================"
+    
+    if [ "$SIMULATION_MODE" = true ]; then
+        # Step 1: Launch Gazebo Classic simulation
+        echo "🎮 Step 1: Starting Gazebo Classic simulation with navigation world"
+        ros2 launch yahboomcar_nav gazebo_classic_nav_launch.py world_name:=$WORLD_NAME > "$LOGS_DIR/nav_gazebo_$TIMESTAMP.log" 2>&1 &
+        GAZEBO_PID=$!
+        echo "   Waiting for simulation initialization..."
+        sleep 10
+        
+        # Verify laser scan is being published
+        echo "   Verifying laser scan topic..."
+        if timeout 5 ros2 topic echo /scan --once > /dev/null 2>&1; then
+            echo "   ✅ Laser scan topic active"
+        else
+            echo "   ⚠️  Warning: Laser scan topic not detected"
+        fi
+        
+        # Step 2: Launch robot bringup for EKF and sensor processing
+        echo "🤖 Step 2: Starting robot sensor and control systems (EKF, IMU, etc.)"
+        echo "   This is required even in simulation to get filtered /odom from EKF"
+        cd "$WORKSPACE_ROOT" && . source_workspaces.sh && ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py use_sim_time:=true > "$LOGS_DIR/nav_bringup_$TIMESTAMP.log" 2>&1 &
+        BRINGUP_PID=$!
+        echo "   Waiting for sensor initialization and EKF startup..."
+        sleep 12
+        
+        # Verify odometry topic
+        echo "   Verifying odometry is available..."
+        timeout 10 ros2 topic echo /odom --once > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            echo "   ✅ Odometry topic verified"
+        else
+            echo "   ⚠️  Warning: /odom topic not ready, continuing anyway..."
+        fi
+        
+        # Step 3: Launch RViz for visualization
+        echo "📊 Step 3: Starting RViz for map visualization and navigation"
+        ros2 launch yahboomcar_nav display_launch.py use_sim_time:=true > "$LOGS_DIR/nav_rviz_$TIMESTAMP.log" 2>&1 &
+        RVIZ_PID=$!
+        sleep 5
+        
+    else
+        echo "   ⚠️  Make sure physical robot is powered on and ready"
+        echo "   ⚠️  Ensure navigation area is safe"
+        read -p "   Press Enter when robot is ready for navigation..."
+        
+        # Step 1: Launch robot bringup 
+        echo "🤖 Step 1: Starting robot sensor and control systems"
+        cd "$WORKSPACE_ROOT" && . source_workspaces.sh && ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py > "$LOGS_DIR/nav_bringup_$TIMESTAMP.log" 2>&1 &
+        BRINGUP_PID=$!
+        echo "   Waiting for sensor initialization and EKF startup..."
+        sleep 12
+        
+        # Verify odometry topic
+        echo "   Verifying odometry is available..."
+        timeout 10 ros2 topic echo /odom --once > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            echo "   ✅ Odometry topic verified"
+        else
+            echo "   ⚠️  Warning: /odom topic not ready, continuing anyway..."
+        fi
+        
+        # Step 2: Launch RViz for visualization
+        echo "📊 Step 2: Starting RViz for map visualization and navigation"  
+        ros2 launch yahboomcar_nav display_launch.py use_sim_time:=false > "$LOGS_DIR/nav_rviz_$TIMESTAMP.log" 2>&1 &
+        RVIZ_PID=$!
+        sleep 3
+    fi
+    
+    # Step 4: Launch TF bridge to connect odom_frame to odom
+    echo "🔗 Step 4: Creating TF bridge between odom_frame and odom"
+    ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 odom_frame odom > "$LOGS_DIR/nav_tf_bridge_$TIMESTAMP.log" 2>&1 &
+    TF_BRIDGE_PID=$!
+    echo "   Bridge created: odom_frame → odom (connects Cartographer to robot)"
+    
+    # Step 5: Launch SLAM Navigation (Cartographer + Nav2)
+    echo "🗺️  Step 5: Starting SLAM Navigation with Cartographer and Nav2"
+    if [ "$SIMULATION_MODE" = true ]; then
+        # Launch combined Cartographer SLAM and Navigation 2 stack
+        ros2 launch yahboomcar_nav cartographer_nav2_launch.py use_sim_time:=true > "$LOGS_DIR/nav_slam_navigation_$TIMESTAMP.log" 2>&1 &
+    else
+        ros2 launch yahboomcar_nav cartographer_nav2_launch.py use_sim_time:=false > "$LOGS_DIR/nav_slam_navigation_$TIMESTAMP.log" 2>&1 &
+    fi
+    SLAM_NAV_PID=$!
+    echo "   Waiting for SLAM and Navigation stack initialization..."
+    sleep 15  # Give more time for the full nav stack to initialize
+    
+    # Verify map topic is being published
+    echo "   Verifying map topic..."
+    if timeout 10 ros2 topic echo /map --once > /dev/null 2>&1; then
+        echo "   ✅ Map topic active"
+    else
+        echo "   ⚠️  Warning: Map topic not detected yet (may appear shortly)"
+    fi
+    
+    # Verify TF tree is complete
+    echo "   Verifying TF tree integrity..."
+    timeout 10 ros2 run tf2_ros tf2_echo map base_link > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        echo "   ✅ TF tree verified (map → base_link transform available)"
+    else
+        echo "   ⚠️  TF tree not complete yet, waiting additional time..."
+        sleep 5
+        timeout 5 ros2 run tf2_ros tf2_echo map base_link > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            echo "   ✅ TF tree now ready"
+        else
+            echo "   ⚠️  Warning: TF tree may be incomplete, but continuing..."
+        fi
+    fi
+    
+    # Verify Nav2 services are available
+    echo "   Verifying Navigation 2 services..."
+    timeout 5 ros2 service list | grep -q "navigate_to_pose"
+    if [ $? -eq 0 ]; then
+        echo "   ✅ Nav2 navigate_to_pose service available"
+    else
+        echo "   ⚠️  Warning: Nav2 services not detected yet"
+    fi
+    
+    # Step 6: Set automatic initial pose (replaces manual 2D pose estimation)
+    echo "🎯 Step 6: Setting automatic initial pose at map center"
+    echo "   This replaces manual 2D pose estimation in RViz"
+    python3 scripts/set_initial_pose.py > "$LOGS_DIR/nav_initial_pose_$TIMESTAMP.log" 2>&1
+    if [ $? -eq 0 ]; then
+        echo "   ✅ Automatic initial pose set at (0.0, 0.0)"
+    else
+        echo "   ⚠️  Warning: Initial pose setting failed, check logs"
+    fi
+    
+    echo ""
+    echo "✅ OLLAMA NAVIGATION BASIC ACTIVE (Nav2 Copy)"
+    echo "======================================"
+    echo "🧭 Robot is ready for goal-based navigation with SLAM"
+    echo "📊 Use RViz to:"
+    echo "   1. Monitor real-time map building: /map topic"
+    echo "   2. Set navigation goals: Use '2D Nav Goal' tool in RViz toolbar"  
+    echo "   3. Watch path planning: Global and local costmaps"
+    echo "   4. Track robot position: /tf displays robot location"
+    echo "   5. Note: Initial pose is set automatically - no manual '2D Pose Estimate' needed"
+    echo ""
+    echo "🎯 To navigate:"
+    echo "   - Click '2D Nav Goal' button in RViz toolbar"
+    echo "   - Click and drag on map to set goal position and orientation"
+    echo "   - Robot will plan path and navigate while avoiding obstacles"
+    echo ""
+    echo "🛑 To stop navigation:"
+    echo "   - Press Ctrl+C in this terminal, OR"
+    echo "   - Run: ./b4m_shutdown.sh --keep-agent"
+    echo ""
+    echo "💡 Tips:"
+    echo "   - The map builds as the robot moves and explores"
+    echo "   - Set goals in already-mapped areas for best results"
+    echo "   - Robot will re-plan if obstacles block the path"
+    echo ""
+    echo "🔬 Testing Status:"
+    echo "   - ✅ Basic Nav2 functionality (copied from --nav)"
+    echo "   - ✅ Automatic 2D pose setting (implemented and active)"
+    echo "   - ✅ Ollama spatial analysis (basic implementation ready)"
+    echo "   - 🚧 LLM goal selection (basic implementation ready)"
+    echo ""
+    
+    # Ask user if they want to enable Ollama features
+    echo "🤖 OLLAMA INTEGRATION OPTIONS"
+    echo "======================================"
+    echo "Basic Nav2 navigation is ready. You can:"
+    echo "1. Test manual navigation using RViz '2D Nav Goal' tool"
+    echo "2. Enable Ollama spatial analysis for autonomous goal suggestions"
+    echo ""
+    read -p "Enable Ollama spatial analysis? (y/N): " enable_ollama
+    
+    if [[ "$enable_ollama" =~ ^[Yy]$ ]]; then
+        echo "🧠 Step 7: Starting Ollama Basic Spatial Analysis"
+        echo "   This will analyze surroundings every 10 seconds and suggest navigation goals"
+        python3 scripts/ollama_basic_spatial.py > "$LOGS_DIR/ollama_spatial_$TIMESTAMP.log" 2>&1 &
+        OLLAMA_PID=$!
+        echo "   ✅ Ollama spatial analysis started (PID: $OLLAMA_PID)"
+        echo ""
+        echo "🤖 AUTONOMOUS NAVIGATION ACTIVE"
+        echo "======================================"
+        echo "   - Robot will analyze surroundings every 10 seconds"
+        echo "   - Ollama LLM will suggest navigation goals based on spatial context"
+        echo "   - Goals will appear as RViz markers and robot will navigate to them"
+        echo "   - Check logs for Ollama reasoning: $LOGS_DIR/ollama_spatial_$TIMESTAMP.log"
+        echo ""
+    else
+        echo "📋 Manual navigation mode - use RViz '2D Nav Goal' tool to set goals"
+        echo ""
+    fi
+    
+    # Wait for user to stop
+    trap 'echo "🛑 Stopping navigation..."; [ ! -z "$OLLAMA_PID" ] && kill $OLLAMA_PID 2>/dev/null; [ ! -z "$SLAM_NAV_PID" ] && kill $SLAM_NAV_PID 2>/dev/null; [ ! -z "$TF_BRIDGE_PID" ] && kill $TF_BRIDGE_PID 2>/dev/null; [ ! -z "$RVIZ_PID" ] && kill $RVIZ_PID 2>/dev/null; [ ! -z "$BRINGUP_PID" ] && kill $BRINGUP_PID 2>/dev/null; if [ "$SIMULATION_MODE" = true ]; then [ ! -z "$GAZEBO_PID" ] && kill $GAZEBO_PID 2>/dev/null; fi; ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1; echo "✅ Navigation stopped"; exit 0' INT
+    
+    # Keep the script running and show periodic status
+    while true; do
+        sleep 30
+        if [ ! -z "$OLLAMA_PID" ]; then
+            echo "🧭 Ollama Navigation Basic active with AI... (Ctrl+C to stop)"
+            echo "   Robot analyzing surroundings and suggesting goals via Ollama LLM"
+            echo "   Check Ollama logs: $LOGS_DIR/ollama_spatial_$TIMESTAMP.log"
+        else
+            echo "🧭 Ollama Navigation Basic active... (Ctrl+C to stop)"
+            echo "   Set navigation goals using RViz '2D Nav Goal' tool"
+            echo "   Manual navigation mode - Ollama analysis not enabled"
+        fi
+    done
+fi
+
 # Handle B4M API mode (same as explore mode but with spatial interpreter)
 if [ "$B4M_API" = true ]; then
     echo "🔌 B4M API MODE"
@@ -1514,6 +1845,147 @@ if [ "$OLLAMA_ADVANCED_MODE" = true ]; then
     
     ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1
     echo "✅ Ollama Advanced mode cleanup completed"
+    exit 0
+fi
+
+# Handle Ollama Navigation mode (LLM-guided Nav2 goal selection)
+if [ "$OLLAMA_NAV_MODE" = true ]; then
+    echo "🧭🦙 OLLAMA NAVIGATION MODE"
+    echo "======================================"
+    echo "Intelligent LLM-guided navigation with Navigation 2 stack"
+    
+    # Check if Ollama is running
+    if ! curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
+        echo "❌ ERROR: Ollama is not running on localhost:11434"
+        echo "   Please start Ollama first: ollama serve"
+        exit 1
+    fi
+    
+    echo "✅ Ollama service detected"
+    
+    if [ "$SIMULATION_MODE" = true ]; then
+        echo "Mode: Gazebo Classic Simulation with LLM Navigation"
+        WORLD_NAME="exploration_test_classic"  # Use exploration-specific world
+    else  
+        echo "Mode: Real Robot Ollama Navigation with SLAM"
+    fi
+    
+    echo ""
+    echo "This mode will:"
+    echo "- Launch Navigation 2 stack with Cartographer SLAM"
+    echo "- Use Ollama LLM for intelligent 2D pose selection"
+    echo "- Combine 360° spatial awareness with goal-based pathfinding"
+    echo "- Balance exploration and navigation objectives autonomously"
+    echo "- Display selected goals and reasoning in RViz"
+    echo ""
+    
+    # Ensure clean state before launching Ollama Navigation mode
+    echo "🧹 ENSURING CLEAN STATE FOR OLLAMA NAVIGATION"
+    echo "======================================"
+    echo "Cleaning up any existing ROS2 processes..."
+    ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1
+    sleep 3
+    echo "✅ System cleanup completed"
+    echo ""
+    
+    # Start the standard robot components first
+    echo "🚀 OLLAMA NAVIGATION LAUNCH SEQUENCE"
+    echo "======================================"
+    
+    # Step 1: Start Micro-ROS Agent (if not skipped)
+    if [ "$SKIP_AGENT" = false ]; then
+        echo "Step 1: Starting Micro-ROS Agent..."
+        docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host microros/micro-ros-agent:humble udp4 --port 8090 > "$LOGS_DIR/microros_agent_$TIMESTAMP.log" 2>&1 &
+        MICROROS_PID=$!
+        sleep 3
+        echo "✅ Micro-ROS Agent started (PID: $MICROROS_PID)"
+    else
+        echo "⏭️  Step 1: Micro-ROS Agent skipped (--skip-agent)"
+    fi
+    
+    # Step 2: Robot power confirmation (simulation mode skips manual step)
+    if [ "$SIMULATION_MODE" = false ]; then
+        echo ""
+        echo "Step 2: Please power on the physical robot and wait for connection..."
+        echo "Press Enter when robot is connected and ready..."
+        read
+        echo "✅ Robot connection confirmed"
+    else
+        echo "Step 2: Simulation mode - skipping manual robot power step"
+    fi
+    
+    # Step 3: Start robot bringup
+    echo "Step 3: Starting robot sensor integration..."
+    cd "$WORKSPACE_ROOT" && . source_workspaces.sh && ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py > "$LOGS_DIR/bringup_$TIMESTAMP.log" 2>&1 &
+    BRINGUP_PID=$!
+    sleep 5
+    echo "✅ Robot bringup started (PID: $BRINGUP_PID)"
+    
+    # Step 4: Start RViz
+    echo "Step 4: Starting RViz for visualization..."
+    cd "$WORKSPACE_ROOT" && . install/setup.bash && ros2 launch yahboomcar_nav display_launch.py > "$LOGS_DIR/rviz_$TIMESTAMP.log" 2>&1 &
+    RVIZ_PID=$!
+    sleep 3
+    echo "✅ RViz started (PID: $RVIZ_PID)"
+    
+    # Step 5: Launch Navigation 2 with SLAM
+    echo "Step 5: Launching Navigation 2 with Cartographer SLAM..."
+    if [ "$SIMULATION_MODE" = true ]; then
+        # For simulation, use Gazebo with Navigation 2
+        cd "$WORKSPACE_ROOT" && . install/setup.bash && ros2 launch yahboomcar_nav gazebo_classic_nav_launch.py world:="$WORKSPACE_ROOT/yahboomcar_nav/worlds/navigation_test_classic.world" > "$LOGS_DIR/nav2_gazebo_$TIMESTAMP.log" 2>&1 &
+        NAV2_PID=$!
+    else
+        # For real robot, use Navigation 2 with SLAM from scratch
+        cd "$WORKSPACE_ROOT" && . install/setup.bash && ros2 launch yahboomcar_nav nav2_slam_launch.py > "$LOGS_DIR/nav2_slam_$TIMESTAMP.log" 2>&1 &
+        NAV2_PID=$!
+    fi
+    sleep 8
+    echo "✅ Navigation 2 with SLAM started (PID: $NAV2_PID)"
+    
+    # Step 6: Initial pose setup (for real robot)
+    if [ "$SIMULATION_MODE" = false ]; then
+        echo "Step 6: Setting initial robot pose..."
+        cd "$WORKSPACE_ROOT" && . install/setup.bash && python3 "$WORKSPACE_ROOT/scripts/set_initial_pose.py" > "$LOGS_DIR/initial_pose_$TIMESTAMP.log" 2>&1
+        sleep 2
+        echo "✅ Initial pose set"
+    else
+        echo "Step 6: Simulation mode - robot pose automatically initialized"
+    fi
+    
+    # Final step: Start Ollama Navigation Controller in foreground
+    echo ""
+    echo "======================================"
+    echo "🦙 Starting Ollama Navigation Controller"
+    echo "======================================"
+    echo "The controller will now take over navigation using Ollama LLM"
+    echo "for intelligent goal selection and path planning."
+    echo ""
+    echo "Press Ctrl+C to stop the system"
+    echo "======================================"
+    echo ""
+    
+    # Run the ollama navigation controller in foreground with logging
+    python3 -u "$WORKSPACE_ROOT/scripts/ollama_nav_controller.py" 2>&1 | tee "$LOGS_DIR/ollama_nav_$TIMESTAMP.log"
+    
+    # When controller exits (Ctrl+C or completion), clean up
+    echo ""
+    echo "✅ Ollama Navigation mode finished"
+    echo "🧹 Cleaning up..."
+    
+    # Clean up background processes
+    [ ! -z "$NAV2_PID" ] && kill $NAV2_PID 2>/dev/null
+    [ ! -z "$RVIZ_PID" ] && kill $RVIZ_PID 2>/dev/null
+    [ ! -z "$BRINGUP_PID" ] && kill $BRINGUP_PID 2>/dev/null
+    [ ! -z "$MICROROS_PID" ] && kill $MICROROS_PID 2>/dev/null
+    
+    # Use shutdown script for thorough cleanup (keep agent for real robot)
+    if [ "$SIMULATION_MODE" = true ]; then
+        ./b4m_shutdown.sh > /dev/null 2>&1
+    else
+        ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1
+    fi
+    
+    echo "✅ Ollama Navigation mode cleanup completed"
     exit 0
 fi
 

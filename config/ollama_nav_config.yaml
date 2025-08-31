@@ -1,0 +1,30 @@
+ollama_nav:
+  host: localhost
+  port: 11434
+  model: llama3.2:latest
+  timeout: 10.0
+  
+generation:
+  temperature: 0.2  # Low temperature for consistent pose selection
+  top_p: 0.9
+  max_tokens: 200
+  format: json
+  
+navigation:
+  goal_completion_required: true # Wait for goal completion before next selection
+  min_goal_distance: 1.0         # Minimum distance for new goals (meters)
+  max_goal_distance: 5.0         # Maximum distance for safety (meters)
+  exploration_weight: 0.5        # Balance between exploration and navigation (0.5 = equal)
+  
+safety:
+  obstacle_clearance: 0.5        # Minimum clearance from obstacles (meters)
+  nav2_timeout: 120.0            # Maximum time for Nav2 goal execution (2 minutes)
+  max_consecutive_failures: 3    # Stop after this many consecutive failures
+  failure_action: stop           # Action after max failures reached (always 'stop')
+  manual_override_key: 'space'   # Emergency manual control activation
+  
+visualization:
+  show_goal_markers: true        # Display selected goals in RViz
+  show_reasoning_text: true      # Display Ollama reasoning in RViz  
+  path_color: [0.0, 1.0, 0.0]    # Green path visualization
+  goal_marker_scale: 0.3
