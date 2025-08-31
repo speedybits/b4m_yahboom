@@ -2,12 +2,20 @@
 
 ## Overview
 
-This specification describes an advanced integration of Ollama Large Language Models with the B4M Yahboom robot navigation system. Unlike the basic mode that focuses on cardinal directions, the `--ollama-advanced` mode provides comprehensive 360-degree spatial awareness, enabling more sophisticated navigation decisions through detailed environmental descriptions.
+This specification describes an advanced integration of Ollama Large Language Models with the B4M Yahboom robot navigation system. The new `--ollama-advanced` mode (separate from the existing `--ollama` mode) provides comprehensive 360-degree spatial awareness, enabling more sophisticated navigation decisions through detailed environmental descriptions.
 
-### Key Differences from Basic Mode
-- **Full 360° Context**: Complete radial distance measurements every 15-30 degrees
-- **Periodic Decision Points**: Robot stops at regular intervals for environmental assessment
-- **Open-ended Prompting**: Natural language understanding without predefined action constraints
+### Launch Modes
+
+**Existing Mode:**
+- `./b4m_launch.sh --ollama` - Basic cardinal direction mode (see OLLAMA_API.md)
+
+**New Mode (This Document):**
+- `./b4m_launch.sh --ollama-advanced` - Advanced 360° spatial context mode
+
+### Key Differences from Basic `--ollama` Mode
+- **Full 360° Context**: Complete radial distance measurements every 15-30 degrees (vs. 4 cardinal directions)
+- **Periodic Decision Points**: Robot stops at regular intervals for environmental assessment (vs. only on obstacles)
+- **Structured Response Format**: "Turn N degrees, then move M meters" (vs. predefined actions)
 - **Spatial Richness**: Detailed distance measurements in all directions for complex navigation
 
 ### Prerequisites
@@ -266,10 +274,18 @@ response_parsing:
 
 ## Implementation Integration
 
-### Modified b4m_launch.sh for Advanced Mode
+### New Launch Option in b4m_launch.sh
+
+The `--ollama-advanced` flag is a NEW option that needs to be added to b4m_launch.sh, separate from the existing `--ollama` flag:
 
 ```bash
-# Add new option for advanced Ollama mode
+# Existing --ollama mode (basic cardinal directions)
+elif [ "$1" == "--ollama" ]; then
+    OLLAMA_MODE=true
+    MODE="ollama"
+    shift
+    
+# NEW --ollama-advanced mode (360° spatial context) 
 elif [ "$1" == "--ollama-advanced" ]; then
     OLLAMA_ADVANCED_MODE=true
     MODE="ollama_advanced"
@@ -282,6 +298,8 @@ elif [ "$1" == "--ollama-advanced" ]; then
         exit 1
     fi
 ```
+
+**Note:** Both modes can coexist - users choose which Ollama integration to use at launch time.
 
 ### Implementation Notes
 
