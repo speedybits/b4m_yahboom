@@ -2,7 +2,7 @@ ollama_nav:
   host: localhost
   port: 11434
   model: llama3.2:latest
-  timeout: 10.0
+  timeout: 120.0                  # Wait up to 2 minutes for LLM response before using fallback
   
 generation:
   temperature: 0.2  # Low temperature for consistent pose selection
@@ -14,6 +14,7 @@ navigation:
   goal_completion_required: true # Wait for goal completion before next selection
   min_goal_distance: 1.0         # Minimum distance for new goals (meters)
   max_goal_distance: 5.0         # Maximum distance for safety (meters)
+  max_backward_distance: 0.61    # Maximum backward movement (0.61m = 2 feet)
   exploration_weight: 0.5        # Balance between exploration and navigation (0.5 = equal)
   analysis_interval: 30.0        # Time between spatial analysis cycles (seconds)
   rotation_probability: 0.5      # Probability of rotation vs movement goals (0.5 = 50/50)

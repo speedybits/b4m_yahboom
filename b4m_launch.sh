@@ -946,7 +946,8 @@ if [ "$NAV_MODE" = true ]; then
     else
         echo "   ⚠️  Make sure physical robot is powered on and ready"
         echo "   ⚠️  Ensure navigation area is safe"
-        read -p "   Press Enter when robot is ready for navigation..."
+        echo "   ⚡ Continuing automatically in 3 seconds..."
+        sleep 3
         
         # Step 1: Launch robot bringup 
         echo "🤖 Step 1: Starting robot sensor and control systems"
@@ -1134,7 +1135,8 @@ if [ "$OLLAMA_NAV_BASIC_MODE" = true ]; then
     else
         echo "   ⚠️  Make sure physical robot is powered on and ready"
         echo "   ⚠️  Ensure navigation area is safe"
-        read -p "   Press Enter when robot is ready for navigation..."
+        echo "   ⚡ Continuing automatically in 3 seconds..."
+        sleep 3
         
         # Step 1: Launch robot bringup 
         echo "🤖 Step 1: Starting robot sensor and control systems"
@@ -1259,26 +1261,22 @@ if [ "$OLLAMA_NAV_BASIC_MODE" = true ]; then
     echo "1. Test manual navigation using RViz '2D Nav Goal' tool"
     echo "2. Enable Ollama spatial analysis for autonomous goal suggestions"
     echo ""
-    read -p "Enable Ollama spatial analysis? (y/N): " enable_ollama
+    echo "⚡ Automatically enabling Ollama spatial analysis..."
     
-    if [[ "$enable_ollama" =~ ^[Yy]$ ]]; then
-        echo "🧠 Step 7: Starting Ollama Basic Spatial Analysis"
-        echo "   This will analyze surroundings every 30 seconds and suggest navigation goals"
-        python3 scripts/ollama_basic_spatial.py > "$LOGS_DIR/ollama_spatial_$TIMESTAMP.log" 2>&1 &
-        OLLAMA_PID=$!
-        echo "   ✅ Ollama spatial analysis started (PID: $OLLAMA_PID)"
-        echo ""
-        echo "🤖 AUTONOMOUS NAVIGATION ACTIVE"
-        echo "======================================"
-        echo "   - Robot will analyze surroundings every 30 seconds"
-        echo "   - Ollama LLM will suggest navigation goals based on spatial context"
-        echo "   - Goals will appear as RViz markers and robot will navigate to them"
-        echo "   - Check logs for Ollama reasoning: $LOGS_DIR/ollama_spatial_$TIMESTAMP.log"
-        echo ""
-    else
-        echo "📋 Manual navigation mode - use RViz '2D Nav Goal' tool to set goals"
-        echo ""
-    fi
+    # Automatically enable Ollama spatial analysis
+    echo "🧠 Step 7: Starting Ollama Basic Spatial Analysis"
+    echo "   This will analyze surroundings every 30 seconds and suggest navigation goals"
+    python3 scripts/ollama_basic_spatial.py > "$LOGS_DIR/ollama_spatial_$TIMESTAMP.log" 2>&1 &
+    OLLAMA_PID=$!
+    echo "   ✅ Ollama spatial analysis started (PID: $OLLAMA_PID)"
+    echo ""
+    echo "🤖 AUTONOMOUS NAVIGATION ACTIVE"
+    echo "======================================"
+    echo "   - Robot will analyze surroundings every 30 seconds"
+    echo "   - Ollama LLM will suggest navigation goals based on spatial context"
+    echo "   - Goals will appear as RViz markers and robot will navigate to them"
+    echo "   - Check logs for Ollama reasoning: $LOGS_DIR/ollama_spatial_$TIMESTAMP.log"
+    echo ""
     
     # Wait for user to stop
     trap 'echo "🛑 Stopping navigation..."; [ ! -z "$OLLAMA_PID" ] && kill $OLLAMA_PID 2>/dev/null; [ ! -z "$SLAM_NAV_PID" ] && kill $SLAM_NAV_PID 2>/dev/null; [ ! -z "$TF_BRIDGE_PID" ] && kill $TF_BRIDGE_PID 2>/dev/null; [ ! -z "$RVIZ_PID" ] && kill $RVIZ_PID 2>/dev/null; [ ! -z "$BRINGUP_PID" ] && kill $BRINGUP_PID 2>/dev/null; if [ "$SIMULATION_MODE" = true ]; then [ ! -z "$GAZEBO_PID" ] && kill $GAZEBO_PID 2>/dev/null; fi; ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1; echo "✅ Navigation stopped"; exit 0' INT
@@ -1286,15 +1284,9 @@ if [ "$OLLAMA_NAV_BASIC_MODE" = true ]; then
     # Keep the script running and show periodic status
     while true; do
         sleep 30
-        if [ ! -z "$OLLAMA_PID" ]; then
-            echo "🧭 Ollama Navigation Basic active with AI... (Ctrl+C to stop)"
-            echo "   Robot analyzing surroundings every 30 seconds and suggesting goals via Ollama LLM"
-            echo "   Check Ollama logs: $LOGS_DIR/ollama_spatial_$TIMESTAMP.log"
-        else
-            echo "🧭 Ollama Navigation Basic active... (Ctrl+C to stop)"
-            echo "   Set navigation goals using RViz '2D Nav Goal' tool"
-            echo "   Manual navigation mode - Ollama analysis not enabled"
-        fi
+        echo "🧭 Ollama Navigation Basic active with AI... (Ctrl+C to stop)"
+        echo "   Robot analyzing surroundings every 30 seconds and suggesting goals via Ollama LLM"
+        echo "   Check Ollama logs: $LOGS_DIR/ollama_spatial_$TIMESTAMP.log"
     done
 fi
 

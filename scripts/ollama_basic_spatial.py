@@ -6,8 +6,11 @@ Simple integration of Ollama spatial context generation with Nav2
 
 import rclpy
 from rclpy.node import Node
+from rclpy.action import ActionClient
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import PoseStamped, Point, Quaternion
+from nav2_msgs.action import NavigateToPose
+from action_msgs.msg import GoalStatus
 import numpy as np
 import json
 import requests
@@ -43,16 +46,25 @@ class OllamaBasicSpatial(Node):
             10
         )
         
+        # Navigation action client for proper goal handling
+        self.nav_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
+        
         # State tracking
         self.last_analysis_time = 0
         self.analysis_interval = self.config.get('navigation', {}).get('analysis_interval', 30.0)
         self.latest_laser_data = None
+        self.current_goal_handle = None
+        self.navigating = False
         
         rotation_prob = self.config.get('navigation', {}).get('rotation_probability', 0.5)
+        max_backward = self.config.get('navigation', {}).get('max_backward_distance', 0.61)
+        timeout_val = self.config['ollama_nav']['timeout']
         self.get_logger().info('✅ Ollama Basic Spatial Analysis initialized')
         self.get_logger().info(f'📡 Connected to Ollama at {self.ollama_url}')
         self.get_logger().info(f'⏱️  Analysis interval: {self.analysis_interval}s (3x longer for goal completion)')
+        self.get_logger().info(f'⏳ LLM timeout: {timeout_val}s ({timeout_val/60:.1f} minutes) - will wait for response')
         self.get_logger().info(f'🔄 Rotation probability: {rotation_prob*100:.0f}% (robot will rotate in place vs move)')
+        self.get_logger().info(f'⬅️  Max backward movement: {max_backward:.2f}m ({max_backward/0.3048:.1f} feet)')
         
     def load_config(self):
         """Load configuration from ollama_nav_config.yaml"""
@@ -88,11 +100,13 @@ class OllamaBasicSpatial(Node):
         """Store latest laser scan data"""
         self.latest_laser_data = msg
         
-        # Check if it's time for spatial analysis
+        # Check if it's time for spatial analysis AND not currently navigating
         current_time = time.time()
         if current_time - self.last_analysis_time > self.analysis_interval:
-            self.perform_spatial_analysis()
-            self.last_analysis_time = current_time
+            # Only analyze if not currently navigating or goal is complete
+            if not self.navigating or self.is_navigation_complete():
+                self.perform_spatial_analysis()
+                self.last_analysis_time = current_time
     
     def perform_spatial_analysis(self):
         """Perform spatial analysis and suggest navigation goal"""
@@ -201,8 +215,8 @@ class OllamaBasicSpatial(Node):
             
             spatial_summary = "\\n".join(sectors_desc)
             
-            # Very simple prompt
-            prompt = f"Robot sees: {spatial_summary}\\n\\nSuggest goal coordinates (x,y) in JSON: {{\"goal_x\": 2.0, \"goal_y\": 0.0}}"
+            # Simplified prompt for faster response
+            prompt = f"Robot sensors: {spatial_summary}\\n\\nJSON goal: {{\"goal_x\": 1.5, \"goal_y\": 0.0}}"
 
             payload = {
                 "model": self.config['ollama_nav']['model'],
@@ -210,16 +224,20 @@ class OllamaBasicSpatial(Node):
                 "stream": False,
                 "options": {
                     "temperature": 0.1,
-                    "num_predict": 50
+                    "num_predict": 30,
+                    "top_p": 0.9,
+                    "top_k": 10
                 }
             }
             
-            self.get_logger().info('🧠 Querying Ollama for goal suggestion...')
+            timeout_val = self.config['ollama_nav']['timeout']
+            self.get_logger().info(f'🧠 Querying Ollama for goal suggestion (timeout: {timeout_val}s)...')
+            self.get_logger().info('⏳ Waiting for LLM response... this may take up to 2 minutes')
             
             response = requests.post(
                 self.ollama_url,
                 json=payload,
-                timeout=10.0
+                timeout=timeout_val
             )
             
             if response.status_code == 200:
@@ -238,8 +256,22 @@ class OllamaBasicSpatial(Node):
                         x, y = goal_data.get('goal_x', 0), goal_data.get('goal_y', 0)
                         distance = math.sqrt(x*x + y*y)
                         
+                        # Check backward movement limit (2 feet = 0.61 meters)
+                        MAX_BACKWARD_DISTANCE = self.config['navigation'].get('max_backward_distance', 0.61)
+                        if x < -MAX_BACKWARD_DISTANCE:
+                            self.get_logger().warn(f'⚠️  Ollama goal would move backward {abs(x):.1f}m (exceeds 2ft limit), adjusting...')
+                            # Adjust to maximum allowed backward distance
+                            old_x = x
+                            x = -MAX_BACKWARD_DISTANCE
+                            # Scale y proportionally to maintain direction
+                            if old_x != 0:
+                                y = y * (x / old_x)
+                            goal_data['goal_x'] = x
+                            goal_data['goal_y'] = y
+                            distance = math.sqrt(x*x + y*y)
+                        
                         if 0.5 <= distance <= 4.0:  # Reasonable distance
-                            goal_data['reasoning'] = f'Ollama suggested goal at distance {distance:.1f}m'
+                            goal_data['reasoning'] = f'Ollama suggested goal at distance {distance:.1f}m (backward limited to 2ft)'
                             self.get_logger().info(f'✅ Ollama goal: ({x}, {y})')
                             return goal_data
                         else:
@@ -251,7 +283,8 @@ class OllamaBasicSpatial(Node):
                 self.get_logger().warn(f'⚠️  Ollama API error {response.status_code}, using fallback')
                 
         except requests.exceptions.Timeout:
-            self.get_logger().warn('⚠️  Ollama timeout, using fallback goal')
+            self.get_logger().warn(f'⚠️  Ollama timeout after {self.config["ollama_nav"]["timeout"]}s, using fallback goal')
+            self.get_logger().info('💡 Tip: Check if Ollama service is running: "systemctl status ollama" or "ollama list"')
         except Exception as e:
             self.get_logger().warn(f'⚠️  Ollama error: {e}, using fallback')
         
@@ -264,6 +297,26 @@ class OllamaBasicSpatial(Node):
         # Find best clear direction
         clear_sectors = [s for s in spatial_context['sectors'] if s['status'] == 'CLEAR']
         partial_sectors = [s for s in spatial_context['sectors'] if s['status'] == 'PARTIAL']
+        
+        # Filter out backward sectors if they would exceed 2 feet (0.61m)
+        MAX_BACKWARD_DISTANCE = self.config['navigation'].get('max_backward_distance', 0.61)  # 2 feet in meters
+        
+        def is_acceptable_sector(sector):
+            """Check if sector doesn't violate backward movement limit"""
+            angle_rad = math.radians(sector['angle'])
+            # Backward is when x < 0 (angles between 90 and 270 degrees)
+            if -180 <= sector['angle'] < -90 or 90 < sector['angle'] <= 180:
+                # This is a backward-facing sector
+                distance = min(2.0, sector['avg_distance'] * 0.7)
+                goal_x = distance * math.cos(angle_rad)
+                # If it would go backward more than 2 feet, reject it
+                if goal_x < -MAX_BACKWARD_DISTANCE:
+                    return False
+            return True
+        
+        # Filter sectors based on backward limit
+        clear_sectors = [s for s in clear_sectors if is_acceptable_sector(s)]
+        partial_sectors = [s for s in partial_sectors if is_acceptable_sector(s)]
         
         target_sector = None
         
@@ -286,10 +339,18 @@ class OllamaBasicSpatial(Node):
             goal_x = distance * math.cos(angle_rad)
             goal_y = distance * math.sin(angle_rad)
             
+            # Final check: limit backward movement to 2 feet
+            if goal_x < -MAX_BACKWARD_DISTANCE:
+                goal_x = -MAX_BACKWARD_DISTANCE
+                # Recalculate goal_y to maintain direction
+                if distance > 0:
+                    scale = abs(goal_x / (distance * math.cos(angle_rad)))
+                    goal_y = goal_y * scale
+            
             return {
                 'goal_x': goal_x,
                 'goal_y': goal_y,
-                'reasoning': f'Fallback: Move toward {target_sector["direction"]} (clearest path)'
+                'reasoning': f'Fallback: Move toward {target_sector["direction"]} (clearest path, limited backward)'
             }
         else:
             # Emergency fallback - move forward a small amount
@@ -314,9 +375,65 @@ class OllamaBasicSpatial(Node):
             'reasoning': f'Rotation in place to face {target_angle}° for better spatial scanning'
         }
     
+    def is_navigation_complete(self):
+        """Check if current navigation goal is complete"""
+        if not self.current_goal_handle:
+            return True
+            
+        # Check goal status
+        status = self.current_goal_handle.status
+        if status in [GoalStatus.STATUS_SUCCEEDED, 
+                     GoalStatus.STATUS_ABORTED,
+                     GoalStatus.STATUS_CANCELED]:
+            self.navigating = False
+            self.current_goal_handle = None
+            return True
+        return False
+    
+    def goal_response_callback(self, future):
+        """Handle goal response from Nav2"""
+        goal_handle = future.result()
+        if not goal_handle.accepted:
+            self.get_logger().warn('⚠️  Navigation goal was rejected by Nav2')
+            self.navigating = False
+            return
+        
+        self.current_goal_handle = goal_handle
+        self.get_logger().info('✅ Navigation goal accepted by Nav2')
+        
+        # Get result asynchronously
+        result_future = goal_handle.get_result_async()
+        result_future.add_done_callback(self.goal_result_callback)
+    
+    def goal_result_callback(self, future):
+        """Handle goal completion result"""
+        result = future.result().result
+        status = future.result().status
+        
+        if status == GoalStatus.STATUS_SUCCEEDED:
+            self.get_logger().info('✅ Navigation goal reached successfully!')
+        elif status == GoalStatus.STATUS_ABORTED:
+            self.get_logger().warn('⚠️  Navigation goal was aborted')
+        elif status == GoalStatus.STATUS_CANCELED:
+            self.get_logger().info('🛑 Navigation goal was canceled')
+        else:
+            self.get_logger().warn(f'⚠️  Navigation ended with status: {status}')
+        
+        self.navigating = False
+        self.current_goal_handle = None
+    
     def publish_navigation_goal(self, goal_data):
-        """Publish navigation goal to RViz"""
+        """Publish navigation goal using Nav2 action client"""
         try:
+            # Cancel any existing goal first
+            if self.navigating and self.current_goal_handle:
+                self.get_logger().info('🛑 Canceling previous navigation goal...')
+                self.current_goal_handle.cancel_goal_async()
+                self.navigating = False
+                self.current_goal_handle = None
+                time.sleep(1)  # Give time for cancellation
+            
+            # Prepare goal message
             goal_msg = PoseStamped()
             goal_msg.header.stamp = self.get_clock().now().to_msg()
             goal_msg.header.frame_id = 'map'
@@ -351,23 +468,40 @@ class OllamaBasicSpatial(Node):
                 goal_type = "rotation"
             else:
                 # Validate movement goals
-                min_dist = self.config['navigation']['min_goal_distance']
-                max_dist = self.config['navigation']['max_goal_distance']
+                min_dist = self.config['navigation'].get('min_goal_distance', 1.0)
+                max_dist = self.config['navigation'].get('max_goal_distance', 5.0)
                 should_publish = min_dist <= distance <= max_dist
                 goal_type = "movement"
             
             if should_publish:
+                # Publish to goal_pose topic for visualization
                 self.goal_publisher.publish(goal_msg)
-                if goal_type == "rotation":
-                    angle_deg = math.degrees(goal_data.get('goal_orientation', 0))
-                    self.get_logger().info(f'🔄 Published rotation goal: face {angle_deg:.0f}° (staying at current position)')
+                
+                # Send goal via action client for proper Nav2 handling
+                if self.nav_client.wait_for_server(timeout_sec=5.0):
+                    nav_goal = NavigateToPose.Goal()
+                    nav_goal.pose = goal_msg
+                    
+                    # Send goal asynchronously
+                    self.navigating = True
+                    send_goal_future = self.nav_client.send_goal_async(nav_goal)
+                    send_goal_future.add_done_callback(self.goal_response_callback)
+                    
+                    if goal_type == "rotation":
+                        angle_deg = math.degrees(goal_data.get('goal_orientation', 0))
+                        self.get_logger().info(f'🔄 Sent rotation goal: face {angle_deg:.0f}° (staying at current position)')
+                    else:
+                        self.get_logger().info(f'🎯 Sent movement goal: ({goal_data["goal_x"]}, {goal_data["goal_y"]})')
+                        self.get_logger().info('⏳ Waiting for goal completion before next analysis...')
                 else:
-                    self.get_logger().info(f'🎯 Published movement goal: ({goal_data["goal_x"]}, {goal_data["goal_y"]})')
+                    self.get_logger().warn('⚠️  Nav2 action server not available, publishing to topic only')
+                    self.navigating = False
             else:
                 self.get_logger().warn(f'⚠️  Goal distance {distance:.1f}m outside safe range [{min_dist}, {max_dist}]')
                 
         except Exception as e:
             self.get_logger().error(f'❌ Failed to publish navigation goal: {e}')
+            self.navigating = False
 
 def main(args=None):
     rclpy.init(args=args)
