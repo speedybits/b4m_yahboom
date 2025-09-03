@@ -4,7 +4,7 @@
 # This script automates the launch process for the B4M Robot 
 # Each step will be launched in a separate terminal with user confirmation
 #
-# Usage: ./b4m_launch.sh [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--nav] [--b4m-api] [--ollama] [--ollama-advanced] [--ollama-nav] [--ollama-nav-basic] [--b4m-HA] [--b4m-ping] [--navigation-performance-test] [--setup-wifi] [--skip-rebuild]
+# Usage: ./b4m_launch.sh [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--nav] [--b4m-api] [--ollama] [--ollama-advanced] [--ollama-nav] [--ollama-nav-explore] [--b4m-HA] [--b4m-ping] [--navigation-performance-test] [--setup-wifi] [--skip-rebuild]
 #   --skip-agent:                   Skip the Micro-ROS agent launch (Step 1)
 #   --only-agent:                   Launch ONLY the Micro-ROS agent (Step 1) and exit
 #   --debug:                        Enable verbose debug logging
@@ -16,7 +16,7 @@
 #   --ollama:                       Enable Ollama mode (basic cardinal directions)
 #   --ollama-advanced:              Enable Ollama Advanced mode (360° spatial context)
 #   --ollama-nav:                   Enable Ollama Navigation mode (LLM-guided Nav2 goal selection)
-#   --ollama-nav-basic:             Enable basic Ollama Navigation mode (copy of --nav for testing)
+#   --ollama-nav-explore:           Enable Ollama exploration mode (autonomous exploration with LLM)
 #   --b4m-HA:                       (Experimental) Enable Home Assistant MQTT integration features
 #   --b4m-ping:                     Test bike4mind API with random obstacle detection messages
 #   --navigation-performance-test:  (Untested) Execute 1x1m square navigation circuit testing
@@ -34,6 +34,7 @@ B4M_API=false
 OLLAMA_MODE=false
 OLLAMA_ADVANCED_MODE=false
 OLLAMA_NAV_MODE=false
+OLLAMA_NAV_EXPLORE_MODE=false
 B4M_PING=false
 B4M_HA=false
 NAVIGATION_PERFORMANCE_TEST=false
@@ -85,8 +86,8 @@ for arg in "$@"; do
             OLLAMA_NAV_MODE=true
             shift
             ;;
-        --ollama-nav-basic)
-            OLLAMA_NAV_BASIC_MODE=true
+        --ollama-nav-explore)
+            OLLAMA_NAV_EXPLORE_MODE=true
             shift
             ;;
         --b4m-ping)
@@ -110,7 +111,7 @@ for arg in "$@"; do
             shift
             ;;
         -h|--help)
-            echo "Usage: $0 [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--nav] [--b4m-api] [--ollama] [--ollama-advanced] [--ollama-nav] [--ollama-nav-basic] [--b4m-HA] [--b4m-ping] [--navigation-performance-test] [--setup-wifi] [--skip-rebuild]"
+            echo "Usage: $0 [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--nav] [--b4m-api] [--ollama] [--ollama-advanced] [--ollama-nav] [--ollama-nav-explore] [--b4m-HA] [--b4m-ping] [--navigation-performance-test] [--setup-wifi] [--skip-rebuild]"
             echo "  --skip-agent:                   Skip the Micro-ROS agent launch (Step 1)"
             echo "  --only-agent:                   Launch ONLY the Micro-ROS agent (Step 1) and exit"
             echo "  --debug:                        Enable verbose debug logging"
@@ -122,7 +123,7 @@ for arg in "$@"; do
             echo "  --ollama:                       Enable Ollama mode (basic cardinal directions)"
             echo "  --ollama-advanced:              Enable Ollama Advanced mode (360° spatial context)"
             echo "  --ollama-nav:                   Enable Ollama Navigation mode (LLM-guided Nav2 goal selection)"
-            echo "  --ollama-nav-basic:             Enable basic Ollama Navigation mode (copy of --nav for testing)"
+            echo "  --ollama-nav-explore:           Enable Ollama exploration mode (autonomous exploration with LLM)"
 	    echo "  --b4m-HA:                       (Experimental) Enable Home Assistant MQTT integration features"
             echo "  --b4m-ping:                     Test bike4mind API with random obstacle detection messages"
 	    echo "  --navigation-performance-test:  (Untested) Execute 1x1m square navigation circuit testing"
@@ -288,50 +289,50 @@ if [ "$OLLAMA_NAV_MODE" = true ] && [ "$NAVIGATION_PERFORMANCE_TEST" = true ]; t
 fi
 
 # Ollama Nav Basic mode incompatibility checks
-if [ "$OLLAMA_NAV_BASIC_MODE" = true ] && [ "$EXPLORE_MODE" = true ]; then
-    echo "ERROR: --ollama-nav-basic mode is incompatible with --explore mode"
+if [ "$OLLAMA_NAV_EXPLORE_MODE" = true ] && [ "$EXPLORE_MODE" = true ]; then
+    echo "ERROR: --ollama-nav-explore mode is incompatible with --explore mode"
     echo "Both modes provide different navigation approaches"
     exit 1
 fi
-if [ "$OLLAMA_NAV_BASIC_MODE" = true ] && [ "$NAV_MODE" = true ]; then
-    echo "ERROR: --ollama-nav-basic mode is incompatible with --nav mode"
-    echo "Ollama-nav-basic is a copy of --nav functionality"
+if [ "$OLLAMA_NAV_EXPLORE_MODE" = true ] && [ "$NAV_MODE" = true ]; then
+    echo "ERROR: --ollama-nav-explore mode is incompatible with --nav mode"
+    echo "Ollama-nav-explore provides autonomous exploration functionality"
     exit 1
 fi
-if [ "$OLLAMA_NAV_BASIC_MODE" = true ] && [ "$B4M_API" = true ]; then
-    echo "ERROR: --ollama-nav-basic mode is incompatible with --b4m-api mode"
+if [ "$OLLAMA_NAV_EXPLORE_MODE" = true ] && [ "$B4M_API" = true ]; then
+    echo "ERROR: --ollama-nav-explore mode is incompatible with --b4m-api mode"
     echo "Both modes provide different navigation approaches"
     exit 1
 fi
-if [ "$OLLAMA_NAV_BASIC_MODE" = true ] && [ "$OLLAMA_MODE" = true ]; then
-    echo "ERROR: --ollama-nav-basic mode is incompatible with --ollama mode"
+if [ "$OLLAMA_NAV_EXPLORE_MODE" = true ] && [ "$OLLAMA_MODE" = true ]; then
+    echo "ERROR: --ollama-nav-explore mode is incompatible with --ollama mode"
     echo "Both modes provide different navigation approaches"
     exit 1
 fi
-if [ "$OLLAMA_NAV_BASIC_MODE" = true ] && [ "$OLLAMA_ADVANCED_MODE" = true ]; then
-    echo "ERROR: --ollama-nav-basic mode is incompatible with --ollama-advanced mode"
+if [ "$OLLAMA_NAV_EXPLORE_MODE" = true ] && [ "$OLLAMA_ADVANCED_MODE" = true ]; then
+    echo "ERROR: --ollama-nav-explore mode is incompatible with --ollama-advanced mode"
     echo "Both modes provide different navigation approaches"
     exit 1
 fi
-if [ "$OLLAMA_NAV_BASIC_MODE" = true ] && [ "$OLLAMA_NAV_MODE" = true ]; then
-    echo "ERROR: --ollama-nav-basic mode is incompatible with --ollama-nav mode"
+if [ "$OLLAMA_NAV_EXPLORE_MODE" = true ] && [ "$OLLAMA_NAV_MODE" = true ]; then
+    echo "ERROR: --ollama-nav-explore mode is incompatible with --ollama-nav mode"
     echo "Both modes provide different Ollama navigation approaches"
     exit 1
 fi
-if [ "$OLLAMA_NAV_BASIC_MODE" = true ] && [ "$REGRESSION_MODE" = true ]; then
-    echo "ERROR: --ollama-nav-basic mode is incompatible with --regression mode"  
-    echo "Ollama navigation basic requires manual control while regression runs automated tests"
+if [ "$OLLAMA_NAV_EXPLORE_MODE" = true ] && [ "$REGRESSION_MODE" = true ]; then
+    echo "ERROR: --ollama-nav-explore mode is incompatible with --regression mode"  
+    echo "Ollama navigation explore requires manual control while regression runs automated tests"
     exit 1
 fi
-if [ "$OLLAMA_NAV_BASIC_MODE" = true ] && [ "$NAVIGATION_PERFORMANCE_TEST" = true ]; then
-    echo "ERROR: --ollama-nav-basic mode is incompatible with --navigation-performance-test mode"
+if [ "$OLLAMA_NAV_EXPLORE_MODE" = true ] && [ "$NAVIGATION_PERFORMANCE_TEST" = true ]; then
+    echo "ERROR: --ollama-nav-explore mode is incompatible with --navigation-performance-test mode"
     echo "Both modes require different robot control patterns"
     exit 1
 fi
 
 # B4M Ping mode incompatibility checks
 if [ "$B4M_PING" = true ]; then
-    if [ "$EXPLORE_MODE" = true ] || [ "$NAV_MODE" = true ] || [ "$B4M_API" = true ] || [ "$OLLAMA_MODE" = true ] || [ "$OLLAMA_ADVANCED_MODE" = true ] || [ "$OLLAMA_NAV_MODE" = true ] || [ "$OLLAMA_NAV_BASIC_MODE" = true ] || [ "$REGRESSION_MODE" = true ] || [ "$NAVIGATION_PERFORMANCE_TEST" = true ]; then
+    if [ "$EXPLORE_MODE" = true ] || [ "$NAV_MODE" = true ] || [ "$B4M_API" = true ] || [ "$OLLAMA_MODE" = true ] || [ "$OLLAMA_ADVANCED_MODE" = true ] || [ "$OLLAMA_NAV_MODE" = true ] || [ "$OLLAMA_NAV_EXPLORE_MODE" = true ] || [ "$REGRESSION_MODE" = true ] || [ "$NAVIGATION_PERFORMANCE_TEST" = true ]; then
         echo "ERROR: --b4m-ping is incompatible with other modes"
         echo "B4M Ping is a standalone API testing tool"
         exit 1
@@ -1059,10 +1060,10 @@ if [ "$NAV_MODE" = true ]; then
 fi
 
 # Handle Ollama Navigation Basic mode (exact copy of Navigation 2 mode with SLAM for testing)
-if [ "$OLLAMA_NAV_BASIC_MODE" = true ]; then
-    echo "🧭 OLLAMA NAVIGATION BASIC MODE (Nav2 Copy)"
+if [ "$OLLAMA_NAV_EXPLORE_MODE" = true ]; then
+    echo "🧭 OLLAMA NAVIGATION EXPLORE MODE"
     echo "======================================"
-    echo "Launching Navigation 2 with Cartographer SLAM (copy of --nav for testing)"
+    echo "Launching Navigation 2 with Cartographer SLAM for LLM-guided exploration"
     
     if [ "$SIMULATION_MODE" = true ]; then
         echo "Mode: Gazebo Classic Simulation with Navigation World"
@@ -1264,9 +1265,9 @@ if [ "$OLLAMA_NAV_BASIC_MODE" = true ]; then
     echo "⚡ Automatically enabling Ollama spatial analysis..."
     
     # Automatically enable Ollama spatial analysis
-    echo "🧠 Step 7: Starting Ollama Basic Spatial Analysis"
+    echo "🧠 Step 7: Starting Ollama Exploration Spatial Analysis"
     echo "   This will analyze surroundings every 30 seconds and suggest navigation goals"
-    python3 scripts/ollama_basic_spatial.py > "$LOGS_DIR/ollama_spatial_$TIMESTAMP.log" 2>&1 &
+    python3 scripts/ollama_explore_spatial.py > "$LOGS_DIR/ollama_spatial_$TIMESTAMP.log" 2>&1 &
     OLLAMA_PID=$!
     echo "   ✅ Ollama spatial analysis started (PID: $OLLAMA_PID)"
     echo ""

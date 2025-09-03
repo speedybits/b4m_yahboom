@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `--ollama-nav-basic` mode provides **fully autonomous navigation** for the B4M Yahboom robot using Large Language Model (LLM) intelligence. The system combines **360° LIDAR spatial awareness** with **Navigation 2 pathfinding** to autonomously explore and navigate environments.
+The `--ollama-nav-explore` mode provides **fully autonomous exploration** for the B4M Yahboom robot using Large Language Model (LLM) intelligence. The system combines **360° LIDAR spatial awareness** with **Navigation 2 pathfinding** to autonomously explore and navigate environments.
 
 **Status**: ✅ **Enhanced Production Ready** with immediate goal transitions, 1m minimum distance validation, explored area constraints, and path stability improvements.
 
@@ -29,10 +29,10 @@ The `--ollama-nav-basic` mode provides **fully autonomous navigation** for the B
 
 ```bash
 # Launch autonomous navigation in simulation
-./b4m_launch.sh --ollama-nav-basic --simulation
+./b4m_launch.sh --ollama-nav-explore --simulation
 
 # Launch on real robot
-./b4m_launch.sh --ollama-nav-basic
+./b4m_launch.sh --ollama-nav-explore
 ```
 
 **Prerequisites**: Ollama running on localhost:11434 with llama3.2:latest model
@@ -154,7 +154,7 @@ process_ollama_response(response, current_pose):
 ### System Startup
 
 ```bash
-$ ./b4m_launch.sh --ollama-nav-basic --simulation
+$ ./b4m_launch.sh --ollama-nav-explore --simulation
 
 🧭 OLLAMA NAVIGATION BASIC MODE (Nav2 Copy)
 ======================================
@@ -181,67 +181,67 @@ Step 6: Simulation mode - robot pose automatically initialized
 ### Multi-Waypoint Navigation Example
 
 ```bash
-[INFO] [ollama_basic_spatial]: 🔍 Performing spatial analysis...
-[INFO] [ollama_basic_spatial]: 📏 Current position: (0.12, -0.05) facing 8° northeast
-[INFO] [ollama_basic_spatial]: 🧠 Querying Ollama for goal suggestion...
+[INFO] [ollama_explore_spatial]: 🔍 Performing spatial analysis...
+[INFO] [ollama_explore_spatial]: 📏 Current position: (0.12, -0.05) facing 8° northeast
+[INFO] [ollama_explore_spatial]: 🧠 Querying Ollama for goal suggestion...
 
-[INFO] [ollama_basic_spatial]: ✅ Ollama response received (1.8s)
-[INFO] [ollama_basic_spatial]:    Distance: 3.2m, Bearing: 45°, Goal type: MOVEMENT
-[INFO] [ollama_basic_spatial]:    Reasoning: "Moving northeast to explore unmapped corridor"
-[INFO] [ollama_basic_spatial]: 🔄 Multi-waypoint navigation enabled for 3.2m path
-[INFO] [ollama_basic_spatial]: 📍 Generated 3 waypoints for smoother navigation:
-[INFO] [ollama_basic_spatial]:    Waypoint 1: (0.96, 0.96) @ 1.5m spacing
-[INFO] [ollama_basic_spatial]:    Waypoint 2: (1.92, 1.92) @ 3.0m spacing  
-[INFO] [ollama_basic_spatial]:    Final Goal: (2.38, 2.38) @ 3.2m total distance
-[INFO] [ollama_basic_spatial]: 🎯 Using NavigateThroughPoses for smooth path following
+[INFO] [ollama_explore_spatial]: ✅ Ollama response received (1.8s)
+[INFO] [ollama_explore_spatial]:    Distance: 3.2m, Bearing: 45°, Goal type: MOVEMENT
+[INFO] [ollama_explore_spatial]:    Reasoning: "Moving northeast to explore unmapped corridor"
+[INFO] [ollama_explore_spatial]: 🔄 Multi-waypoint navigation enabled for 3.2m path
+[INFO] [ollama_explore_spatial]: 📍 Generated 3 waypoints for smoother navigation:
+[INFO] [ollama_explore_spatial]:    Waypoint 1: (0.96, 0.96) @ 1.5m spacing
+[INFO] [ollama_explore_spatial]:    Waypoint 2: (1.92, 1.92) @ 3.0m spacing  
+[INFO] [ollama_explore_spatial]:    Final Goal: (2.38, 2.38) @ 3.2m total distance
+[INFO] [ollama_explore_spatial]: 🎯 Using NavigateThroughPoses for smooth path following
 
-[INFO] [ollama_basic_spatial]: ➡️ Multi-waypoint navigation started
-[INFO] [ollama_basic_spatial]: 🛤️ Following continuous path through 3 waypoints...
-[INFO] [ollama_basic_spatial]: 📊 Progress: Waypoint 1/3 reached (33% complete)
-[INFO] [ollama_basic_spatial]: 📊 Progress: Waypoint 2/3 reached (67% complete)
-[INFO] [ollama_basic_spatial]: 🎯 Navigation goal COMPLETED - analyzing new position
-[INFO] [ollama_basic_spatial]: 🔄 Next analysis cycle in 30 seconds
+[INFO] [ollama_explore_spatial]: ➡️ Multi-waypoint navigation started
+[INFO] [ollama_explore_spatial]: 🛤️ Following continuous path through 3 waypoints...
+[INFO] [ollama_explore_spatial]: 📊 Progress: Waypoint 1/3 reached (33% complete)
+[INFO] [ollama_explore_spatial]: 📊 Progress: Waypoint 2/3 reached (67% complete)
+[INFO] [ollama_explore_spatial]: 🎯 Navigation goal COMPLETED - analyzing new position
+[INFO] [ollama_explore_spatial]: 🔄 Next analysis cycle in 30 seconds
 ```
 
 ### Enhanced Goal Validation Example
 
 ```bash
-[INFO] [ollama_basic_spatial]: ✅ Navigation goal reached successfully!
-[INFO] [ollama_basic_spatial]: 🚀 Triggering immediate Ollama query after goal completion
-[INFO] [ollama_basic_spatial]: 🔍 Performing Ollama spatial analysis...
+[INFO] [ollama_explore_spatial]: ✅ Navigation goal reached successfully!
+[INFO] [ollama_explore_spatial]: 🚀 Triggering immediate Ollama query after goal completion
+[INFO] [ollama_explore_spatial]: 🔍 Performing Ollama spatial analysis...
 
-[INFO] [ollama_basic_spatial]: ✅ Ollama response received (1.2s)
-[INFO] [ollama_basic_spatial]:    Distance: 0.5m, Bearing: 60°, Goal type: MOVEMENT
-[INFO] [ollama_basic_spatial]: 🎯 Goal: (2.25, 1.93) Current: (2.00, 1.50) Distance: 0.50m
-[WARN] [ollama_basic_spatial]: ⚠️  Goal rejected: Movement goal too close (0.50m < 1.0m minimum)
-[INFO] [ollama_basic_spatial]: 🔄 Generating rotation goal as fallback
-[INFO] [ollama_basic_spatial]: 🎯 Goal: (2.00, 1.50) Current: (2.00, 1.50) Distance: 0.00m
-[INFO] [ollama_basic_spatial]: 🔄 Rotation goal - staying at current position
-[INFO] [ollama_basic_spatial]: 🔄 Sent single rotation goal: face 180° (staying at current position)
+[INFO] [ollama_explore_spatial]: ✅ Ollama response received (1.2s)
+[INFO] [ollama_explore_spatial]:    Distance: 0.5m, Bearing: 60°, Goal type: MOVEMENT
+[INFO] [ollama_explore_spatial]: 🎯 Goal: (2.25, 1.93) Current: (2.00, 1.50) Distance: 0.50m
+[WARN] [ollama_explore_spatial]: ⚠️  Goal rejected: Movement goal too close (0.50m < 1.0m minimum)
+[INFO] [ollama_explore_spatial]: 🔄 Generating rotation goal as fallback
+[INFO] [ollama_explore_spatial]: 🎯 Goal: (2.00, 1.50) Current: (2.00, 1.50) Distance: 0.00m
+[INFO] [ollama_explore_spatial]: 🔄 Rotation goal - staying at current position
+[INFO] [ollama_explore_spatial]: 🔄 Sent single rotation goal: face 180° (staying at current position)
 
-[INFO] [ollama_basic_spatial]: ✅ Navigation goal accepted by Nav2
-[INFO] [ollama_basic_spatial]: ✅ Navigation goal reached successfully!
-[INFO] [ollama_basic_spatial]: 🚀 Triggering immediate Ollama query after goal completion
+[INFO] [ollama_explore_spatial]: ✅ Navigation goal accepted by Nav2
+[INFO] [ollama_explore_spatial]: ✅ Navigation goal reached successfully!
+[INFO] [ollama_explore_spatial]: 🚀 Triggering immediate Ollama query after goal completion
 ```
 
 ### Rotation Goal Example
 
 ```bash
-[INFO] [ollama_basic_spatial]: 🔍 Performing spatial analysis...
-[INFO] [ollama_basic_spatial]: 📏 Current position: (2.38, 2.38) facing 45° northeast
-[INFO] [ollama_basic_spatial]: 🧠 Querying Ollama for goal suggestion...
+[INFO] [ollama_explore_spatial]: 🔍 Performing spatial analysis...
+[INFO] [ollama_explore_spatial]: 📏 Current position: (2.38, 2.38) facing 45° northeast
+[INFO] [ollama_explore_spatial]: 🧠 Querying Ollama for goal suggestion...
 
-[INFO] [ollama_basic_spatial]: ✅ Ollama response received (1.6s)
-[INFO] [ollama_basic_spatial]:    Distance: 0.0m, Bearing: 90°, Goal type: ROTATION
-[INFO] [ollama_basic_spatial]:    Reasoning: "Rotating right to survey eastern corridor"
-[INFO] [ollama_basic_spatial]: 🔄 Rotation goal detected - staying in same position
-[INFO] [ollama_basic_spatial]: 📍 Setting rotation target: (2.38, 2.38) facing 135° southeast
-[INFO] [ollama_basic_spatial]: 🎯 Using NavigateToPose for in-place rotation
+[INFO] [ollama_explore_spatial]: ✅ Ollama response received (1.6s)
+[INFO] [ollama_explore_spatial]:    Distance: 0.0m, Bearing: 90°, Goal type: ROTATION
+[INFO] [ollama_explore_spatial]:    Reasoning: "Rotating right to survey eastern corridor"
+[INFO] [ollama_explore_spatial]: 🔄 Rotation goal detected - staying in same position
+[INFO] [ollama_explore_spatial]: 📍 Setting rotation target: (2.38, 2.38) facing 135° southeast
+[INFO] [ollama_explore_spatial]: 🎯 Using NavigateToPose for in-place rotation
 
-[INFO] [ollama_basic_spatial]: ➡️ Rotation navigation started
-[INFO] [ollama_basic_spatial]: 🔄 Rotating in place to face new direction...
-[INFO] [ollama_basic_spatial]: 🎯 Rotation goal COMPLETED - new heading: 135°
-[INFO] [ollama_basic_spatial]: 🚀 Triggering immediate Ollama query after goal completion
+[INFO] [ollama_explore_spatial]: ➡️ Rotation navigation started
+[INFO] [ollama_explore_spatial]: 🔄 Rotating in place to face new direction...
+[INFO] [ollama_explore_spatial]: 🎯 Rotation goal COMPLETED - new heading: 135°
+[INFO] [ollama_explore_spatial]: 🚀 Triggering immediate Ollama query after goal completion
 ```
 
 ### Ollama Timeout/Error Examples
@@ -281,18 +281,18 @@ Check if Ollama service is running: 'systemctl status ollama' or 'ollama list'
 System stopped. Press Ctrl+C to exit
 ```
 
-**ROS2 Node Logs (ollama_basic_spatial):**
+**ROS2 Node Logs (ollama_explore_spatial):**
 ```bash
-[INFO] [ollama_basic_spatial]: 🔍 Performing spatial analysis...
-[INFO] [ollama_basic_spatial]: 📏 Current position: (2.38, 2.38) facing 135° southeast
-[INFO] [ollama_basic_spatial]: 🧠 Querying Ollama for goal suggestion (timeout: 120s)...
-[ERROR] [ollama_basic_spatial]: ❌ Ollama timeout after 120s - stopping navigation
-[INFO] [ollama_basic_spatial]: 🛑 No valid goal from Ollama - navigation stopped
+[INFO] [ollama_explore_spatial]: 🔍 Performing spatial analysis...
+[INFO] [ollama_explore_spatial]: 📏 Current position: (2.38, 2.38) facing 135° southeast
+[INFO] [ollama_explore_spatial]: 🧠 Querying Ollama for goal suggestion (timeout: 120s)...
+[ERROR] [ollama_explore_spatial]: ❌ Ollama timeout after 120s - stopping navigation
+[INFO] [ollama_explore_spatial]: 🛑 No valid goal from Ollama - navigation stopped
 
 # System waits 30 seconds, then tries again...
-[INFO] [ollama_basic_spatial]: 🔍 Performing spatial analysis...
-[ERROR] [ollama_basic_spatial]: ❌ Ollama service unavailable - stopping navigation
-[INFO] [ollama_basic_spatial]: 🛑 No valid goal from Ollama - navigation stopped
+[INFO] [ollama_explore_spatial]: 🔍 Performing spatial analysis...
+[ERROR] [ollama_explore_spatial]: ❌ Ollama service unavailable - stopping navigation
+[INFO] [ollama_explore_spatial]: 🛑 No valid goal from Ollama - navigation stopped
 
 # Process continues checking every 30 seconds until Ollama becomes available
 ```
@@ -300,9 +300,9 @@ System stopped. Press Ctrl+C to exit
 ### Navigation Error Handling
 
 ```
-[INFO] [ollama_basic_spatial]: 🔍 Performing spatial analysis...
-[INFO] [ollama_basic_spatial]: 📏 Current position: (2.38, 2.38) facing 45° northeast
-[INFO] [ollama_basic_spatial]: 🧠 Querying Ollama for goal suggestion (timeout: 120s)...
+[INFO] [ollama_explore_spatial]: 🔍 Performing spatial analysis...
+[INFO] [ollama_explore_spatial]: 📏 Current position: (2.38, 2.38) facing 45° northeast
+[INFO] [ollama_explore_spatial]: 🧠 Querying Ollama for goal suggestion (timeout: 120s)...
 
 ❌ OLLAMA SERVICE UNAVAILABLE
 ==================================================
@@ -310,13 +310,13 @@ Ollama LLM service is not responding
 Navigation system stopping - no fallback movement
 ==================================================
 
-[ERROR] [ollama_basic_spatial]: ❌ Ollama service unavailable - stopping navigation
-[INFO] [ollama_basic_spatial]: 🛑 No valid goal from Ollama - navigation stopped
+[ERROR] [ollama_explore_spatial]: ❌ Ollama service unavailable - stopping navigation
+[INFO] [ollama_explore_spatial]: 🛑 No valid goal from Ollama - navigation stopped
 
 # System waits 30 seconds between attempts
-[INFO] [ollama_basic_spatial]: 🔍 Performing spatial analysis...
-[ERROR] [ollama_basic_spatial]: ❌ Ollama service unavailable - stopping navigation  
-[INFO] [ollama_basic_spatial]: 🛑 No valid goal from Ollama - navigation stopped
+[INFO] [ollama_explore_spatial]: 🔍 Performing spatial analysis...
+[ERROR] [ollama_explore_spatial]: ❌ Ollama service unavailable - stopping navigation  
+[INFO] [ollama_explore_spatial]: 🛑 No valid goal from Ollama - navigation stopped
 
 # Process continues checking every 30 seconds until user stops or Ollama becomes available
 ```
@@ -348,13 +348,13 @@ Session Statistics:
 
 ```bash
 # Real robot with Ollama navigation
-./b4m_launch.sh --ollama-nav-basic
+./b4m_launch.sh --ollama-nav-explore
 
 # Simulation with Ollama navigation  
-./b4m_launch.sh --ollama-nav-basic --simulation
+./b4m_launch.sh --ollama-nav-explore --simulation
 
 # Debug mode with verbose output
-./b4m_launch.sh --ollama-nav-basic --simulation --debug
+./b4m_launch.sh --ollama-nav-explore --simulation --debug
 ```
 
 ## Configuration
@@ -420,7 +420,7 @@ Distance 3.2m → 3 waypoints:
 
 ### Core Components
 
-- **`scripts/ollama_basic_spatial.py`**: Main ROS2 node with multi-waypoint navigation
+- **`scripts/ollama_explore_spatial.py`**: Main ROS2 node for autonomous exploration with multi-waypoint navigation
 - **`config/ollama_nav_config.yaml`**: Full configuration parameters
 - **`b4m_launch.sh`**: Integrated launch sequence with automatic activation
 
@@ -631,20 +631,6 @@ SELECT the most strategic navigation goal that will:
 - Implement building layout prediction
 - Create long-term exploration strategy planning
 
-### Expected Improvements
-
-**Quantitative Targets**:
-- **Goal Success Rate**: 90%+ (vs current ~60-70%)
-- **Map Discovery Efficiency**: 40%+ improvement in sqm mapped per goal
-- **Navigation Abort Rate**: <10% (vs current ~30-40%)
-- **Exploration Speed**: 25%+ faster complete area mapping
-
-**Qualitative Benefits**:
-- **Smarter Goal Selection**: Goals consistently within reachable, safe areas
-- **Strategic Exploration**: Systematic discovery vs random wandering
-- **Better Map Coverage**: More efficient revelation of building layout
-- **Reduced Failures**: Fewer Nav2 aborts due to invalid goals
-
 ---
 
-The `--ollama-nav-basic` mode provides production-ready autonomous navigation combining LLM intelligence with robust Nav2 pathfinding for safe, efficient robot exploration.
+The `--ollama-nav-explore` mode provides production-ready autonomous navigation combining LLM intelligence with robust Nav2 pathfinding for safe, efficient robot exploration.
