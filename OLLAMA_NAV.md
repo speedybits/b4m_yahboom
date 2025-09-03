@@ -8,13 +8,15 @@ The `--ollama-nav-explore` mode builds upon the proven `--nav` infrastructure to
 
 ## Core Purpose
 
-Create an autonomous exploration system where:
+Create an autonomous exploration system that operates in a **closed-loop cycle**:
 - The robot builds a map from scratch using SLAM
-- At startup and after each goal completion, the system analyzes the environment
-- Ollama LLM selects the next navigation goal based on current spatial context
+- At startup and after **every goal completion/abortion**, the system performs fresh environmental analysis
+- Ollama LLM selects the next navigation goal using **updated map data** and current spatial context
 - The robot navigates to that goal using Nav2
-- Upon reaching or aborting the goal, immediately analyze and select the next goal
-- The process repeats continuously for full area exploration
+- Upon reaching or aborting the goal, **immediately trigger new analysis** using the expanded/updated map
+- This closed-loop process repeats continuously, with each cycle benefiting from improved map knowledge
+
+**Critical Closed-Loop Behavior:** Each navigation completion immediately triggers a new analysis cycle that incorporates all the latest map data and spatial information gathered during the previous navigation, ensuring continuous improvement in exploration decisions.
 
 ## System Requirements
 
@@ -40,41 +42,67 @@ Create an autonomous exploration system where:
 
 ## System Architecture
 
-### Data Flow
+### Closed-Loop Architecture
 
 ```
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│   360° LIDAR    │────▶│  Spatial Context │────▶│  Ollama LLM     │
-│   + Map Data    │     │     Builder      │     │ Goal Selection  │
-└─────────────────┘     └──────────────────┘     └─────────────────┘
-                                                          │
-                                                          ▼
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│   Robot Motion  │◀────│   Navigation 2   │◀────│  Navigation     │
-│                 │     │   (Nav2 Stack)   │     │     Goal        │
-└─────────────────┘     └──────────────────┘     └─────────────────┘
-         │                                                │
-         └────────────────────────────────────────────────┘
-                    Goal Reached/Aborted
-                    (Triggers new analysis)
+    ┌─────────────────────────────────────────────────────────────────┐
+    │                        CONTINUOUS CYCLE                         │
+    │                                                                 │
+    ▼                                                                 │
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐ │
+│   360° LIDAR    │────▶│  Spatial Context │────▶│  Ollama LLM     │ │
+│ + UPDATED Map   │     │ Builder (FRESH)  │     │ Goal Selection  │ │
+│   Data (SLAM)   │     │    Analysis      │     │  (NEW Context)  │ │
+└─────────────────┘     └──────────────────┘     └─────────────────┘ │
+                                                          │           │
+                                                          ▼           │
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐ │
+│   Robot Motion  │◀────│   Navigation 2   │◀────│  Navigation     │ │
+│ (Map Updates)   │     │   (Nav2 Stack)   │     │     Goal        │ │
+│   + Position    │     │                  │     │                 │ │
+└─────────────────┘     └──────────────────┘     └─────────────────┘ │
+                                 │                                   │
+                                 │                                   │
+                    GOAL COMPLETION/ABORTION                        │
+                                 ↓                                   │
+                 ┌─────────────────────────────┐                   │
+                 │   IMMEDIATE RE-ANALYSIS     │                   │
+                 │                             │                   │
+                 │ • Updated SLAM map data     │                   │
+                 │ • New robot position       │                   │
+                 │ • Fresh sensor readings    │                   │
+                 │ • Updated spatial context  │                   │
+                 └─────────────────────────────┘                   │
+                                 │                                   │
+                                 └───────────────────────────────────┘
+                            CLOSES THE LOOP
 ```
+
+**Key Closed-Loop Elements:**
+- **Fresh Analysis**: Every cycle uses the most current map and sensor data
+- **No Delays**: Goal completion immediately triggers new environmental analysis  
+- **Cumulative Learning**: Each navigation adds to map knowledge for better future decisions
+- **Continuous Improvement**: Later goals benefit from expanded map coverage and spatial understanding
 
 ## Functional Requirements
 
-### 1. Environmental Analysis (Triggered Events)
+### 1. Environmental Analysis (Closed-Loop Trigger Events)
 
-**When to Analyze:**
-- At system startup
-- Immediately after goal completion (success)
-- Immediately after goal abortion (failure)
-- NO periodic timer - analysis is event-driven
+**When to Analyze (Event-Driven Closed Loop):**
+- At system startup (initial map state)
+- **Immediately after goal completion** (success) - using updated map data from navigation
+- **Immediately after goal abortion** (failure) - incorporating any map updates gathered during failed attempt
+- NO periodic timer - analysis is purely event-driven to ensure fresh data
 
-**Analysis Requirements:**
-- Capture current robot position and orientation
-- Analyze 360° LIDAR data in 8 sectors (45° each)
-- Identify obstacles, open spaces, and navigable areas
-- Detect unexplored map boundaries (frontiers)
-- Generate a comprehensive spatial description
+**Closed-Loop Analysis Requirements:**
+- **Always use latest map state**: Capture the most current SLAM map data (not cached/old data)
+- **Fresh position data**: Get real-time robot position and orientation post-navigation
+- **Current sensor readings**: Analyze live 360° LIDAR data in 8 sectors (45° each)
+- **Updated spatial context**: Identify obstacles, open spaces, and navigable areas using newest map
+- **Frontier detection**: Find unexplored boundaries based on expanded map coverage
+- **Comprehensive description**: Generate spatial analysis reflecting all knowledge gained from previous navigation
+
+**Critical:** Each analysis cycle MUST use the freshest available data - never reuse previous analysis results or cached spatial descriptions.
 
 ### 2. LLM Integration
 
@@ -110,17 +138,18 @@ Create an autonomous exploration system where:
 - Allow SLAM to naturally expand the map as robot approaches frontiers
 - Never send goals directly into unexplored/unknown map regions
 
-**Multi-waypoint Navigation:**
-- Distances <2m: Single goal point
-- Distances ≥2m: Generate waypoints at 1.5m intervals
-- Maximum 5 waypoints per navigation path
 
-### 4. Navigation Execution
+### 4. Navigation Execution (Closes the Loop)
 
 - Send validated goals to Nav2 navigation stack
-- Monitor navigation progress
-- Handle goal completion/abortion
-- Immediately trigger next Ollama query (no delay)
+- Monitor navigation progress and map updates during movement
+- **Goal completion/abortion handling**: Upon any navigation outcome (success/failure/abortion)
+  - **Immediately capture updated map state** from SLAM system
+  - **Get current robot position** after navigation attempt
+  - **Trigger fresh environmental analysis** using all newly acquired spatial data
+  - **NO delays** between navigation completion and new analysis cycle
+
+**Closing the Loop:** Navigation completion is the trigger that restarts the entire cycle with updated knowledge, ensuring each subsequent goal selection benefits from expanded map coverage and improved spatial understanding.
 
 ## Logging Requirements
 
@@ -192,7 +221,6 @@ Select navigation goal (1-5m distance, relative bearing ±180°):
 🚀 Sending navigation goal to Nav2...
 
 🛤️ NAVIGATION IN PROGRESS
-- Multi-waypoint path (3 waypoints)
 - Current progress: 45% complete
 - ETA: 12 seconds
 
@@ -434,8 +462,6 @@ navigation:
   rotation_probability: 0.5      # Movement vs rotation ratio
   min_goal_distance: 1.0         # Minimum goal distance (meters) - EXACT KEY NAME
   max_goal_distance: 5.0         # Maximum goal distance (meters)
-  waypoint_spacing: 1.5          # Distance between waypoints (meters)
-  max_waypoints: 5               # Maximum waypoints per path
   
 ollama_nav:                      # EXACT SECTION NAME (NOT "ollama")
   host: localhost
@@ -464,7 +490,6 @@ The implementation MUST use these exact key names from the existing `config/olla
 - `min_goal_distance` (NOT `min_movement_distance`)
 - `max_goal_distance` (NOT `max_movement_distance`) 
 - `rotation_probability`
-- `waypoint_spacing`
 
 **Ollama Section:**
 - `ollama_nav.host` (NOT `ollama.host`)
@@ -546,9 +571,38 @@ Session Statistics:
 - **Launch integration**: Add to `b4m_launch.sh` (copy `--nav` section)
 
 ### Key Interfaces
-- **Input**: `/scan` (LIDAR), `/map` (occupancy grid), `/odom` (position)
+- **Input**: `/scan` (LIDAR), `/map` (occupancy grid - OccupancyGrid message), `/odom` (position)
 - **Output**: Navigation goals to Nav2 action server (same as `--nav`)
 - **Logging**: Both ROS2 logging and Python logging to file
+
+### Research-Based Implementation Details
+
+**Map Data Source (Confirmed):**
+- Subscribe to `/map` topic (OccupancyGrid message type)
+- This is the standard SLAM map output used by existing `--nav` mode
+- Map data contains: width, height, resolution, origin, and occupancy data array
+
+**Frontier Detection Method (Simple Implementation):**
+- Scan occupancy grid for boundaries between free (0) and unknown (-1) space
+- Use simple grid traversal to find frontier cells
+- Convert grid coordinates to world coordinates for goal selection
+- No complex frontier clustering required - basic boundary detection sufficient
+
+**LLM Prompt Requirements (Specification-Compliant):**
+- Start with: "You are a robot explorer. Analyze the environment and select the next navigation goal."
+- Include spatial context in 8-sector format as shown in logging examples
+- Add JSON response format requirements for processing into navigation actions
+- Emphasize goal selection in explored territory moving toward frontiers
+
+**Goal Validation for Safe Territory:**
+- Check occupancy grid values: only allow goals where `occupancy_value == 0` (free space)
+- Reject goals where `occupancy_value == -1` (unexplored) or `occupancy_value >= 50` (obstacles)
+- Convert goal coordinates to grid indices for validation before sending to Nav2
+
+**Navigation Progress Monitoring (Simplified):**
+- Use Nav2 action client status only: ACCEPTED → ACTIVE → SUCCEEDED/ABORTED
+- Remove custom progress calculation - Nav2 provides sufficient status information
+- Focus on goal completion detection rather than progress percentages
 
 ### Implementation Strategy
 1. **Start with `--nav` working mode** - Copy the launch sequence and navigation setup
@@ -563,9 +617,32 @@ Session Statistics:
 4. Check log files for proper formatting
 5. Test error scenarios (disconnect Ollama)
 
+## Implementation Checklist (Based on Existing Code Research)
+
+### Pre-Implementation Verification
+- [ ] Confirm `/map` topic publishes OccupancyGrid messages in current `--nav` mode
+- [ ] Verify Ollama service responds on `localhost:11434` with test model
+- [ ] Test Nav2 action client functionality in existing `--nav` mode
+- [ ] Validate configuration file structure matches `config/ollama_nav_config.yaml`
+
+### Core Implementation Tasks
+- [ ] Replace placeholder `detect_frontiers()` with occupancy grid boundary detection
+- [ ] Update `build_exploration_prompt()` to match specification format exactly
+- [ ] Implement `is_goal_in_safe_territory()` using `occupancy_value == 0` validation
+- [ ] Fix configuration key access to match existing YAML structure
+- [ ] Remove navigation progress monitoring - use Nav2 status only
+- [ ] Ensure closed-loop behavior with fresh map data on each cycle
+
+### Testing Sequence
+1. **Simulation Testing**: `./b4m_launch.sh --ollama-nav-explore --simulation`
+2. **Ollama Connectivity**: Verify LLM responses and JSON parsing
+3. **Frontier Detection**: Check boundary detection in RViz map visualization
+4. **Goal Validation**: Test various map scenarios (free, unknown, obstacle areas)
+5. **Closed-Loop Verification**: Confirm fresh map data usage between cycles
+
 ## Future Enhancements (Not Required for Initial Implementation)
 
-- Frontier detection for smarter exploration
+- Advanced frontier clustering and prioritization
 - Multi-robot coordination
 - Learned exploration strategies
 - Dynamic obstacle handling
