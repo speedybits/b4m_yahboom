@@ -551,19 +551,53 @@ Session Statistics:
 
 ## Development Guidelines
 
+### CRITICAL: Start with Working `--nav` Code as Foundation
+
+**⚠️ MANDATORY APPROACH: DO NOT implement from scratch!**
+
+The `--ollama-nav-explore` mode MUST be built by modifying existing working code, NOT by writing new code from scratch. This prevents dependency conflicts, ensures compatibility, and leverages proven functionality.
+
+### Implementation Checklist (MANDATORY ORDER)
+
+**Step 1: Copy Working `--nav` Foundation**
+- [ ] Start with existing `ollama_nav_controller.py` as the base file
+- [ ] Ensure all imports, dependencies, and patterns are already working
+- [ ] Verify quaternion handling, TF transforms, and Nav2 integration work correctly
+- [ ] Confirm position tracking and goal sending patterns are functional
+- [ ] Test that the base code runs without tf_transformations or other external dependencies
+
+**Step 2: Modify for Autonomous Exploration**
+- [ ] Replace manual goal input with LLM-driven goal selection
+- [ ] Add environmental analysis and frontier detection
+- [ ] Implement closed-loop behavior (goal completion → immediate re-analysis)
+- [ ] Add proper state management for autonomous operation
+
+**Step 3: Add Ollama Integration**
+- [ ] Copy HTTP client patterns from existing `--ollama` mode
+- [ ] Integrate LLM query system with proven connection handling
+- [ ] Add JSON parsing and validation using existing patterns
+
+**❌ NEVER DO THIS:**
+- Start with empty file and import tf_transformations (ROS1 dependency)
+- Write custom quaternion conversion when working version exists
+- Implement Nav2 action client from scratch when pattern already works
+- Create new TF/odometry handling when existing code already handles it
+
 ### Leveraging Existing Infrastructure
 
-**Reuse `--nav` Components:**
-- Launch sequence: Copy from existing `--nav` mode in `b4m_launch.sh`
-- Navigation stack: Use identical Nav2 + Cartographer configuration
-- Goal sending: Reuse Nav2 action client patterns from existing code
-- RViz integration: Same visualization setup as `--nav` mode
+**Reuse `--nav` Components (EXACT COPY PATTERNS):**
+- **Launch sequence**: Copy from existing `--nav` mode in `b4m_launch.sh`
+- **Navigation stack**: Use identical Nav2 + Cartographer configuration  
+- **Goal sending**: Reuse Nav2 action client patterns from existing code (EXACT SAME APPROACH)
+- **Position tracking**: Copy TF/odometry patterns from `ollama_nav_controller.py`
+- **Quaternion handling**: Use existing `euler_from_quaternion()` function
+- **RViz integration**: Same visualization setup as `--nav` mode
 
-**Reference `--ollama` for LLM Integration:**
-- HTTP client: Reuse Ollama connection patterns from `--ollama` mode
-- JSON handling: Copy request/response parsing from existing `--ollama` code
-- Error handling: Leverage timeout and connection error patterns
-- Configuration: Extend existing `ollama_config.yaml` structure
+**Reference `--ollama` for LLM Integration (EXACT COPY PATTERNS):**
+- **HTTP client**: Reuse Ollama connection patterns from `--ollama` mode
+- **JSON handling**: Copy request/response parsing from existing `--ollama` code
+- **Error handling**: Leverage timeout and connection error patterns  
+- **Configuration**: Extend existing `ollama_config.yaml` structure
 
 ### Code Organization
 - **Main node**: `scripts/ollama_explore_spatial.py`
@@ -605,10 +639,22 @@ Session Statistics:
 - Focus on goal completion detection rather than progress percentages
 
 ### Implementation Strategy
-1. **Start with `--nav` working mode** - Copy the launch sequence and navigation setup
-2. **Add Ollama client** - Copy HTTP client code from `--ollama` mode  
-3. **Replace manual goals** - Instead of RViz goal setting, use LLM goal selection
-4. **Test incrementally** - Verify each component works with existing infrastructure
+
+**🚨 CRITICAL REQUIREMENT: Use `ollama_nav_controller.py` as Starting Point**
+
+The implementation MUST begin by copying the existing, working `ollama_nav_controller.py` file to `ollama_explore_spatial.py` and modifying it, rather than starting from scratch. This ensures:
+- All ROS2 dependencies are already correct
+- Quaternion handling works without external libraries
+- Nav2 integration patterns are proven to work
+- Position tracking and TF transforms are functional
+- No tf_transformations or other compatibility issues
+
+**Implementation Steps:**
+1. **Copy `ollama_nav_controller.py` → `ollama_explore_spatial.py`** - Start with working foundation
+2. **Add autonomous exploration logic** - Replace manual input with environmental analysis
+3. **Add LLM integration** - Copy HTTP client code from existing `--ollama` mode  
+4. **Implement closed-loop behavior** - Add goal completion → immediate re-analysis
+5. **Test incrementally** - Verify each component works with existing infrastructure
 
 ### Testing in Simulation
 1. Start with `--simulation` flag
