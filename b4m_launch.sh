@@ -1273,10 +1273,18 @@ if [ "$OLLAMA_NAV_EXPLORE_MODE" = true ]; then
     echo ""
     echo "🤖 AUTONOMOUS NAVIGATION ACTIVE"
     echo "======================================"
-    echo "   - Robot will analyze surroundings every 30 seconds"
-    echo "   - Ollama LLM will suggest navigation goals based on spatial context"
-    echo "   - Goals will appear as RViz markers and robot will navigate to them"
+    echo "   - Robot operates in closed-loop exploration mode (event-driven)"
+    echo "   - Environmental analysis triggers immediately after each navigation completion"
+    echo "   - Ollama LLM selects goals based on updated map data and spatial context"
+    echo "   - Goals will appear as RViz markers and robot will navigate autonomously"
     echo "   - Check logs for Ollama reasoning: $LOGS_DIR/ollama_spatial_$TIMESTAMP.log"
+    echo ""
+    echo "📊 Closed-Loop Operation:"
+    echo "   1. System analyzes current environment with fresh SLAM map data"
+    echo "   2. Ollama LLM selects next exploration goal in safe territory"  
+    echo "   3. Robot navigates to goal using Nav2 path planning"
+    echo "   4. Upon completion/abortion → immediately trigger new analysis cycle"
+    echo "   5. Process repeats continuously with improved map knowledge"
     echo ""
     
     # Wait for user to stop
@@ -1285,9 +1293,9 @@ if [ "$OLLAMA_NAV_EXPLORE_MODE" = true ]; then
     # Keep the script running and show periodic status
     while true; do
         sleep 30
-        echo "🧭 Ollama Navigation Basic active with AI... (Ctrl+C to stop)"
-        echo "   Robot analyzing surroundings every 30 seconds and suggesting goals via Ollama LLM"
-        echo "   Check Ollama logs: $LOGS_DIR/ollama_spatial_$TIMESTAMP.log"
+        echo "🧭 Ollama Autonomous Exploration active... (Ctrl+C to stop)"
+        echo "   Event-driven closed-loop exploration using LLM goal selection"
+        echo "   Check exploration progress: $LOGS_DIR/ollama_spatial_$TIMESTAMP.log"
     done
 fi
 
