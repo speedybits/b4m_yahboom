@@ -1,5 +1,86 @@
 #!/bin/bash
 
+# B4M Robot Launch Script - Signal Handling Setup
+# Track all background processes for proper cleanup
+CHILD_PIDS=()
+GAZEBO_PID=""
+RVIZ_PID=""
+OLLAMA_PID=""
+
+# Cleanup function - called on exit or signal
+cleanup() {
+    echo ""
+    echo "🛑 Shutdown signal received - cleaning up processes..."
+    
+    # Kill Ollama exploration if running
+    if [ ! -z "$OLLAMA_PID" ] && kill -0 "$OLLAMA_PID" 2>/dev/null; then
+        echo "Stopping Ollama exploration (PID: $OLLAMA_PID)"
+        kill -TERM "$OLLAMA_PID" 2>/dev/null
+        sleep 2
+        kill -KILL "$OLLAMA_PID" 2>/dev/null
+    fi
+    
+    # Kill tracked child processes
+    for pid in "${CHILD_PIDS[@]}"; do
+        if kill -0 "$pid" 2>/dev/null; then
+            echo "Stopping process PID: $pid"
+            kill -TERM "$pid" 2>/dev/null
+            sleep 1
+            kill -KILL "$pid" 2>/dev/null
+        fi
+    done
+    
+    # Force kill GUI applications
+    pkill -f "gazebo" 2>/dev/null
+    pkill -f "rviz" 2>/dev/null
+    pkill -f "gzclient" 2>/dev/null  
+    pkill -f "gzserver" 2>/dev/null
+    
+    # Run the shutdown script
+    echo "Running shutdown script..."
+    if [ -f "./b4m_shutdown.sh" ]; then
+        timeout 30 ./b4m_shutdown.sh --keep-agent
+    fi
+    
+    echo "✅ Cleanup completed"
+    exit 0
+}
+
+# Set up signal traps for clean shutdown
+trap cleanup SIGINT SIGTERM EXIT
+
+# Function to track process and ensure display
+track_process() {
+    local pid=$1
+    local process_name=$2
+    
+    # Add to tracked processes
+    CHILD_PIDS+=("$pid")
+    
+    # Store specific PIDs for cleanup
+    case $process_name in
+        "gazebo")
+            GAZEBO_PID=$pid
+            ;;
+        "rviz")  
+            RVIZ_PID=$pid
+            ;;
+        "ollama")
+            OLLAMA_PID=$pid
+            ;;
+    esac
+}
+
+# Function to ensure proper display for GUI applications
+ensure_display() {
+    export DISPLAY=${DISPLAY:-:0}
+    
+    # Ensure X server access permissions
+    if command -v xhost >/dev/null 2>&1; then
+        xhost +local: >/dev/null 2>&1 || true
+    fi
+}
+
 # B4M Robot Launch Script
 # This script automates the launch process for the B4M Robot 
 # Each step will be launched in a separate terminal with user confirmation
@@ -910,6 +991,7 @@ if [ "$NAV_MODE" = true ]; then
         echo "🎮 Step 1: Starting Gazebo Classic simulation with navigation world"
         ros2 launch yahboomcar_nav gazebo_classic_nav_launch.py world_name:=$WORLD_NAME > "$LOGS_DIR/nav_gazebo_$TIMESTAMP.log" 2>&1 &
         GAZEBO_PID=$!
+        track_process $GAZEBO_PID "gazebo"
         echo "   Waiting for simulation initialization..."
         sleep 10
         
@@ -942,6 +1024,7 @@ if [ "$NAV_MODE" = true ]; then
         echo "📊 Step 3: Starting RViz for map visualization and navigation"
         ros2 launch yahboomcar_nav display_launch.py use_sim_time:=true > "$LOGS_DIR/nav_rviz_$TIMESTAMP.log" 2>&1 &
         RVIZ_PID=$!
+        track_process $RVIZ_PID "rviz"
         sleep 5
         
     else
@@ -1072,6 +1155,9 @@ if [ "$OLLAMA_NAV_EXPLORE_MODE" = true ]; then
         echo "Mode: Real Robot Navigation with SLAM"
     fi
     
+    # Ensure display is ready for GUI applications
+    ensure_display
+    
     echo ""
     echo "This mode will:"
     echo "- Launch Cartographer for real-time SLAM mapping"
@@ -1099,6 +1185,7 @@ if [ "$OLLAMA_NAV_EXPLORE_MODE" = true ]; then
         echo "🎮 Step 1: Starting Gazebo Classic simulation with navigation world"
         ros2 launch yahboomcar_nav gazebo_classic_nav_launch.py world_name:=$WORLD_NAME > "$LOGS_DIR/nav_gazebo_$TIMESTAMP.log" 2>&1 &
         GAZEBO_PID=$!
+        track_process $GAZEBO_PID "gazebo"
         echo "   Waiting for simulation initialization..."
         sleep 10
         
@@ -1131,6 +1218,7 @@ if [ "$OLLAMA_NAV_EXPLORE_MODE" = true ]; then
         echo "📊 Step 3: Starting RViz for map visualization and navigation"
         ros2 launch yahboomcar_nav display_launch.py use_sim_time:=true > "$LOGS_DIR/nav_rviz_$TIMESTAMP.log" 2>&1 &
         RVIZ_PID=$!
+        track_process $RVIZ_PID "rviz"
         sleep 5
         
     else
@@ -1269,6 +1357,7 @@ if [ "$OLLAMA_NAV_EXPLORE_MODE" = true ]; then
     echo "   This will analyze surroundings every 30 seconds and suggest navigation goals"
     python3 scripts/ollama_explore_spatial.py > "$LOGS_DIR/ollama_spatial_$TIMESTAMP.log" 2>&1 &
     OLLAMA_PID=$!
+    track_process $OLLAMA_PID "ollama"
     echo "   ✅ Ollama spatial analysis started (PID: $OLLAMA_PID)"
     echo ""
     echo "🤖 AUTONOMOUS NAVIGATION ACTIVE"
