@@ -154,10 +154,12 @@ shutdown_log "Step 3: Stopping waypoint navigation and autonomous explorer proce
 pkill -f "b4m_waypoint_nav" 2>/dev/null
 pkill -f "autonomous_explorer" 2>/dev/null
 pkill -f "autonomous_exploration" 2>/dev/null
+pkill -f "ollama_explore_spatial" 2>/dev/null
 sleep 2
 pkill -9 -f "b4m_waypoint_nav" 2>/dev/null
 pkill -9 -f "autonomous_explorer" 2>/dev/null
 pkill -9 -f "autonomous_exploration" 2>/dev/null
+pkill -9 -f "ollama_explore_spatial" 2>/dev/null
 
 # Step 4: Stop Micro-ROS agent Docker container (if not keeping it)
 if [ "$KEEP_AGENT" = true ]; then
