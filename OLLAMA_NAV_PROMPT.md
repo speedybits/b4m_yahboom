@@ -261,21 +261,18 @@ def convert_selection_to_nav_goal(selected_destination, robot_heading):
 ```python
 def handle_no_safe_destinations(robot_pos, robot_heading):
     """
-    Fallback when no safe destinations found (rare case)
+    Error handling when no safe destinations found (rare case)
     """
-    # Option 1: Generate rotation-in-place goal
-    rotation_angles = [45, 90, 135, 180, -45, -90, -135]
+    # Log error and stop exploration
+    logger.error("No safe navigation destinations found - stopping exploration")
+    logger.error(f"Robot stuck at position: {robot_pos} heading: {robot_heading}")
     
-    for angle in rotation_angles:
-        # Check if rotating would reveal new safe areas
-        # Return rotation goal if beneficial
-        pass
-    
-    # Option 2: Request user intervention
-    logger.warning("No safe navigation destinations found - manual intervention may be required")
-    
-    # Option 3: Small backward movement if safe
-    return generate_retreat_goal(robot_pos, robot_heading)
+    # Enter ERROR state - requires manual intervention
+    raise NoSafeDestinationsError(
+        "Cannot find any safe navigation destinations. "
+        "Robot may be trapped or map may be fully explored. "
+        "Manual intervention required."
+    )
 ```
 
 ### LLM Response Errors
