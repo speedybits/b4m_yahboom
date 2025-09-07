@@ -127,6 +127,7 @@ Create an autonomous exploration system that operates in a **closed-loop cycle**
 - **No Coordinate Calculations**: LLM selects by number (1-10), eliminating coordinate system confusion
 - **Guaranteed Valid Goals**: All destinations are pre-validated for safety and reachability
 - **SafeDestination Data Structure**: Each option includes relative_bearing, distance, world_coords, and strategic context
+- **Detailed Prompt Specification**: See `OLLAMA_NAV_PROMPT.md` for comprehensive prompt generation system
 
 **Expected LLM Response Format:**
 ```json
@@ -595,6 +596,18 @@ Session Statistics:
 - Distance to goal
 - Exploration coverage percentage
 
+
+## Prompt Generation Details
+
+For complete prompt generation specifications including:
+- SafeDestination data structure implementation
+- Environmental description generation algorithms
+- Destination list formatting with strategic indicators
+- Example prompts for various scenarios (open space, corridors, limited options)
+- Expected LLM response formats
+- Error handling for edge cases
+
+**See: `OLLAMA_NAV_PROMPT.md`**
 
 ## Development Guidelines
 
