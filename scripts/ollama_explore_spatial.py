@@ -127,6 +127,16 @@ class SpatialContext:
     
 
 @dataclass
+class SafeDestination:
+    """Pre-validated safe navigation destination"""
+    relative_bearing: float      # Degrees relative to robot heading (-180 to 180)
+    distance: float             # Meters from current position (1.0 to 3.0)
+    world_coords: Tuple[float, float]  # (x, y) in map frame
+    description: str            # Human-readable description for LLM
+    leads_to_frontier: bool     # Whether unexplored cells exist within 1m of destination
+    strategic_value: str        # Optional hint (not prioritized in ordering)
+
+@dataclass
 class NavigationGoal:
     """Represents a navigation goal from Ollama"""
     relative_distance: float
@@ -637,90 +647,214 @@ class OllamaExploreController(Node):
             frontiers=frontiers
         )
         
-    def build_exploration_prompt(self, context: SpatialContext) -> str:
-        """Build the LLM prompt for exploration goal selection"""
+    def generate_safe_destinations(self, max_destinations=10) -> List[SafeDestination]:
+        """Generate up to 10 pre-validated safe navigation destinations"""
+        robot_pos = self.get_current_position()
+        robot_heading = self.get_current_heading()  # In radians
+        safe_destinations = []
+        
+        # Search patterns for finding safe destinations
+        search_patterns = [
+            # Pattern 1: 8 cardinal/ordinal directions
+            [(distance, angle) for angle in [0, 45, 90, 135, 180, 225, 270, 315] 
+             for distance in [1.0, 1.5, 2.0, 2.5, 3.0]],
+            # Pattern 2: Additional angles for more options  
+            [(distance, angle) for angle in [22, 67, 112, 157, 202, 247, 292, 337]
+             for distance in [1.5, 2.0, 2.5]]
+        ]
+        
+        for pattern in search_patterns:
+            for distance, relative_bearing_deg in pattern:
+                if len(safe_destinations) >= max_destinations:
+                    break
+                    
+                # Calculate absolute world coordinates
+                absolute_bearing = robot_heading + math.radians(relative_bearing_deg)
+                target_x = robot_pos[0] + distance * math.cos(absolute_bearing)
+                target_y = robot_pos[1] + distance * math.sin(absolute_bearing)
+                
+                # Validate safety using occupancy grid
+                if self.is_destination_safe(target_x, target_y):
+                    # Check if near frontier
+                    leads_to_frontier = self.is_near_frontier(target_x, target_y)
+                    
+                    # Create destination
+                    destination = SafeDestination(
+                        relative_bearing=relative_bearing_deg,
+                        distance=distance,
+                        world_coords=(target_x, target_y),
+                        description=self.generate_destination_description(
+                            relative_bearing_deg, distance, leads_to_frontier
+                        ),
+                        leads_to_frontier=leads_to_frontier,
+                        strategic_value="exploration" if leads_to_frontier else "movement"
+                    )
+                    safe_destinations.append(destination)
+        
+        return safe_destinations
+    
+    def is_destination_safe(self, x: float, y: float) -> bool:
+        """Check if destination coordinates are in confirmed safe space"""
+        if not self.map_data:
+            return False
+            
+        # Convert world coordinates to grid coordinates
+        grid_x = int((x - self.map_data.info.origin.position.x) / self.map_data.info.resolution)
+        grid_y = int((y - self.map_data.info.origin.position.y) / self.map_data.info.resolution)
+        
+        # Check bounds
+        if (grid_x < 0 or grid_x >= self.map_data.info.width or 
+            grid_y < 0 or grid_y >= self.map_data.info.height):
+            return False
+            
+        # Get occupancy value
+        idx = grid_y * self.map_data.info.width + grid_x
+        occupancy_value = self.map_data.data[idx]
+        
+        # Use occupancy <= 24 (stricter than Nav2's 25 threshold)
+        return 0 <= occupancy_value <= 24
+    
+    def is_near_frontier(self, x: float, y: float, radius: float = 1.0) -> bool:
+        """Check if unexplored cells exist within radius of destination"""
+        if not self.map_data:
+            return False
+            
+        # Convert to grid coordinates
+        center_grid_x = int((x - self.map_data.info.origin.position.x) / self.map_data.info.resolution)
+        center_grid_y = int((y - self.map_data.info.origin.position.y) / self.map_data.info.resolution)
+        
+        # Check cells within radius
+        cells_to_check = int(radius / self.map_data.info.resolution)
+        
+        for dx in range(-cells_to_check, cells_to_check + 1):
+            for dy in range(-cells_to_check, cells_to_check + 1):
+                grid_x = center_grid_x + dx
+                grid_y = center_grid_y + dy
+                
+                # Check bounds
+                if (0 <= grid_x < self.map_data.info.width and 
+                    0 <= grid_y < self.map_data.info.height):
+                    
+                    idx = grid_y * self.map_data.info.width + grid_x
+                    # Check if unknown (-1)
+                    if self.map_data.data[idx] == -1:
+                        return True
+                        
+        return False
+    
+    def generate_destination_description(self, bearing: float, distance: float, near_frontier: bool) -> str:
+        """Generate human-readable description for destination"""
+        direction = self.bearing_to_compass(bearing)
+        if near_frontier:
+            return f"Move {distance:.1f}m {direction} toward unexplored area"
+        else:
+            return f"Move {distance:.1f}m {direction}"
+    
+    def bearing_to_compass(self, bearing: float) -> str:
+        """Convert relative bearing to compass direction"""
+        compass_map = {
+            0: "forward", 45: "forward-right", 90: "right", 135: "back-right",
+            180: "backward", 225: "back-left", 270: "left", 315: "forward-left"
+        }
+        
+        # Find closest compass direction
+        min_diff = float('inf')
+        closest_dir = "forward"
+        
+        for angle, direction in compass_map.items():
+            # Handle wrap-around for angles
+            diff = abs(bearing - angle)
+            if diff > 180:
+                diff = 360 - diff
+            if diff < min_diff:
+                min_diff = diff
+                closest_dir = direction
+                
+        return closest_dir
+
+    def build_exploration_prompt(self, context: SpatialContext, safe_destinations: List[SafeDestination]) -> str:
+        """Build the LLM prompt for exploration goal selection with numbered destinations"""
         robot_x, robot_y = self.get_current_position()
         robot_heading = math.degrees(self.get_current_heading())
         
-        prompt = """You are a robot explorer. Analyze the environment and select the next navigation goal.
-
-SPATIAL CONTEXT:"""
-
-        # Add 8-sector format as specified in requirements
-        sector_descriptions = {
-            0: "FRONT (0°)",
-            45: "FRONT-RIGHT (45°)", 
-            90: "RIGHT (90°)",
-            135: "BACK-RIGHT (135°)",
-            180: "BEHIND (180°)",
-            225: "BACK-LEFT (225°)",
-            270: "LEFT (270°)",
-            315: "FRONT-LEFT (315°)"
-        }
+        # Check if we have safe destinations
+        if not safe_destinations:
+            return "NO_SAFE_DESTINATIONS"
         
-        for angle in [0, 45, 90, 135, 180, 225, 270, 315]:
-            distance = context.sectors.get(angle, 0.0)
-            if distance > self.config['safety']['obstacle_clearance']:
-                status = f"CLEAR - Open space extending {distance:.1f}m"
-            else:
-                status = f"BLOCKED - Wall at {distance:.1f}m"
-            prompt += f"\n• {sector_descriptions[angle]}: {status}"
-            
-        prompt += f"""
+        prompt = f"""You are a robot explorer. Choose your next navigation destination from the PRE-VALIDATED safe options below.
 
-EXPLORATION STATUS:
-• Current Position: ({robot_x:.2f}, {robot_y:.2f}) facing {robot_heading:.0f}° northeast
-• Map Coverage: {context.exploration_percentage:.0f}% explored"""
-
+CURRENT SITUATION:
+• Position: ({robot_x:.2f}, {robot_y:.2f}) facing {robot_heading:.0f}°
+• Surroundings: """
+        
+        # Build environmental description
+        env_descriptions = []
+        if context.front_clear:
+            env_descriptions.append("Open space ahead")
+        if context.left_clear:
+            env_descriptions.append("Open space to the left")
+        if context.right_clear:
+            env_descriptions.append("Open space to the right")
+        if context.closest_obstacle_distance < 1.0:
+            env_descriptions.append(f"Wall/obstacle close at {context.closest_obstacle_angle:.0f}°")
+        
+        if env_descriptions:
+            prompt += ", ".join(env_descriptions[:3])
+        else:
+            prompt += "Confined space"
+        
+        prompt += "\n\nAVAILABLE SAFE DESTINATIONS (choose one):\n"
+        
+        # Format destination list
+        for i, dest in enumerate(safe_destinations, 1):
+            indicator = " → EXPLORES NEW AREA" if dest.leads_to_frontier else ""
+            prompt += f"{i}. Move {dest.distance:.1f}m {self.bearing_to_compass(dest.relative_bearing)} "
+            prompt += f"(bearing {dest.relative_bearing:+.0f}°){indicator}\n"
+        
+        # Add strategic context
+        prompt += "\nSTRATEGIC CONTEXT:\n"
         if context.frontiers:
             frontier_bearings = [f"{bearing:.0f}°" for bearing, _ in context.frontiers[:3]]
-            prompt += f"\n• Unexplored frontiers detected at bearings: {', '.join(frontier_bearings)}"
-            
-            if context.frontiers:
-                best_frontier = context.frontiers[0]
-                prompt += f"\n• Most promising frontier: {best_frontier[0]:.0f}° at {best_frontier[1]:.1f}m"
-                
-        prompt += """
-
-IMPORTANT: Select goal in EXPLORED territory that moves toward frontier.
-Never send goals into unexplored/unknown areas.
-
-REQUIRED JSON RESPONSE FORMAT:
-{
-  "relative_distance": 1.5,
-  "relative_bearing": 45,
-  "final_orientation": 90,
-  "reasoning": "Moving northeast in explored area toward frontier",
-  "goal_type": "MOVEMENT"
-}
-
-FIELD DESCRIPTIONS:
-- relative_distance: Distance to move in meters (1.0 to 5.0)
-- relative_bearing: Direction relative to current heading in degrees (-180 to 180) 
-  IMPORTANT: 315° is INVALID, use -45° instead! 270° is INVALID, use -90° instead!
-  Valid examples: 0° (forward), 90° (right), -90° (left), 180° (backward), 45° (northeast), -45° (northwest)
-- final_orientation: Absolute orientation at goal in degrees (0 to 360)
-- reasoning: Brief explanation of why this goal was selected
-- goal_type: Either "MOVEMENT" or "ROTATION"
-
-Respond ONLY with valid JSON matching the format above:"""
+            prompt += f"• Unexplored frontiers detected near: {', '.join(frontier_bearings)}\n"
+        
+        prompt += f"""
+Select destination by number (1-{len(safe_destinations)}) in JSON format:
+{{
+  "selected_destination": 3,
+  "reasoning": "Brief explanation of choice"
+}}"""
 
         return prompt
         
     def query_ollama(self, context: SpatialContext) -> Optional[NavigationGoal]:
-        """Query Ollama LLM for navigation goal selection"""
+        """Query Ollama LLM for navigation goal selection using numbered destinations"""
+        
+        # Generate safe destinations first
+        safe_destinations = self.generate_safe_destinations()
+        
+        # Check if we have any safe destinations
+        if not safe_destinations:
+            self.logger.error("No safe navigation destinations found - stopping exploration")
+            print("❌ NO SAFE DESTINATIONS AVAILABLE")
+            print("=" * 50)
+            print("Cannot find any safe navigation destinations.")
+            print("Robot may be trapped or map may be fully explored.")
+            print("Manual intervention required.")
+            print("=" * 50)
+            self.state = ExploreState.ERROR
+            return None
         
         # Display analysis in console
         robot_x, robot_y = self.get_current_position()
         robot_heading = math.degrees(self.get_current_heading())
         
         print("🔍 ENVIRONMENTAL ANALYSIS")
-        print(f"Current Position: ({robot_x:.2f}, {robot_y:.2f}) facing {robot_heading:.0f}° northeast")
-        print(f"Map Coverage: {context.exploration_percentage:.0f}% explored")
+        print(f"Current Position: ({robot_x:.2f}, {robot_y:.2f}) facing {robot_heading:.0f}°")
+        print(f"Found {len(safe_destinations)} safe navigation options")
         print("")
         
         # Build and display prompt
-        prompt = self.build_exploration_prompt(context)
+        prompt = self.build_exploration_prompt(context, safe_destinations)
         
         # Add retry message if this is a second attempt after rejection
         if hasattr(self, '_goal_rejected_once') and self._goal_rejected_once:
@@ -788,24 +922,41 @@ Respond ONLY with valid JSON matching the format above:"""
                 try:
                     goal_data = json.loads(response_text)
                     
-                    # Validate response format
-                    if self.validate_goal_response(goal_data):
+                    # Check for numbered selection format
+                    if 'selected_destination' in goal_data:
+                        selection = goal_data['selected_destination']
+                        
+                        # Validate selection is within range
+                        if not isinstance(selection, int) or selection < 1 or selection > len(safe_destinations):
+                            self.logger.warning(f"Invalid destination selection: {selection} (must be 1-{len(safe_destinations)})")
+                            print(f"⚠️ Invalid destination selection: {selection}")
+                            self._goal_rejected_once = True
+                            return None
+                        
+                        # Get selected destination (convert 1-indexed to 0-indexed)
+                        selected_dest = safe_destinations[selection - 1]
+                        
+                        # Calculate final orientation (face direction of travel)
+                        robot_heading = self.get_current_heading()
+                        target_heading = robot_heading + math.radians(selected_dest.relative_bearing)
+                        
+                        # Create NavigationGoal from selected destination
                         goal = NavigationGoal(
-                            relative_distance=float(goal_data['relative_distance']),
-                            relative_bearing=float(goal_data['relative_bearing']),
-                            final_orientation=float(goal_data.get('final_orientation', 0)),
+                            relative_distance=selected_dest.distance,
+                            relative_bearing=selected_dest.relative_bearing,
+                            final_orientation=math.degrees(target_heading),
                             reasoning=goal_data.get('reasoning', 'No reasoning provided'),
-                            goal_type=goal_data.get('goal_type', 'MOVEMENT'),
+                            goal_type='MOVEMENT',
                             timestamp=datetime.now()
                         )
                         
-                        print(f"✅ Goal validated: Moving {goal.relative_distance}m at {goal.relative_bearing}° ({self.get_direction_name(goal.relative_bearing)})")
-                        self.logger.info(f"✅ Goal validated: Moving {goal.relative_distance}m at {goal.relative_bearing}° ({self.get_direction_name(goal.relative_bearing)})")
+                        print(f"✅ Goal validated: Selected destination {selection} - {selected_dest.description}")
+                        self.logger.info(f"✅ Goal validated: Selected destination {selection} - {selected_dest.description}")
                         
                         return goal
                     else:
                         # Don't generate fallback, return None to trigger proper error handling
-                        self.logger.warning("⚠️ Goal rejected: Invalid response format")
+                        self.logger.warning("⚠️ Goal rejected: Missing 'selected_destination' field")
                         print("⚠️ Goal rejected: Invalid response format")
                         # Set flag for retry with modified prompt
                         self._goal_rejected_once = True
@@ -854,9 +1005,14 @@ Respond ONLY with valid JSON matching the format above:"""
         else:
             return "unknown"
             
-    def validate_goal_response(self, response: Dict) -> bool:
-        """Validate Ollama response format and values"""
-        required_fields = ['relative_distance', 'relative_bearing']
+    def validate_goal_response(self, response: Dict, num_destinations: int = 0) -> bool:
+        """Validate Ollama response format for numbered selection"""
+        # Check for new numbered format
+        if 'selected_destination' in response:
+            required_fields = ['selected_destination']
+        else:
+            # Fallback to old format (shouldn't happen with new prompts)
+            required_fields = ['relative_distance', 'relative_bearing']
         
         for field in required_fields:
             if field not in response:
@@ -864,21 +1020,31 @@ Respond ONLY with valid JSON matching the format above:"""
                 return False
                 
         try:
-            distance = float(response['relative_distance'])
-            if not (self.config['navigation']['min_goal_distance'] <= distance <= 
-                    self.config['navigation']['max_goal_distance']):
-                self.logger.warning(f"Invalid distance: {distance} (must be {self.config['navigation']['min_goal_distance']}-{self.config['navigation']['max_goal_distance']}m)")
-                return False
-                
-            bearing = float(response['relative_bearing'])
-            if not (-180 <= bearing <= 180):
-                self.logger.warning(f"Invalid bearing: {bearing} (must be -180 to 180 degrees)")
-                return False
-                
-            return True
+            if 'selected_destination' in response:
+                # Validate numbered selection
+                selection = response['selected_destination']
+                if not isinstance(selection, int):
+                    self.logger.warning(f"selected_destination must be integer, got {type(selection)}")
+                    return False
+                # Note: Range validation done in query_ollama since we need safe_destinations list
+                return True
+            else:
+                # Old format validation (shouldn't be used)
+                distance = float(response['relative_distance'])
+                if not (self.config['navigation']['min_goal_distance'] <= distance <= 
+                        self.config['navigation']['max_goal_distance']):
+                    self.logger.warning(f"Invalid distance: {distance}")
+                    return False
+                    
+                bearing = float(response['relative_bearing'])
+                if not (-180 <= bearing <= 180):
+                    self.logger.warning(f"Invalid bearing: {bearing}")
+                    return False
+                    
+                return True
             
         except (ValueError, TypeError) as e:
-            self.logger.warning(f"Invalid numeric values in response: {e}")
+            self.logger.warning(f"Invalid values in response: {e}")
             return False
             
     def generate_fallback_goal(self) -> NavigationGoal:
