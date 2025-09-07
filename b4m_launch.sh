@@ -47,7 +47,7 @@ cleanup() {
 }
 
 # Set up signal traps for clean shutdown
-trap cleanup SIGINT SIGTERM EXIT
+trap cleanup SIGINT SIGTERM
 
 # Function to track process and ensure display
 track_process() {
@@ -71,13 +71,26 @@ track_process() {
     esac
 }
 
-# Function to ensure proper display for GUI applications
+# Function to ensure proper display for GUI applications  
 ensure_display() {
-    export DISPLAY=${DISPLAY:-:0}
-    
-    # Ensure X server access permissions
-    if command -v xhost >/dev/null 2>&1; then
-        xhost +local: >/dev/null 2>&1 || true
+    if [ "$XDG_SESSION_TYPE" = "wayland" ]; then
+        # For Wayland sessions, ensure Wayland display variables are set
+        if [ -z "$WAYLAND_DISPLAY" ]; then
+            export WAYLAND_DISPLAY="wayland-0"
+        fi
+        # Keep DISPLAY for XWayland compatibility
+        if [ -z "$DISPLAY" ]; then
+            export DISPLAY=":0"
+        fi
+    else
+        # For X11 sessions, set DISPLAY if not already set
+        if [ -z "$DISPLAY" ]; then
+            export DISPLAY=:0
+        fi
+        # Run xhost only in X11 sessions
+        if command -v xhost >/dev/null 2>&1; then
+            xhost +local: >/dev/null 2>&1 || true
+        fi
     fi
 }
 
@@ -1376,8 +1389,10 @@ if [ "$OLLAMA_NAV_EXPLORE_MODE" = true ]; then
     echo "   5. Process repeats continuously with improved map knowledge"
     echo ""
     
-    # Wait for user to stop
-    trap 'echo "🛑 Stopping navigation..."; [ ! -z "$OLLAMA_PID" ] && kill $OLLAMA_PID 2>/dev/null; [ ! -z "$SLAM_NAV_PID" ] && kill $SLAM_NAV_PID 2>/dev/null; [ ! -z "$TF_BRIDGE_PID" ] && kill $TF_BRIDGE_PID 2>/dev/null; [ ! -z "$RVIZ_PID" ] && kill $RVIZ_PID 2>/dev/null; [ ! -z "$BRINGUP_PID" ] && kill $BRINGUP_PID 2>/dev/null; if [ "$SIMULATION_MODE" = true ]; then [ ! -z "$GAZEBO_PID" ] && kill $GAZEBO_PID 2>/dev/null; fi; ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1; echo "✅ Navigation stopped"; exit 0' INT
+    # CRITICAL: Set up local signal trap for clean GUI shutdown (prevents GUI corruption)
+    # This overrides the global cleanup() function to use surgical PID-based killing
+    # instead of aggressive pkill -f pattern matching which can corrupt GUI resources
+    trap 'echo "🛑 Stopping Ollama exploration..."; [ ! -z "$OLLAMA_PID" ] && kill $OLLAMA_PID 2>/dev/null; [ ! -z "$SLAM_NAV_PID" ] && kill $SLAM_NAV_PID 2>/dev/null; [ ! -z "$TF_BRIDGE_PID" ] && kill $TF_BRIDGE_PID 2>/dev/null; [ ! -z "$RVIZ_PID" ] && kill $RVIZ_PID 2>/dev/null; [ ! -z "$BRINGUP_PID" ] && kill $BRINGUP_PID 2>/dev/null; if [ "$SIMULATION_MODE" = true ]; then [ ! -z "$GAZEBO_PID" ] && kill $GAZEBO_PID 2>/dev/null; fi; ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1; echo "✅ Ollama exploration stopped"; exit 0' INT
     
     # Keep the script running and show periodic status
     while true; do
