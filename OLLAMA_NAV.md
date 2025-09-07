@@ -117,6 +117,7 @@ Create an autonomous exploration system that operates in a **closed-loop cycle**
 - Request navigation decisions in JSON format
 - Handle 2-minute timeout gracefully
 - Retry on connection failures
+- **Goal Rejection Recovery**: If first goal is rejected during validation, modify prompt to include "The previous goal was rejected, please try something else" before sending retry request
 
 **Expected LLM Response Format:**
 ```json
@@ -288,7 +289,7 @@ Navigation system stopping - no fallback movement
 **Location:** `logs/ollama_spatial_YYYYMMDD_HHMMSS.log`
 
 **Must Include:**
-- Full Ollama prompts sent (same as terminal display)
+- **Full Ollama prompts sent (CLEARLY DISPLAYED)** - Complete prompt text must be logged with clear delimiters
 - Complete LLM responses received (same as terminal display)
 - Goal validation decisions with reasoning
 - Navigation state transitions

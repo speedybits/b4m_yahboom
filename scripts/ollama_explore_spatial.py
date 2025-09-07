@@ -156,6 +156,7 @@ class OllamaExploreController(Node):
         self.total_distance_traveled = 0.0
         self.session_start_time = time.time()
         self.exploration_start_percentage = 0.0
+        self._goal_rejected_once = False  # Flag for retry prompt modification
         
         # Position and sensor data
         self.current_pose = None
@@ -719,6 +720,12 @@ Respond ONLY with valid JSON matching the format above:"""
         # Build and display prompt
         prompt = self.build_exploration_prompt(context)
         
+        # Add retry message if this is a second attempt after rejection
+        if hasattr(self, '_goal_rejected_once') and self._goal_rejected_once:
+            retry_message = "\n\nThe previous goal was rejected, please try something else."
+            prompt += retry_message
+            self._goal_rejected_once = False  # Reset flag
+        
         print("📤 OLLAMA PROMPT:")
         print("=" * 40)
         print(prompt)
@@ -727,11 +734,18 @@ Respond ONLY with valid JSON matching the format above:"""
         
         print("🧠 Waiting for Ollama response... (timeout: 120s)")
         
-        # Log the same information
+        # Log the same information with CLEAR DELIMITERS
         self.logger.info("🔍 ENVIRONMENTAL ANALYSIS")
         self.logger.info(f"Current Position: ({robot_x:.2f}, {robot_y:.2f}) facing {robot_heading:.0f}° northeast")
         self.logger.info("📤 OLLAMA PROMPT:")
-        self.logger.debug(prompt)
+        self.logger.info("=" * 80)
+        self.logger.info("FULL OLLAMA PROMPT BELOW:")
+        self.logger.info("-" * 80)
+        for line in prompt.split('\n'):
+            self.logger.info(f"PROMPT: {line}")
+        self.logger.info("-" * 80)
+        self.logger.info("END OLLAMA PROMPT")
+        self.logger.info("=" * 80)
         
         # Prepare API request
         url = f"http://{self.config['ollama_nav']['host']}:{self.config['ollama_nav']['port']}/api/generate"
@@ -789,6 +803,8 @@ Respond ONLY with valid JSON matching the format above:"""
                         # Don't generate fallback, return None to trigger proper error handling
                         self.logger.warning("⚠️ Goal rejected: Invalid response format")
                         print("⚠️ Goal rejected: Invalid response format")
+                        # Set flag for retry with modified prompt
+                        self._goal_rejected_once = True
                         return None
                         
                 except json.JSONDecodeError as e:
@@ -1163,11 +1179,19 @@ Respond ONLY with valid JSON matching the format above:"""
                         self.consecutive_failures += 1
                         self.check_max_failures()
                 else:
-                    # Invalid goal pose - count as failure and check if we should continue
+                    # Invalid goal pose - mark rejection flag and try again
+                    print("⚠️ Goal rejected: Goal coordinates not in safe territory")
+                    self.logger.warning("⚠️ Goal rejected: Goal coordinates not in safe territory") 
+                    self._goal_rejected_once = True  # Set flag for retry prompt
+                    self.state = ExploreState.ANALYZING  # Try again with modified prompt
                     self.consecutive_failures += 1
                     self.check_max_failures()
             else:
-                # LLM response invalid - count as failure
+                # LLM response invalid - mark rejection flag and try again  
+                print("⚠️ Goal rejected: Invalid LLM response format")
+                self.logger.warning("⚠️ Goal rejected: Invalid LLM response format")
+                self._goal_rejected_once = True  # Set flag for retry prompt
+                self.state = ExploreState.ANALYZING  # Try again with modified prompt
                 self.consecutive_failures += 1
                 self.check_max_failures()
                 
