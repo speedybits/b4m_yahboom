@@ -322,6 +322,201 @@ class PromptGenerator:
         return prompt, safe_destinations
 ```
 
+## Example Prompts
+
+### Example 1: Open Space with Multiple Options
+
+```
+You are a robot explorer. Choose your next navigation destination from the PRE-VALIDATED safe options below.
+
+CURRENT SITUATION:
+• Position: (2.35, 1.82) facing 45°
+• Map Coverage: 67% explored  
+• Surroundings: Robot has multiple options: Open space ahead, Open space to the right, Unexplored area ahead-left
+
+AVAILABLE SAFE DESTINATIONS (choose one):
+1. Move 2.0m forward (bearing +0°) → EXPLORES NEW AREA
+2. Move 2.5m forward-right (bearing +45°) → EXPLORES NEW AREA
+3. Move 1.8m right (bearing +90°)
+4. Move 2.2m back-right (bearing +135°)
+5. Move 1.5m left (bearing -90°) → EXPLORES NEW AREA
+6. Move 2.8m forward-left (bearing -45°) → EXPLORES NEW AREA
+
+STRATEGIC CONTEXT:
+• Unexplored frontiers detected near: ahead (0°), ahead-left (-45°), left (-90°)
+• Most promising exploration direction: ahead-left (-45°) - multiple safe paths available
+• Current area appears 67% mapped - good exploration opportunities
+
+Select destination by number (1-6) in JSON format:
+{
+  "selected_destination": 3,
+  "reasoning": "Brief explanation of choice"
+}
+```
+
+### Example 2: Corridor Navigation
+
+```
+You are a robot explorer. Choose your next navigation destination from the PRE-VALIDATED safe options below.
+
+CURRENT SITUATION:
+• Position: (5.12, -0.88) facing 90°
+• Map Coverage: 43% explored  
+• Surroundings: Robot is in corridor with Open space ahead, Wall/obstacle close to the left, Wall/obstacle close behind
+
+AVAILABLE SAFE DESTINATIONS (choose one):
+1. Move 3.0m forward (bearing +0°) → EXPLORES NEW AREA
+2. Move 2.5m forward (bearing +0°) → EXPLORES NEW AREA
+3. Move 1.8m forward (bearing +0°)
+4. Move 1.2m back-right (bearing +135°) → RETURNS TO KNOWN AREA
+
+STRATEGIC CONTEXT:
+• Unexplored frontiers detected near: ahead (0°)
+• Most promising exploration direction: forward (0°) - corridor continues into unexplored territory
+• Current area appears to be a corridor - continue forward for exploration
+
+Select destination by number (1-4) in JSON format:
+{
+  "selected_destination": 3,
+  "reasoning": "Brief explanation of choice"
+}
+```
+
+### Example 3: Limited Options (Tight Space)
+
+```
+You are a robot explorer. Choose your next navigation destination from the PRE-VALIDATED safe options below.
+
+CURRENT SITUATION:
+• Position: (1.07, 3.24) facing 180°
+• Map Coverage: 78% explored  
+• Surroundings: Robot is in confined space with Wall/obstacle close ahead, Wall/obstacle close to the right
+
+AVAILABLE SAFE DESTINATIONS (choose one):
+1. Move 1.5m left (bearing -90°) → RETURNS TO KNOWN AREA
+2. Move 1.2m back-left (bearing -135°) → RETURNS TO KNOWN AREA
+3. Move 2.1m backward (bearing +180°) → RETURNS TO KNOWN AREA
+
+STRATEGIC CONTEXT:
+• Few unexplored frontiers remaining - most areas mapped
+• Current position appears to be near dead end or room corner
+• Consider returning to main exploration area to find remaining unmapped regions
+
+Select destination by number (1-3) in JSON format:
+{
+  "selected_destination": 3,
+  "reasoning": "Brief explanation of choice"
+}
+```
+
+### Example 4: Many Options (Large Open Area)
+
+```
+You are a robot explorer. Choose your next navigation destination from the PRE-VALIDATED safe options below.
+
+CURRENT SITUATION:
+• Position: (0.23, 0.15) facing 315°
+• Map Coverage: 34% explored  
+• Surroundings: Robot has multiple options: Open space ahead, Open space to the right, Open space behind
+
+AVAILABLE SAFE DESTINATIONS (choose one):
+1. Move 2.8m forward (bearing +0°) → EXPLORES NEW AREA
+2. Move 2.3m forward-right (bearing +45°) → EXPLORES NEW AREA
+3. Move 3.0m right (bearing +90°) → EXPLORES NEW AREA
+4. Move 2.6m back-right (bearing +135°) → EXPLORES NEW AREA
+5. Move 2.0m backward (bearing +180°)
+6. Move 2.4m back-left (bearing -135°) → EXPLORES NEW AREA
+7. Move 2.9m left (bearing -90°) → EXPLORES NEW AREA
+8. Move 2.1m forward-left (bearing -45°) → EXPLORES NEW AREA
+9. Move 1.8m forward-right (bearing +22°) → EXPLORES NEW AREA
+10. Move 2.7m right (bearing +67°) → EXPLORES NEW AREA
+
+STRATEGIC CONTEXT:
+• Unexplored frontiers detected near: all directions - robot in center of large unmapped area
+• Most promising exploration directions: multiple options available
+• Early exploration phase - 34% mapped, many opportunities for discovery
+
+Select destination by number (1-10) in JSON format:
+{
+  "selected_destination": 3,
+  "reasoning": "Brief explanation of choice"
+}
+```
+
+### Example 5: Retry After Previous Goal Rejection (Rare)
+
+```
+You are a robot explorer. Choose your next navigation destination from the PRE-VALIDATED safe options below.
+
+The previous goal was rejected, please try something else.
+Use different strategy or destination selection approach.
+
+CURRENT SITUATION:
+• Position: (3.67, 2.11) facing 135°
+• Map Coverage: 55% explored  
+• Surroundings: Robot has multiple options: Open space ahead, Unexplored area to the right, Open space behind
+
+AVAILABLE SAFE DESTINATIONS (choose one):
+1. Move 1.8m forward (bearing +0°) → EXPLORES NEW AREA
+2. Move 2.2m forward-right (bearing +45°) → EXPLORES NEW AREA
+3. Move 1.5m right (bearing +90°) → EXPLORES NEW AREA
+4. Move 2.0m back-left (bearing -135°) → RETURNS TO KNOWN AREA
+5. Move 2.3m left (bearing -90°) → EXPLORES NEW AREA
+
+STRATEGIC CONTEXT:
+• Unexplored frontiers detected near: ahead (0°), right (90°), left (-90°)
+• Previous goal encountered unexpected issue - try different approach
+• Consider shorter distances or different strategic direction
+
+Select destination by number (1-5) in JSON format:
+{
+  "selected_destination": 3,
+  "reasoning": "Brief explanation of choice"
+}
+```
+
+## Expected LLM Responses
+
+### Response to Example 1 (Open Space):
+```json
+{
+  "selected_destination": 6,
+  "reasoning": "Choosing forward-left option to explore new area in the most promising frontier direction while maintaining safe distance from obstacles"
+}
+```
+
+### Response to Example 2 (Corridor):
+```json
+{
+  "selected_destination": 1,
+  "reasoning": "Moving forward through corridor to maximize exploration of unmapped territory ahead, using full safe distance available"
+}
+```
+
+### Response to Example 3 (Limited Options):
+```json
+{
+  "selected_destination": 3,
+  "reasoning": "Backing out of confined area to return to main exploration region where more mapping opportunities exist"
+}
+```
+
+### Response to Example 4 (Many Options):
+```json
+{
+  "selected_destination": 7,
+  "reasoning": "Selecting left direction for systematic exploration of large open area, good distance for efficient coverage"
+}
+```
+
+### Response to Example 5 (Retry):
+```json
+{
+  "selected_destination": 3,
+  "reasoning": "Trying shorter distance and different direction from previous attempt, focusing on safer right-side exploration"
+}
+```
+
 ## Testing and Validation
 
 ### Unit Tests Required
