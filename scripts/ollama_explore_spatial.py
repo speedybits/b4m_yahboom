@@ -1189,6 +1189,10 @@ Respond ONLY with valid JSON matching the format above:"""
                     # Clear goal handle and reset state
                     self.current_goal_handle = None
                     self.last_goal_time = None
+                    
+                    # Return to analyzing state to continue exploration
+                    self.state = ExploreState.ANALYZING
+                    self.logger.info("State changed to ANALYZING - timeout recovery complete")
                         
                     self.consecutive_failures += 1
                     self.logger.warning(f"Consecutive failures now: {self.consecutive_failures}/{self.config['safety']['max_consecutive_failures']}")
@@ -1336,8 +1340,8 @@ Respond ONLY with valid JSON matching the format above:"""
             goal_msg.pose.pose.orientation.z = 0.0
             goal_msg.pose.pose.orientation.w = 1.0
             
-            # Send navigation goal
-            if self.nav2_client.wait_for_server(timeout_sec=2.0):
+            # Send navigation goal with longer timeout for startup
+            if self.nav2_client.wait_for_server(timeout_sec=30.0):
                 self.logger.info(f"Sending initial mapping goal {self.initial_mapping_step + 1}/4")
                 send_goal_future = self.nav2_client.send_goal_async(goal_msg)
                 send_goal_future.add_done_callback(self.initial_mapping_goal_response_callback)
@@ -1346,8 +1350,9 @@ Respond ONLY with valid JSON matching the format above:"""
                 self.last_goal_time = time.time()
                 self.state = ExploreState.NAVIGATING
             else:
-                self.logger.error("Navigation server not available for initial mapping")
-                self.state = ExploreState.ERROR
+                self.logger.warning("Navigation server not available yet, waiting for Nav2 to initialize...")
+                # Stay in INITIAL_MAPPING state to retry on next cycle
+                return
         else:
             # Initial mapping complete
             self.logger.info("✅ Initial 0.5m square mapping complete - transitioning to normal exploration")
