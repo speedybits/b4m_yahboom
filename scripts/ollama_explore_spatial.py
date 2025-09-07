@@ -687,16 +687,18 @@ Never send goals into unexplored/unknown areas.
 
 REQUIRED JSON RESPONSE FORMAT:
 {
-  "relative_distance": 2.5,
+  "relative_distance": 1.5,
   "relative_bearing": 45,
   "final_orientation": 90,
-  "reasoning": "Moving northeast to explore unmapped area",
+  "reasoning": "Moving northeast in explored area toward frontier",
   "goal_type": "MOVEMENT"
 }
 
 FIELD DESCRIPTIONS:
 - relative_distance: Distance to move in meters (1.0 to 5.0)
-- relative_bearing: Direction relative to current heading in degrees (-180 to 180)
+- relative_bearing: Direction relative to current heading in degrees (-180 to 180) 
+  IMPORTANT: 315° is INVALID, use -45° instead! 270° is INVALID, use -90° instead!
+  Valid examples: 0° (forward), 90° (right), -90° (left), 180° (backward), 45° (northeast), -45° (northwest)
 - final_orientation: Absolute orientation at goal in degrees (0 to 360)
 - reasoning: Brief explanation of why this goal was selected
 - goal_type: Either "MOVEMENT" or "ROTATION"
@@ -723,6 +725,8 @@ Respond ONLY with valid JSON matching the format above:"""
         # Add retry message if this is a second attempt after rejection
         if hasattr(self, '_goal_rejected_once') and self._goal_rejected_once:
             retry_message = "\n\nThe previous goal was rejected, please try something else."
+            retry_message += "\nUse SMALL distances (1.0-2.0m) and valid bearings (-180 to 180 only)."
+            retry_message += "\nAvoid 315°, 270°, 225° - use -45°, -90°, -135° instead!"
             prompt += retry_message
             self._goal_rejected_once = False  # Reset flag
         
