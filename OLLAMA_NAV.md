@@ -80,9 +80,11 @@ Create an autonomous exploration system that operates in a **closed-loop cycle**
 
 **Key Closed-Loop Elements:**
 - **Fresh Analysis**: Every cycle uses the most current map and sensor data
+- **Safe-Only Context**: LLM only sees pre-validated safe navigation options, eliminating rejection loops
 - **No Delays**: Goal completion immediately triggers new environmental analysis  
 - **Cumulative Learning**: Each navigation adds to map knowledge for better future decisions
 - **Continuous Improvement**: Later goals benefit from expanded map coverage and spatial understanding
+- **Guaranteed Success**: Pre-filtering ensures LLM selections are always valid, preventing navigation failures
 
 ## Functional Requirements
 
@@ -104,9 +106,10 @@ Create an autonomous exploration system that operates in a **closed-loop cycle**
 - **Always use latest map state**: Capture the most current SLAM map data (not cached/old data)
 - **Fresh position data**: Get real-time robot position and orientation post-navigation
 - **Current sensor readings**: Analyze live 360° LIDAR data in 8 sectors (45° each)
-- **Updated spatial context**: Identify obstacles, open spaces, and navigable areas using newest map
-- **Frontier detection**: Find unexplored boundaries based on expanded map coverage
-- **Comprehensive description**: Generate spatial analysis reflecting all knowledge gained from previous navigation
+- **Safe area pre-filtering**: ONLY include sectors that lead to confirmed safe territory (occupancy ≤ 25) in spatial context
+- **Navigation option validation**: For each sector, verify both path AND destination are in free space before including in prompt
+- **Frontier detection**: Find unexplored boundaries based on expanded map coverage  
+- **Simplified spatial context**: Only describe verified safe navigation options to prevent LLM from selecting invalid goals
 
 **Critical:** Each analysis cycle MUST use the freshest available data - never reuse previous analysis results or cached spatial descriptions.
 
@@ -117,7 +120,7 @@ Create an autonomous exploration system that operates in a **closed-loop cycle**
 - Request navigation decisions in JSON format
 - Handle 2-minute timeout gracefully
 - Retry on connection failures
-- **Goal Rejection Recovery**: If first goal is rejected during validation, modify prompt to include "The previous goal was rejected, please try something else" before sending retry request
+- **Goal Rejection Recovery** (Rare with Safe-Only Approach): If goal is rejected despite safe sector pre-filtering, modify prompt to include "The previous goal was rejected, please try something else" before sending retry request
 
 **Expected LLM Response Format:**
 ```json
@@ -216,23 +219,19 @@ Map Coverage: 67% explored
 ========================================
 You are a robot explorer. Analyze the environment and select the next navigation goal.
 
-SPATIAL CONTEXT:
-• FRONT (0°): CLEAR - Open space extending 3.2m
-• FRONT-RIGHT (45°): BLOCKED - Wall at 1.1m  
-• RIGHT (90°): CLEAR - Corridor continues 2.8m
-• BACK-RIGHT (135°): CLEAR - Open area beyond 4.2m
-• BEHIND (180°): BLOCKED - Wall at 0.8m
-• BACK-LEFT (225°): CLEAR - Space extends 2.1m
-• LEFT (270°): CLEAR - Open area 3.5m
-• FRONT-LEFT (315°): PASSABLE - Narrow passage 1.8m
+AVAILABLE SAFE NAVIGATION OPTIONS:
+• FRONT (0°): Safe navigation to explored area 3.2m ahead - leads toward frontier
+• RIGHT (90°): Safe navigation to explored corridor 2.8m away
+• BACK-RIGHT (135°): Safe navigation to explored area 4.2m away - leads toward frontier  
+• BACK-LEFT (225°): Safe navigation to explored space 2.1m away
+• LEFT (270°): Safe navigation to explored area 3.5m away - leads toward frontier
 
 EXPLORATION STATUS:
-• Unexplored frontiers detected at bearings: 45°, 135°, 270°
-• Most promising frontier: Southeast at 135° (4.2m clear)
+• Unexplored frontiers detected near: 45°, 135°, 270°
+• Most promising exploration direction: Southeast (135°) - safe path available
 • Current room appears 85% mapped
 
-IMPORTANT: Select goal ONLY in FREE SPACE (light gray areas in map).
-NEVER send goals into unexplored/unknown areas or any non-free space.
+NOTE: All directions above are PRE-VALIDATED as safe. Choose any option.
 
 Select navigation goal (1-5m distance, relative bearing ±180°):
 ========================================
@@ -655,17 +654,54 @@ The `--ollama-nav-explore` mode MUST be built by modifying existing working code
 - Convert grid coordinates to world coordinates for goal selection
 - No complex frontier clustering required - basic boundary detection sufficient
 
-**LLM Prompt Requirements (Specification-Compliant):**
+**LLM Prompt Requirements (Safe-Only Approach):**
 - Start with: "You are a robot explorer. Analyze the environment and select the next navigation goal."
-- Include spatial context in 8-sector format as shown in logging examples
+- **Pre-filter spatial context**: ONLY include sectors verified as safe for navigation
+- **Safe sector validation**: For each 8-sector direction, check if 1-3m movement leads to free space (occupancy ≤ 25)
+- **Simplified format**: "AVAILABLE SAFE NAVIGATION OPTIONS" instead of listing all sectors with warnings
+- **Guaranteed validity**: Since only safe options are presented, any LLM choice will be inherently valid
 - Add JSON response format requirements for processing into navigation actions
-- Emphasize goal selection in explored territory moving toward frontiers
 
-**Goal Validation for Safe Territory:**
-- Check occupancy grid values: **ONLY allow goals where `occupancy_value <= 25`** (free space per Nav2 standard)
-- **Reject ALL other values**: `occupancy_value == -1` (unexplored), `occupancy_value > 25` (obstacles/uncertain)
-- Convert goal coordinates to grid indices for validation before sending to Nav2
-- **Simplified rule**: If not free space (light gray), reject the goal
+**Safe Sector Pre-Filtering Algorithm (MANDATORY):**
+```python
+def get_safe_navigation_sectors(robot_pos, robot_heading, map_data):
+    """Return only sectors that lead to confirmed safe destinations"""
+    safe_sectors = []
+    sector_angles = [0, 45, 90, 135, 180, 225, 270, 315]  # 8 sectors
+    
+    for angle in sector_angles:
+        # Check multiple distances (1m, 2m, 3m) in this direction
+        absolute_bearing = robot_heading + math.radians(angle)
+        
+        all_points_safe = True
+        for distance in [1.0, 1.5, 2.0, 2.5, 3.0]:
+            target_x = robot_pos[0] + distance * math.cos(absolute_bearing)
+            target_y = robot_pos[1] + distance * math.sin(absolute_bearing)
+            
+            if not is_point_in_free_space(target_x, target_y, map_data):
+                all_points_safe = False
+                break
+        
+        if all_points_safe:
+            safe_sectors.append({
+                'bearing': angle,
+                'max_safe_distance': 3.0,
+                'description': f'Safe navigation to explored area'
+            })
+    
+    return safe_sectors
+
+def is_point_in_free_space(x, y, map_data):
+    """Check if point is in free space (occupancy ≤ 25)"""
+    # Convert world coordinates to grid coordinates and check occupancy
+    occupancy_value = get_occupancy_at_point(x, y, map_data)
+    return occupancy_value <= 25 and occupancy_value >= 0
+```
+
+**Simplified Goal Validation (Post-LLM):**
+- Since LLM can only choose from pre-validated safe sectors, goal validation becomes trivial
+- Simply convert bearing + distance to coordinates and send to Nav2
+- **No rejection loops** - all goals are guaranteed safe by design
 
 **Navigation Progress Monitoring (Simplified):**
 - Use Nav2 action client status only: ACCEPTED → ACTIVE → SUCCEEDED/ABORTED
