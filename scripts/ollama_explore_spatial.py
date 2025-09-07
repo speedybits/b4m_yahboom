@@ -12,6 +12,7 @@ from rclpy.duration import Duration
 from rclpy.time import Time
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from nav2_msgs.action import NavigateToPose
+from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid, Odometry
@@ -101,6 +102,7 @@ def get_yaw_from_quaternion(orientation):
 class ExploreState(Enum):
     """States for the exploration system"""
     INITIALIZING = "initializing"
+    INITIAL_MAPPING = "initial_mapping"  # Performs 0.5m square mapping routine
     ANALYZING = "analyzing"
     QUERYING_LLM = "querying_llm"
     NAVIGATING = "navigating"
@@ -167,6 +169,10 @@ class OllamaExploreController(Node):
         self.nav2_future = None
         self.result_future = None
         self.wait_until = None  # For retry delays
+        
+        # Initial mapping state
+        self.initial_mapping_step = 0  # 0: forward, 1: right, 2: back, 3: left, 4: complete
+        self.initial_mapping_start_position = None
         
         # Setup ROS2 components
         self.setup_ros2_components()
@@ -248,7 +254,7 @@ class OllamaExploreController(Node):
                 # Start main control loop
                 if self.main_timer is None:
                     self.main_timer = self.create_timer(2.0, self.control_loop)
-                    self.state = ExploreState.ANALYZING
+                    self.state = ExploreState.INITIAL_MAPPING
                     
             except Exception as e:
                 self.logger.warning(f"TF not ready yet: {e}")
@@ -458,6 +464,61 @@ class OllamaExploreController(Node):
         if total_cells > 0:
             return (known_cells / total_cells) * 100.0
         return 0.0
+    
+    def debug_map_around_robot(self, radius_meters: float = 1.0):
+        """Debug function to analyze map classification around robot"""
+        if self.map_data is None:
+            return
+            
+        robot_x, robot_y = self.get_current_position()
+        resolution = self.map_data.info.resolution
+        origin = self.map_data.info.origin
+        width = self.map_data.info.width
+        height = self.map_data.info.height
+        
+        # Count classifications within radius
+        free_count = 0
+        unknown_count = 0
+        obstacle_count = 0
+        low_prob_count = 0
+        
+        # Sample points in a grid around robot
+        sample_points = int(radius_meters / resolution)
+        
+        for dy in range(-sample_points, sample_points + 1):
+            for dx in range(-sample_points, sample_points + 1):
+                # Check if within radius
+                dist = math.sqrt(dx*dx + dy*dy) * resolution
+                if dist > radius_meters:
+                    continue
+                    
+                # Convert to world coordinates
+                world_x = robot_x + dx * resolution
+                world_y = robot_y + dy * resolution
+                
+                # Convert to grid coordinates
+                grid_x = int((world_x - origin.position.x) / resolution)
+                grid_y = int((world_y - origin.position.y) / resolution)
+                
+                # Check bounds
+                if grid_x < 0 or grid_x >= width or grid_y < 0 or grid_y >= height:
+                    continue
+                    
+                idx = grid_y * width + grid_x
+                if idx < len(self.map_data.data):
+                    value = self.map_data.data[idx]
+                    if value == -1:
+                        unknown_count += 1
+                    elif value <= 25 and value >= 0:  # Free space per Nav2 free_thresh standard
+                        free_count += 1
+                    elif value >= 65:  # Obstacle per Nav2 occupied_thresh standard  
+                        obstacle_count += 1
+                    else:  # Uncertain space (26-64)
+                        low_prob_count += 1
+        
+        total = free_count + unknown_count + obstacle_count + low_prob_count
+        if total > 0:
+            self.logger.info(f"Map within {radius_meters}m of robot: Free={free_count} ({100*free_count/total:.1f}%), Unknown={unknown_count} ({100*unknown_count/total:.1f}%), Obstacle={obstacle_count} ({100*obstacle_count/total:.1f}%), LowProb={low_prob_count} ({100*low_prob_count/total:.1f}%)")
         
     def detect_frontiers(self) -> List[Tuple[float, float]]:
         """Detect frontiers (boundaries between explored and unexplored areas)"""
@@ -508,6 +569,11 @@ class OllamaExploreController(Node):
         if self.laser_data is None or self.map_data is None:
             return None
             
+        # Debug: Analyze map around robot (only log periodically to avoid spam)
+        if not hasattr(self, 'last_debug_time') or time.time() - self.last_debug_time > 10:
+            self.debug_map_around_robot(1.0)  # Check 1 meter radius
+            self.last_debug_time = time.time()
+        
         ranges = np.array(self.laser_data.ranges)
         
         # Filter invalid readings
@@ -890,20 +956,60 @@ Respond ONLY with valid JSON matching the format above:"""
         idx = grid_y * width + grid_x
         if idx < len(self.map_data.data):
             occupancy_value = self.map_data.data[idx]
-            # For exploration: Allow goals in free (0) and unknown (-1) areas
-            # Only reject if it's an obstacle (value > 50)
-            if occupancy_value == -1:  # Unknown area - OK for exploration
-                self.logger.debug(f"Goal at ({x:.2f}, {y:.2f}) is in unknown territory - allowing for exploration")
-                return True
-            elif occupancy_value == 0:  # Free space - always OK
-                return True
-            elif occupancy_value >= 50:  # Obstacle - not safe
-                self.logger.warning(f"Goal at ({x:.2f}, {y:.2f}) is in obstacle (value={occupancy_value})")
-                return False
-            else:  # Low probability obstacle - allow with caution
-                self.logger.info(f"Goal at ({x:.2f}, {y:.2f}) has low obstacle probability ({occupancy_value}%) - allowing")
-                return True
             
+            # NAV2-ALIGNED VALIDATION: Accept goals using Nav2's free_thresh standard
+            # Nav2 uses free_thresh: 0.25 (25%) - values ≤ 25 are considered free space
+            # This matches what RViz displays as light gray "navigable" areas
+            if occupancy_value <= 25 and occupancy_value >= 0:  # Free space per Nav2 standard
+                self.logger.debug(f"Goal at ({x:.2f}, {y:.2f}) is in free space (value={occupancy_value} ≤ 25) - accepting")
+                return True
+            else:  # Unknown (-1), obstacles (>25), or invalid values
+                reason = "unknown territory" if occupancy_value == -1 else f"not free space (value={occupancy_value} > 25)"
+                self.logger.warning(f"Goal at ({x:.2f}, {y:.2f}) is {reason} - rejecting")
+                return False
+            
+        return False
+    
+    def has_nearby_free_space(self, x: float, y: float, radius: float) -> bool:
+        """Check if there's free space within radius of the given coordinates"""
+        if self.map_data is None:
+            return False
+            
+        resolution = self.map_data.info.resolution
+        origin = self.map_data.info.origin
+        width = self.map_data.info.width
+        height = self.map_data.info.height
+        
+        # Get robot's current map classification as reference
+        robot_x, robot_y = self.get_current_position()
+        robot_grid_x = int((robot_x - origin.position.x) / resolution)
+        robot_grid_y = int((robot_y - origin.position.y) / resolution)
+        robot_idx = robot_grid_y * width + robot_grid_x
+        
+        robot_value = -1  # Default to unknown
+        if 0 <= robot_grid_x < width and 0 <= robot_grid_y < height and robot_idx < len(self.map_data.data):
+            robot_value = self.map_data.data[robot_idx]
+            self.logger.debug(f"Robot position classified as: {robot_value} (0=free, -1=unknown, >50=obstacle)")
+        
+        # Check multiple points in a small radius
+        check_points = 8  # Check 8 points around the goal
+        for i in range(check_points):
+            angle = (2 * math.pi * i) / check_points
+            check_x = x + radius * math.cos(angle)
+            check_y = y + radius * math.sin(angle)
+            
+            grid_x = int((check_x - origin.position.x) / resolution)
+            grid_y = int((check_y - origin.position.y) / resolution)
+            
+            # Check bounds
+            if grid_x >= 0 and grid_x < width and grid_y >= 0 and grid_y < height:
+                idx = grid_y * width + grid_x
+                if idx < len(self.map_data.data):
+                    occupancy_value = self.map_data.data[idx]
+                    # Accept if free space OR same classification as robot's position
+                    if occupancy_value == 0 or occupancy_value == robot_value:
+                        return True
+        
         return False
         
     def send_navigation_goal(self, pose: PoseStamped) -> bool:
@@ -1017,8 +1123,14 @@ Respond ONLY with valid JSON matching the format above:"""
         if self.state == ExploreState.SHUTDOWN:
             return
             
+        # Debug logging to track state transitions
+        self.logger.debug(f"Control loop: state={self.state.value}, failures={self.consecutive_failures}")
+            
         # State-based control
-        if self.state == ExploreState.ANALYZING:
+        if self.state == ExploreState.INITIAL_MAPPING:
+            self.execute_initial_mapping()
+            
+        elif self.state == ExploreState.ANALYZING:
             # Check if we have necessary data
             if self.laser_data is None:
                 self.logger.debug("Waiting for laser data...")
@@ -1064,12 +1176,13 @@ Respond ONLY with valid JSON matching the format above:"""
             if self.last_goal_time:
                 elapsed = time.time() - self.last_goal_time
                 if elapsed > self.config['safety']['nav2_timeout']:
-                    self.logger.warning("Navigation timeout exceeded")
+                    self.logger.warning(f"Navigation timeout exceeded after {elapsed:.1f}s")
                     
                     # Cancel current goal (but don't wait for response)
                     if self.current_goal_handle:
                         try:
                             self.current_goal_handle.cancel_goal()
+                            self.logger.info("Goal cancellation requested")
                         except Exception as e:
                             self.logger.warning(f"Failed to cancel goal: {e}")
                     
@@ -1078,6 +1191,7 @@ Respond ONLY with valid JSON matching the format above:"""
                     self.last_goal_time = None
                         
                     self.consecutive_failures += 1
+                    self.logger.warning(f"Consecutive failures now: {self.consecutive_failures}/{self.config['safety']['max_consecutive_failures']}")
                     self.check_max_failures()
                     
         elif self.state == ExploreState.WAITING:
@@ -1086,6 +1200,7 @@ Respond ONLY with valid JSON matching the format above:"""
                 self.logger.info("Wait period elapsed, returning to analysis")
                 self.state = ExploreState.ANALYZING
                 self.wait_until = None
+                self.logger.info("State changed to ANALYZING - ready for next exploration cycle")
                 
         elif self.state == ExploreState.ERROR:
             # In error state - manual intervention required
@@ -1122,9 +1237,13 @@ Respond ONLY with valid JSON matching the format above:"""
         self.logger.error("🔴 System entering ERROR state due to max failures")
         self.state = ExploreState.ERROR
         
-        # Stop robot
-        stop_msg = Twist()
-        self.cmd_vel_pub.publish(stop_msg)
+        # Stop robot (with error handling for shutdown race conditions)
+        try:
+            stop_msg = Twist()
+            self.cmd_vel_pub.publish(stop_msg)
+        except Exception as e:
+            # Publisher might be invalid during shutdown - that's ok
+            self.logger.debug(f"Could not publish stop command during shutdown: {e}")
         
     def shutdown(self):
         """Clean shutdown with session statistics"""
@@ -1160,11 +1279,129 @@ Respond ONLY with valid JSON matching the format above:"""
         print(f"• Session Duration: {minutes}m {seconds}s")
         print("=" * 63)
         
-        # Stop robot
-        stop_msg = Twist()
-        self.cmd_vel_pub.publish(stop_msg)
+        # Stop robot (with error handling for shutdown race conditions)
+        try:
+            stop_msg = Twist()
+            self.cmd_vel_pub.publish(stop_msg)
+        except Exception as e:
+            # Publisher might be invalid during shutdown - that's ok
+            self.logger.debug(f"Could not publish stop command during shutdown: {e}")
         
         self.state = ExploreState.SHUTDOWN
+
+    def execute_initial_mapping(self):
+        """Execute initial 0.5m square mapping routine to establish free space"""
+        # Check if we have necessary data
+        if self.laser_data is None or self.map_data is None:
+            self.logger.debug("Waiting for sensor data before starting initial mapping...")
+            return
+            
+        # Record starting position on first call
+        if self.initial_mapping_start_position is None:
+            self.initial_mapping_start_position = self.get_current_position()
+            self.logger.info(f"🔄 Starting initial 0.5m square mapping from position {self.initial_mapping_start_position}")
+            
+        start_x, start_y = self.initial_mapping_start_position
+        current_x, current_y = self.get_current_position()
+        current_heading = self.get_current_heading()
+        
+        # Define square movement pattern (0.5m per side)
+        square_distance = 0.5
+        movements = [
+            (0, square_distance),    # 0: forward (north)
+            (square_distance, 0),    # 1: right (east) 
+            (0, -square_distance),   # 2: back (south)
+            (-square_distance, 0)    # 3: left (west)
+        ]
+        
+        if self.initial_mapping_step < len(movements):
+            # Calculate target position for current step
+            dx, dy = movements[self.initial_mapping_step]
+            target_x = start_x + dx
+            target_y = start_y + dy
+            
+            self.logger.info(f"Initial mapping step {self.initial_mapping_step + 1}/4: Moving to ({target_x:.2f}, {target_y:.2f})")
+            
+            # Create navigation goal
+            goal_msg = NavigateToPose.Goal()
+            goal_msg.pose.header.frame_id = 'map'
+            goal_msg.pose.header.stamp = self.get_clock().now().to_msg()
+            goal_msg.pose.pose.position.x = target_x
+            goal_msg.pose.pose.position.y = target_y
+            goal_msg.pose.pose.position.z = 0.0
+            
+            # Set orientation to face forward (0 radians) for all movements
+            goal_msg.pose.pose.orientation.x = 0.0
+            goal_msg.pose.pose.orientation.y = 0.0
+            goal_msg.pose.pose.orientation.z = 0.0
+            goal_msg.pose.pose.orientation.w = 1.0
+            
+            # Send navigation goal
+            if self.nav2_client.wait_for_server(timeout_sec=2.0):
+                self.logger.info(f"Sending initial mapping goal {self.initial_mapping_step + 1}/4")
+                send_goal_future = self.nav2_client.send_goal_async(goal_msg)
+                send_goal_future.add_done_callback(self.initial_mapping_goal_response_callback)
+                
+                # Record goal timing
+                self.last_goal_time = time.time()
+                self.state = ExploreState.NAVIGATING
+            else:
+                self.logger.error("Navigation server not available for initial mapping")
+                self.state = ExploreState.ERROR
+        else:
+            # Initial mapping complete
+            self.logger.info("✅ Initial 0.5m square mapping complete - transitioning to normal exploration")
+            self.state = ExploreState.ANALYZING
+            
+    def initial_mapping_goal_response_callback(self, future):
+        """Handle initial mapping goal response from Nav2"""
+        try:
+            goal_handle = future.result()
+            if not goal_handle.accepted:
+                self.logger.warning(f"Initial mapping goal {self.initial_mapping_step + 1}/4 rejected")
+                self.consecutive_failures += 1
+                self.check_max_failures()
+                return
+                
+            self.logger.info(f"Initial mapping goal {self.initial_mapping_step + 1}/4 accepted")
+            self.current_goal_handle = goal_handle
+            
+            # Wait for result
+            get_result_future = goal_handle.get_result_async()
+            get_result_future.add_done_callback(self.initial_mapping_goal_result_callback)
+            
+        except Exception as e:
+            self.logger.error(f"Initial mapping goal response error: {e}")
+            self.consecutive_failures += 1
+            self.check_max_failures()
+            
+    def initial_mapping_goal_result_callback(self, future):
+        """Handle initial mapping goal result from Nav2"""
+        try:
+            result = future.result()
+            if result.status == GoalStatus.STATUS_SUCCEEDED:
+                self.logger.info(f"✅ Initial mapping step {self.initial_mapping_step + 1}/4 completed successfully")
+                
+                # Move to next step
+                self.initial_mapping_step += 1
+                self.consecutive_failures = 0  # Reset failures on success
+                
+                # Clear navigation state
+                self.current_goal_handle = None
+                self.last_goal_time = None
+                
+                # Continue with next step or finish
+                self.state = ExploreState.INITIAL_MAPPING
+                
+            else:
+                self.logger.warning(f"Initial mapping step {self.initial_mapping_step + 1}/4 failed with status: {result.status}")
+                self.consecutive_failures += 1
+                self.check_max_failures()
+                
+        except Exception as e:
+            self.logger.error(f"Initial mapping goal result error: {e}")
+            self.consecutive_failures += 1
+            self.check_max_failures()
 
 
 def main(args=None):

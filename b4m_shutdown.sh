@@ -186,18 +186,50 @@ shutdown_log "Step 5: Cleaning up remaining Python processes"
 ps aux | grep "python.*yahboom" | grep -v "stop_motors" | awk '{print $2}' | xargs -r kill -9 2>/dev/null
 ps aux | grep "python.*b4m" | grep -v "stop_motors" | awk '{print $2}' | xargs -r kill -9 2>/dev/null
 
-# Step 6: Stop RViz if running
-shutdown_log "Step 6: Stopping RViz if running"
+# Step 6: Stop RViz and GUI applications
+shutdown_log "Step 6: Stopping RViz and GUI applications"
+# Stop RViz processes
 pkill -f "rviz2" 2>/dev/null
 sleep 2
 pkill -9 -f "rviz2" 2>/dev/null
+
+# Clean up RViz Qt applications specifically (not all Qt apps)
+pkill -f "rviz.*qt" 2>/dev/null
+pkill -f "rviz.*Qt" 2>/dev/null
+sleep 1
+pkill -9 -f "rviz.*qt" 2>/dev/null
+pkill -9 -f "rviz.*Qt" 2>/dev/null
+
+# Clean up RViz-specific display processes only
+if [ ! -z "$DISPLAY" ]; then
+    shutdown_log "Cleaning up RViz display processes on $DISPLAY"
+    # Only kill RViz and robot-specific display processes, not ALL display processes
+    pkill -f "rviz.*DISPLAY=$DISPLAY" 2>/dev/null
+    pkill -f "gazebo.*DISPLAY=$DISPLAY" 2>/dev/null
+    sleep 1
+    pkill -9 -f "rviz.*DISPLAY=$DISPLAY" 2>/dev/null
+    pkill -9 -f "gazebo.*DISPLAY=$DISPLAY" 2>/dev/null
+fi
+
+# Clean up any remaining GUI resource locks
+shutdown_log "Cleaning up GUI resource locks"
+# Remove stale X11 locks if they exist
+find /tmp -name ".X*-lock" -user $(whoami) -delete 2>/dev/null || true
+# Clean up Qt/GUI temporary files
+find /tmp -name "qt_temp*" -user $(whoami) -delete 2>/dev/null || true
+find /tmp -name "rviz*" -user $(whoami) -delete 2>/dev/null || true
 
 # Step 7: Clean up any remaining terminals from the launch script
 shutdown_log "Step 7: Cleaning up launch script terminals"
 pkill -f "xterm.*b4m_step" 2>/dev/null
 
-# Step 8: Stop ROS2 daemon to ensure all node discovery is cleared
+# Step 8: Stop ROS2 daemon
 shutdown_log "Step 8: Stopping ROS2 daemon"
+# Note: We do NOT reset display connections or kill D-Bus sessions
+# as these are critical for the desktop environment and could crash the user's session
+# Only clean up robot-specific display resources if needed
+
+shutdown_log "Stopping ROS2 daemon"
 ros2 daemon stop 2>/dev/null || true
 sleep 2
 

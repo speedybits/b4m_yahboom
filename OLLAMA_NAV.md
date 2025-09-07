@@ -88,8 +88,14 @@ Create an autonomous exploration system that operates in a **closed-loop cycle**
 
 ### 1. Environmental Analysis (Closed-Loop Trigger Events)
 
+**Initial Mapping Sequence (Startup Bootstrap):**
+- **0.5m Square Mapping**: At startup, robot performs a 0.5-meter square movement pattern to establish initial free space
+- **4-Step Sequence**: Forward → Right → Back → Left (0.5m each direction) using Nav2 navigation
+- **Foundation Building**: Creates confirmed navigable area around starting position before normal exploration
+- **Seamless Transition**: After completing initial mapping, system transitions to normal closed-loop exploration
+
 **When to Analyze (Event-Driven Closed Loop):**
-- At system startup (initial map state)
+- After initial mapping sequence completion (using established free space foundation)
 - **Immediately after goal completion** (success) - using updated map data from navigation
 - **Immediately after goal abortion** (failure) - incorporating any map updates gathered during failed attempt
 - NO periodic timer - analysis is purely event-driven to ensure fresh data
@@ -126,17 +132,42 @@ Create an autonomous exploration system that operates in a **closed-loop cycle**
 ### 3. Goal Validation
 
 **Safety Constraints:**
-- Movement goals must be ≥1.0m from current position
-- Goals must be within explored/safe areas (NOT unexplored territory)
-- Navigation goals should move TOWARD frontiers but land in SAFE explored space
+- Movement goals must be ≥1.0m from current position  
+- Goals must be in **free space only** (occupancy value ≤ 25, light gray in RViz per Nav2 standard)
+- **NO goals in unexplored territory** - only confirmed safe areas
+- Navigation goals should move toward frontiers but **always land in free space**
 - Invalid goals automatically convert to rotation-in-place
 - 50/50 split between movement and rotation goals
 
+**Goal Validation Rules (CRITICAL - Only Free Space Goals Accepted):**
+
+**Single Rule - Free Space Only:**
+- Goals are **ONLY accepted in free space** (occupancy value ≤ 25, light gray in RViz per Nav2 standard)
+- This is the **ONLY acceptable case** - all goals must be in confirmed safe areas
+- **NO goals in unknown territory** - regardless of nearby free space
+- **NO goals in any other occupancy values** - even low probability obstacles
+
+**Rejection Criteria (All Non-Free Space):**
+- Goals in **unknown areas** (occupancy value = -1, dark gray in RViz) are **always rejected**
+- Goals in **obstacles** (occupancy value ≥ 50, black in RViz) are **always rejected**  
+- Goals with **any probability obstacles** (values 1-49) are **always rejected**
+- Goals in **any non-zero occupancy value** are **always rejected**
+
+**Validation Implementation:**
+```python
+# Nav2-aligned validation logic - Use Nav2 free_thresh standard
+if occupancy_value <= 25 and occupancy_value >= 0:  # Free space per Nav2 standard
+    return True  # Light gray areas in RViz (Nav2 free_thresh: 0.25)
+else:  # Everything else (unknown, obstacles, uncertain areas)
+    return False  # Reject goals outside Nav2 free space definition
+```
+
 **Exploration Strategy:**
-- Move toward unexplored frontiers but stop in safe explored territory
-- Get closer to unexplored areas to improve sensor coverage
-- Allow SLAM to naturally expand the map as robot approaches frontiers
-- Never send goals directly into unexplored/unknown map regions
+- Goals must **always be placed in light gray (free space) areas** visible in RViz
+- Robot approaches frontiers by selecting goals in safe territory **near** unexplored areas
+- SLAM naturally expands the map as robot moves closer to boundaries
+- **Never send goals into dark gray (unknown) or black (obstacle) areas**
+- Autonomous exploration occurs by gradually moving through safe areas toward frontiers
 
 
 ### 4. Navigation Execution (Closes the Loop)
@@ -199,8 +230,8 @@ EXPLORATION STATUS:
 • Most promising frontier: Southeast at 135° (4.2m clear)
 • Current room appears 85% mapped
 
-IMPORTANT: Select goal in EXPLORED territory that moves toward frontier.
-Never send goals into unexplored/unknown areas.
+IMPORTANT: Select goal ONLY in FREE SPACE (light gray areas in map).
+NEVER send goals into unexplored/unknown areas or any non-free space.
 
 Select navigation goal (1-5m distance, relative bearing ±180°):
 ========================================
@@ -295,11 +326,12 @@ The ROS2 node must output to console with clear emoji indicators:
 ### System States
 
 1. **INITIALIZING** - System startup, waiting for sensors
-2. **ANALYZING** - Performing spatial analysis
-3. **QUERYING_LLM** - Waiting for Ollama response
-4. **NAVIGATING** - Executing navigation goal
-5. **ERROR** - Handling failures
-6. **SHUTDOWN** - Clean termination
+2. **INITIAL_MAPPING** - Executing 0.5m square mapping sequence at startup
+3. **ANALYZING** - Performing spatial analysis
+4. **QUERYING_LLM** - Waiting for Ollama response
+5. **NAVIGATING** - Executing navigation goal
+6. **ERROR** - Handling failures
+7. **SHUTDOWN** - Clean termination
 
 ### State Transitions
 
@@ -629,9 +661,10 @@ The `--ollama-nav-explore` mode MUST be built by modifying existing working code
 - Emphasize goal selection in explored territory moving toward frontiers
 
 **Goal Validation for Safe Territory:**
-- Check occupancy grid values: only allow goals where `occupancy_value == 0` (free space)
-- Reject goals where `occupancy_value == -1` (unexplored) or `occupancy_value >= 50` (obstacles)
+- Check occupancy grid values: **ONLY allow goals where `occupancy_value <= 25`** (free space per Nav2 standard)
+- **Reject ALL other values**: `occupancy_value == -1` (unexplored), `occupancy_value > 25` (obstacles/uncertain)
 - Convert goal coordinates to grid indices for validation before sending to Nav2
+- **Simplified rule**: If not free space (light gray), reject the goal
 
 **Navigation Progress Monitoring (Simplified):**
 - Use Nav2 action client status only: ACCEPTED → ACTIVE → SUCCEEDED/ABORTED
@@ -674,7 +707,7 @@ The implementation MUST begin by copying the existing, working `ollama_nav_contr
 ### Core Implementation Tasks
 - [ ] Replace placeholder `detect_frontiers()` with occupancy grid boundary detection
 - [ ] Update `build_exploration_prompt()` to match specification format exactly
-- [ ] Implement `is_goal_in_safe_territory()` using `occupancy_value == 0` validation
+- [ ] Implement `is_goal_in_safe_territory()` using `occupancy_value <= 25` validation (Nav2 standard)
 - [ ] Fix configuration key access to match existing YAML structure
 - [ ] Remove navigation progress monitoring - use Nav2 status only
 - [ ] Ensure closed-loop behavior with fresh map data on each cycle
