@@ -14,7 +14,7 @@ Create an autonomous exploration system that operates in a **closed-loop cycle**
 - Ollama LLM selects the next navigation goal using **updated map data** and current spatial context
 - The robot navigates to that goal using Nav2
 - Upon reaching or aborting the goal, **immediately trigger new analysis** using the expanded/updated map
-- This closed-loop process repeats continuously, with each cycle benefiting from improved map knowledge
+- This closed-loop process repeats **indefinitely** - the robot continues exploring even when no new frontiers are apparent
 
 **Critical Closed-Loop Behavior:** Each navigation completion immediately triggers a new analysis cycle that incorporates all the latest map data and spatial information gathered during the previous navigation, ensuring continuous improvement in exploration decisions.
 
@@ -92,9 +92,10 @@ Create an autonomous exploration system that operates in a **closed-loop cycle**
 
 **Initial Mapping Sequence (Startup Bootstrap):**
 - **0.5m Square Mapping**: At startup, robot performs a 0.5-meter square movement pattern to establish initial free space
-- **4-Step Sequence**: Forward → Right → Back → Left (0.5m each direction) using Nav2 navigation
+- **4-Step Sequence**: Forward → Right → Back → Left (0.5m each direction, relative to robot's initial heading) using Nav2 navigation
 - **Foundation Building**: Creates confirmed navigable area around starting position before normal exploration
 - **Seamless Transition**: After completing initial mapping, system transitions to normal closed-loop exploration
+- **Note**: Movements are relative to the robot's starting orientation, not absolute compass directions
 
 **When to Analyze (Event-Driven Closed Loop):**
 - After initial mapping sequence completion (using established free space foundation)
@@ -145,9 +146,11 @@ class SafeDestination:
     distance: float             # Meters from current position (1.0 to 3.0)
     world_coords: Tuple[float, float]  # (x, y) in map frame
     description: str            # Human-readable description for LLM
-    leads_to_frontier: bool     # Whether this direction approaches unexplored areas
-    strategic_value: str        # "exploration", "return_to_base", "corridor_following", etc.
+    leads_to_frontier: bool     # Whether unexplored cells exist within 1m of destination
+    strategic_value: str        # Optional hint (not prioritized in ordering)
 ```
+
+**Note**: Destinations are presented in the order they are discovered during the search pattern, not prioritized by strategic value or frontier proximity.
 
 ### 3. Goal Validation
 
@@ -229,7 +232,6 @@ The main terminal must display detailed LLM interaction:
 ```
 🔍 ENVIRONMENTAL ANALYSIS
 Current Position: (2.35, 1.82) facing 15° northeast
-Map Coverage: 67% explored
 
 📤 OLLAMA PROMPT:
 ========================================
@@ -583,7 +585,7 @@ Session Statistics:
 • Total Goals Selected: 12
 • Total Distance Traveled: 24.3m
 • Navigation Success Rate: 91.7% (11/12 goals)
-• Area Explored: 35% → 78% (+43%)
+• Total navigation goals completed
 • Average LLM Response Time: 1.8s
 • Session Duration: 12m 45s
 ===============================================================
@@ -594,7 +596,7 @@ Session Statistics:
 - Goal validation time
 - Navigation execution time
 - Distance to goal
-- Exploration coverage percentage
+- Distance to goal
 
 
 ## Prompt Generation Details
@@ -689,7 +691,6 @@ You are a robot explorer. Choose your next navigation destination from the PRE-V
 
 CURRENT SITUATION:
 • Position: ({robot_x:.2f}, {robot_y:.2f}) facing {robot_heading_deg:.0f}°
-• Map Coverage: {exploration_percentage:.0f}% explored  
 • Surroundings: {environmental_description}
 
 AVAILABLE SAFE DESTINATIONS (choose one):
