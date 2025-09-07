@@ -122,15 +122,30 @@ Create an autonomous exploration system that operates in a **closed-loop cycle**
 - Retry on connection failures
 - **Goal Rejection Recovery** (Rare with Safe-Only Approach): If goal is rejected despite safe sector pre-filtering, modify prompt to include "The previous goal was rejected, please try something else" before sending retry request
 
+**LLM Integration Architecture:**
+- **Numbered Selection Approach**: Present up to 10 pre-validated safe destinations to LLM
+- **No Coordinate Calculations**: LLM selects by number (1-10), eliminating coordinate system confusion
+- **Guaranteed Valid Goals**: All destinations are pre-validated for safety and reachability
+- **SafeDestination Data Structure**: Each option includes relative_bearing, distance, world_coords, and strategic context
+
 **Expected LLM Response Format:**
 ```json
 {
-  "relative_distance": 2.5,      // meters from current position
-  "relative_bearing": 45,        // degrees relative to current heading
-  "final_orientation": 90,       // absolute orientation at goal
-  "reasoning": "Moving to explore unmapped corridor",
-  "goal_type": "MOVEMENT"        // or "ROTATION"
+  "selected_destination": 3,      // Number (1-N) from provided options
+  "reasoning": "Brief explanation of choice"
 }
+```
+
+**SafeDestination Data Structure:**
+```python
+@dataclass
+class SafeDestination:
+    relative_bearing: float      # Degrees relative to robot heading (-180 to 180)
+    distance: float             # Meters from current position (1.0 to 3.0)
+    world_coords: Tuple[float, float]  # (x, y) in map frame
+    description: str            # Human-readable description for LLM
+    leads_to_frontier: bool     # Whether this direction approaches unexplored areas
+    strategic_value: str        # "exploration", "return_to_base", "corridor_following", etc.
 ```
 
 ### 3. Goal Validation
@@ -654,48 +669,92 @@ The `--ollama-nav-explore` mode MUST be built by modifying existing working code
 - Convert grid coordinates to world coordinates for goal selection
 - No complex frontier clustering required - basic boundary detection sufficient
 
-**LLM Prompt Requirements (Safe-Only Approach):**
-- Start with: "You are a robot explorer. Analyze the environment and select the next navigation goal."
-- **Pre-filter spatial context**: ONLY include sectors verified as safe for navigation
-- **Safe sector validation**: For each 8-sector direction, check if 1-3m movement leads to free space (occupancy ≤ 25)
-- **Simplified format**: "AVAILABLE SAFE NAVIGATION OPTIONS" instead of listing all sectors with warnings
-- **Guaranteed validity**: Since only safe options are presented, any LLM choice will be inherently valid
-- Add JSON response format requirements for processing into navigation actions
+**LLM Prompt Structure (Numbered Selection Approach):**
 
-**Safe Sector Pre-Filtering Algorithm (MANDATORY):**
+```
+You are a robot explorer. Choose your next navigation destination from the PRE-VALIDATED safe options below.
+
+CURRENT SITUATION:
+• Position: ({robot_x:.2f}, {robot_y:.2f}) facing {robot_heading_deg:.0f}°
+• Map Coverage: {exploration_percentage:.0f}% explored  
+• Surroundings: {environmental_description}
+
+AVAILABLE SAFE DESTINATIONS (choose one):
+{destination_list}
+
+STRATEGIC CONTEXT:
+{frontier_information}
+{exploration_guidance}
+
+Select destination by number (1-{num_destinations}) in JSON format:
+{
+  "selected_destination": 3,
+  "reasoning": "Brief explanation of choice"
+}
+```
+
+**Destination List Formatting:**
+```
+1. Move 2.0m forward (bearing +0°) → EXPLORES NEW AREA
+2. Move 2.5m forward-right (bearing +45°) → EXPLORES NEW AREA
+3. Move 1.8m right (bearing +90°)
+4. Move 2.2m back-right (bearing +135°)
+5. Move 1.5m left (bearing -90°) → EXPLORES NEW AREA
+```
+
+**Strategic Indicators:**
+- "→ EXPLORES NEW AREA" for destinations leading toward frontiers
+- "→ RETURNS TO KNOWN AREA" for safer fallback options
+- "→ CORRIDOR FOLLOWING" for structured navigation patterns
+
+**Safe Destination Pre-Generation Algorithm (MANDATORY):**
 ```python
-def get_safe_navigation_sectors(robot_pos, robot_heading, map_data):
-    """Return only sectors that lead to confirmed safe destinations"""
-    safe_sectors = []
-    sector_angles = [0, 45, 90, 135, 180, 225, 270, 315]  # 8 sectors
+def generate_safe_destinations(robot_pos, robot_heading, map_data, max_destinations=10):
+    """
+    Generate up to 10 pre-validated safe navigation destinations
+    Returns list of SafeDestination objects
+    """
+    safe_destinations = []
     
-    for angle in sector_angles:
-        # Check multiple distances (1m, 2m, 3m) in this direction
-        absolute_bearing = robot_heading + math.radians(angle)
+    # Search in expanding patterns around robot
+    search_patterns = [
+        # Pattern 1: 8 cardinal/ordinal directions
+        [(distance, angle) for angle in [0, 45, 90, 135, 180, 225, 270, 315] 
+         for distance in [1.0, 1.5, 2.0, 2.5, 3.0]],
         
-        all_points_safe = True
-        for distance in [1.0, 1.5, 2.0, 2.5, 3.0]:
-            target_x = robot_pos[0] + distance * math.cos(absolute_bearing)
-            target_y = robot_pos[1] + distance * math.sin(absolute_bearing)
+        # Pattern 2: Additional angles for more options  
+        [(distance, angle) for angle in [22, 67, 112, 157, 202, 247, 292, 337]
+         for distance in [1.5, 2.0, 2.5]]
+    ]
+    
+    for distance, relative_bearing in search_patterns:
+        if len(safe_destinations) >= max_destinations:
+            break
             
-            if not is_point_in_free_space(target_x, target_y, map_data):
-                all_points_safe = False
-                break
+        # Calculate absolute world coordinates
+        absolute_bearing = robot_heading + math.radians(relative_bearing)
+        target_x = robot_pos[0] + distance * math.cos(absolute_bearing)
+        target_y = robot_pos[1] + distance * math.sin(absolute_bearing)
         
-        if all_points_safe:
-            safe_sectors.append({
-                'bearing': angle,
-                'max_safe_distance': 3.0,
-                'description': f'Safe navigation to explored area'
-            })
+        # Validate safety: occupancy <= 24 (even stricter than Nav2 default)
+        if is_destination_safe(target_x, target_y, map_data):
+            destination = SafeDestination(
+                relative_bearing=relative_bearing,
+                distance=distance,
+                world_coords=(target_x, target_y),
+                description=generate_destination_description(relative_bearing, distance, target_x, target_y, map_data)
+            )
+            safe_destinations.append(destination)
     
-    return safe_sectors
+    return safe_destinations
 
-def is_point_in_free_space(x, y, map_data):
-    """Check if point is in free space (occupancy ≤ 25)"""
-    # Convert world coordinates to grid coordinates and check occupancy
+def is_destination_safe(x, y, map_data):
+    """
+    Check if destination coordinates are in confirmed safe space
+    Uses occupancy <= 24 (stricter than Nav2's 25 threshold)
+    """
     occupancy_value = get_occupancy_at_point(x, y, map_data)
-    return occupancy_value <= 25 and occupancy_value >= 0
+    return occupancy_value <= 24 and occupancy_value >= 0
 ```
 
 **Simplified Goal Validation (Post-LLM):**
