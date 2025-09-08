@@ -11,6 +11,9 @@ from rclpy.action import ActionClient
 from rclpy.duration import Duration
 from rclpy.time import Time
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
+from rclpy.parameter import Parameter
+from rcl_interfaces.srv import SetParameters, GetParameters
+from rcl_interfaces.msg import ParameterDescriptor, ParameterType
 from nav2_msgs.action import NavigateToPose
 from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
@@ -380,11 +383,136 @@ class OllamaExploreController(Node):
             'navigate_to_pose'
         )
         
+        # Parameter clients for dynamic velocity control during initial mapping
+        self.controller_param_client = self.create_client(
+            SetParameters,
+            '/controller_server/set_parameters'
+        )
+        self.get_controller_param_client = self.create_client(
+            GetParameters,
+            '/controller_server/get_parameters'
+        )
+        
+        # Storage for original velocity parameters
+        self.original_velocities = None
+        self.slow_mapping_velocities = {
+            'FollowPath.max_vel_x': 0.05,     # Very slow forward speed (5 cm/s)
+            'FollowPath.max_vel_theta': 0.2,  # Very slow rotation speed
+            'FollowPath.min_vel_x': -0.03,    # Very slow backward speed
+            'FollowPath.acc_lim_x': 0.2,      # Very slow acceleration
+            'FollowPath.acc_lim_theta': 0.2   # Very slow angular acceleration
+        }
+        
         # TF2 for coordinate transformations  
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         
         self.logger.info("ROS2 components initialized")
+        
+    def save_original_velocities(self):
+        """Save current velocity parameters before switching to slow mode"""
+        try:
+            # Wait for parameter service to be available
+            if not self.get_controller_param_client.wait_for_service(timeout_sec=10.0):
+                self.logger.warning("Controller parameter service not available for saving velocities")
+                return False
+                
+            # Get current velocity parameters
+            param_names = list(self.slow_mapping_velocities.keys())
+            request = GetParameters.Request()
+            request.names = param_names
+            
+            future = self.get_controller_param_client.call_async(request)
+            rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+            
+            if future.result():
+                response = future.result()
+                self.original_velocities = {}
+                for i, param in enumerate(response.values):
+                    if i < len(param_names):
+                        param_name = param_names[i]
+                        if param.type == ParameterType.PARAMETER_DOUBLE:
+                            self.original_velocities[param_name] = param.double_value
+                        elif param.type == ParameterType.PARAMETER_INTEGER:
+                            self.original_velocities[param_name] = float(param.integer_value)
+                
+                self.logger.info(f"✅ Saved original velocity parameters: {self.original_velocities}")
+                return True
+            else:
+                self.logger.warning("Failed to get current velocity parameters")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Error saving original velocities: {e}")
+            return False
+    
+    def set_slow_mapping_velocities(self):
+        """Set very slow velocities for precise initial mapping"""
+        try:
+            if not self.controller_param_client.wait_for_service(timeout_sec=10.0):
+                self.logger.warning("Controller parameter service not available for setting velocities")
+                return False
+                
+            # Create parameters for slow mapping
+            parameters = []
+            for param_name, value in self.slow_mapping_velocities.items():
+                param = Parameter(name=param_name, value=value)
+                parameters.append(param)
+            
+            request = SetParameters.Request()
+            request.parameters = parameters
+            
+            future = self.controller_param_client.call_async(request)
+            rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+            
+            if future.result():
+                response = future.result()
+                success_count = sum(1 for result in response.results if result.successful)
+                self.logger.info(f"🐌 Set slow mapping velocities ({success_count}/{len(parameters)} parameters)")
+                return success_count == len(parameters)
+            else:
+                self.logger.warning("Failed to set slow mapping velocities")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Error setting slow mapping velocities: {e}")
+            return False
+    
+    def restore_original_velocities(self):
+        """Restore original velocity parameters after initial mapping"""
+        if self.original_velocities is None:
+            self.logger.warning("No original velocities saved to restore")
+            return False
+            
+        try:
+            if not self.controller_param_client.wait_for_service(timeout_sec=10.0):
+                self.logger.warning("Controller parameter service not available for restoring velocities")
+                return False
+                
+            # Create parameters from saved original values
+            parameters = []
+            for param_name, value in self.original_velocities.items():
+                param = Parameter(name=param_name, value=value)
+                parameters.append(param)
+            
+            request = SetParameters.Request()
+            request.parameters = parameters
+            
+            future = self.controller_param_client.call_async(request)
+            rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+            
+            if future.result():
+                response = future.result()
+                success_count = sum(1 for result in response.results if result.successful)
+                self.logger.info(f"🚀 Restored original velocities ({success_count}/{len(parameters)} parameters)")
+                return success_count == len(parameters)
+            else:
+                self.logger.warning("Failed to restore original velocities")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Error restoring original velocities: {e}")
+            return False
         
     def print_startup_message(self):
         """Print the startup message to console"""
@@ -1433,6 +1561,12 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
         print("")
         
         self.logger.error("🔴 System entering ERROR state due to max failures")
+        
+        # Restore original velocities if they were modified during initial mapping
+        if self.original_velocities is not None:
+            self.logger.info("🚀 Restoring original velocities before error state...")
+            self.restore_original_velocities()
+        
         self.state = ExploreState.ERROR
         
         # Stop robot (with error handling for shutdown race conditions)
@@ -1477,6 +1611,11 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
         print(f"• Session Duration: {minutes}m {seconds}s")
         print("=" * 63)
         
+        # Restore original velocities if they were modified during initial mapping
+        if self.original_velocities is not None:
+            self.logger.info("🚀 Restoring original velocities during shutdown...")
+            self.restore_original_velocities()
+        
         # Stop robot (with error handling for shutdown race conditions)
         try:
             stop_msg = Twist()
@@ -1498,6 +1637,14 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
         if self.initial_mapping_start_position is None:
             self.initial_mapping_start_position = self.get_current_position()
             self.logger.info(f"🔄 Starting initial 0.5m square mapping from position {self.initial_mapping_start_position}")
+            
+            # Save current velocity parameters and set slow mapping velocities
+            self.logger.info("🐌 Setting very slow velocities for precise initial mapping...")
+            if self.save_original_velocities():
+                if not self.set_slow_mapping_velocities():
+                    self.logger.warning("Failed to set slow mapping velocities, proceeding with current velocities")
+            else:
+                self.logger.warning("Failed to save original velocities, proceeding with current velocities")
             
         start_x, start_y = self.initial_mapping_start_position
         current_x, current_y = self.get_current_position()
@@ -1548,8 +1695,14 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
                 # Stay in INITIAL_MAPPING state to retry on next cycle
                 return
         else:
-            # Initial mapping complete
+            # Initial mapping complete - restore original velocities
             self.logger.info("✅ Initial 0.5m square mapping complete - transitioning to normal exploration")
+            
+            # Restore original velocity parameters
+            if self.original_velocities is not None:
+                self.logger.info("🚀 Restoring original velocities for normal exploration...")
+                self.restore_original_velocities()
+            
             self.state = ExploreState.ANALYZING
             
     def initial_mapping_goal_response_callback(self, future):
