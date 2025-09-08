@@ -93,6 +93,7 @@ Create an autonomous exploration system that operates in a **closed-loop cycle**
 **Initial Mapping Sequence (Startup Bootstrap):**
 - **0.5m Square Mapping**: At startup, robot performs a 0.5-meter square movement pattern to establish initial free space
 - **4-Step Sequence**: Forward → Right → Back → Left (0.5m each direction, relative to robot's initial heading) using Nav2 navigation
+- **Very Slow Movement**: Initial mapping movements must be executed at very slow speed to ensure laserscan data maintains proper alignment with the SLAM map being built
 - **Foundation Building**: Creates confirmed navigable area around starting position before normal exploration
 - **Seamless Transition**: After completing initial mapping, system transitions to normal closed-loop exploration
 - **Note**: Movements are relative to the robot's starting orientation, not absolute compass directions
