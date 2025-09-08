@@ -809,14 +809,6 @@ if [ "$EXPLORE_MODE" = true ]; then
     echo "- Stop exploration when area is sufficiently mapped"
     echo ""
     
-    # FIX: Ensure clean state before launching exploration
-    echo "🧹 ENSURING CLEAN STATE FOR EXPLORATION"
-    echo "======================================"
-    echo "Cleaning up any existing ROS2 processes to prevent TF conflicts..."
-    ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1
-    sleep 3
-    echo "✅ System cleanup completed"
-    echo ""
     
     # Launch exploration sequence
     echo "🚀 EXPLORATION LAUNCH SEQUENCE"
@@ -984,15 +976,6 @@ if [ "$NAV_MODE" = true ]; then
     echo "- Start Navigation 2 stack for path planning and obstacle avoidance"
     echo "- Allow goal setting via RViz 2D Nav Goal tool"
     echo "- Build and use map simultaneously for navigation"
-    echo ""
-    
-    # Ensure clean state before launching
-    echo "🧹 ENSURING CLEAN STATE FOR NAVIGATION"
-    echo "======================================"
-    echo "Cleaning up any existing ROS2 processes to prevent TF conflicts..."
-    ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1
-    sleep 3
-    echo "✅ System cleanup completed"
     echo ""
     
     # Launch navigation sequence
@@ -1178,15 +1161,6 @@ if [ "$OLLAMA_NAV_EXPLORE_MODE" = true ]; then
     echo "- Allow goal setting via RViz 2D Nav Goal tool"
     echo "- Build and use map simultaneously for navigation"
     echo "- (Future: Add automatic 2D pose setting and Ollama features)"
-    echo ""
-    
-    # Ensure clean state before launching
-    echo "🧹 ENSURING CLEAN STATE FOR NAVIGATION"
-    echo "======================================"
-    echo "Cleaning up any existing ROS2 processes to prevent TF conflicts..."
-    ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1
-    sleep 3
-    echo "✅ System cleanup completed"
     echo ""
     
     # Launch navigation sequence
@@ -1425,14 +1399,6 @@ if [ "$B4M_API" = true ]; then
     echo "- Provide API endpoints for external integration"
     echo ""
     
-    # Ensure clean state before launching B4M API
-    echo "🧹 ENSURING CLEAN STATE FOR B4M API"
-    echo "======================================"
-    echo "Cleaning up any existing ROS2 processes to prevent TF conflicts..."
-    ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1
-    sleep 3
-    echo "✅ System cleanup completed"
-    echo ""
     
     # Launch B4M API sequence (identical to exploration sequence)
     echo "🚀 B4M API LAUNCH SEQUENCE"
@@ -1604,14 +1570,6 @@ if [ "$OLLAMA_MODE" = true ]; then
     echo "- Provide Ollama LLM integration for spatial understanding"
     echo ""
     
-    # Ensure clean state before launching Ollama mode
-    echo "🧹 ENSURING CLEAN STATE FOR OLLAMA MODE"
-    echo "======================================"
-    echo "Cleaning up any existing ROS2 processes to prevent TF conflicts..."
-    ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1
-    sleep 3
-    echo "✅ System cleanup completed"
-    echo ""
     
     # Launch Ollama sequence (identical to B4M API sequence)
     echo "🚀 OLLAMA LAUNCH SEQUENCE"
@@ -1793,14 +1751,6 @@ if [ "$OLLAMA_ADVANCED_MODE" = true ]; then
     echo "- Build a map while navigating with advanced LLM guidance"
     echo ""
     
-    # Ensure clean state before launching Ollama Advanced mode
-    echo "🧹 ENSURING CLEAN STATE FOR OLLAMA ADVANCED MODE"
-    echo "======================================"
-    echo "Cleaning up any existing ROS2 processes to prevent TF conflicts..."
-    ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1
-    sleep 3
-    echo "✅ System cleanup completed"
-    echo ""
     
     # Launch Ollama Advanced sequence (identical to basic Ollama sequence)
     echo "🚀 OLLAMA ADVANCED LAUNCH SEQUENCE"
@@ -1984,14 +1934,6 @@ if [ "$OLLAMA_NAV_MODE" = true ]; then
     echo "- Display selected goals and reasoning in RViz"
     echo ""
     
-    # Ensure clean state before launching Ollama Navigation mode
-    echo "🧹 ENSURING CLEAN STATE FOR OLLAMA NAVIGATION"
-    echo "======================================"
-    echo "Cleaning up any existing ROS2 processes..."
-    ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1
-    sleep 3
-    echo "✅ System cleanup completed"
-    echo ""
     
     # Start the standard robot components first
     echo "🚀 OLLAMA NAVIGATION LAUNCH SEQUENCE"
@@ -2150,32 +2092,6 @@ if [ "$REGRESSION_MODE" = true ]; then
     echo "  Rotation test: $LOGS_DIR/regression_rotation_$TIMESTAMP.log"
     echo "======================================"
     
-    # CLEANUP BEFORE STARTING NEW TEST
-    echo ""
-    echo "🧹 PRE-TEST CLEANUP"
-    echo "Ensuring clean system state before regression test..."
-    
-    if [ "$SIMULATION_MODE" = true ]; then
-        # Kill any existing simulation processes
-        pkill -f "rviz2" 2>/dev/null || true
-        pkill -f "rviz" 2>/dev/null || true
-        pkill -f "gazebo" 2>/dev/null || true
-        pkill -f "gzserver" 2>/dev/null || true
-        pkill -f "gzclient" 2>/dev/null || true
-        
-        # Run comprehensive shutdown for simulation
-        ./b4m_shutdown.sh > /dev/null 2>&1 || true
-    else
-        # Kill any existing real robot processes but preserve agent
-        pkill -f "rviz2" 2>/dev/null || true
-        pkill -f "rviz" 2>/dev/null || true
-        
-        # Run shutdown script to clean up properly (keep agent for real robot)
-        ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1 || true
-    fi
-    
-    sleep 3
-    echo "✅ Pre-test cleanup complete"
     
     # Step 1: Launch system for testing
     echo ""
@@ -3061,10 +2977,6 @@ if [ "$ONLY_AGENT" = true ]; then
         fi
     fi
     
-    # Also clean up any other processes that might interfere
-    echo "🧹 Cleaning up any remaining robot processes..."
-    ./b4m_shutdown.sh > /dev/null 2>&1 || true
-    sleep 2
 fi
 
 # Pre-launch system check to prevent duplicate processes

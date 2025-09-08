@@ -48,18 +48,33 @@ shutdown_log "B4M Robot shutdown script started"
 
 # Step 0: Emergency stop motors first for safety
 shutdown_log "Step 0: Emergency stopping robot motors for safety"
-if [ -f "$WORKSPACE_ROOT/stop_motors.sh" ] && [ -x "$WORKSPACE_ROOT/stop_motors.sh" ]; then
-    shutdown_log "Running stop_motors.sh to halt robot movement"
-    # Run stop_motors.sh in background to avoid blocking, but wait for completion
-    timeout 10 bash "$WORKSPACE_ROOT/stop_motors.sh" 2>&1 | tee -a "$SHUTDOWN_LOG" || {
-        shutdown_log "WARNING: stop_motors.sh timed out or failed, attempting manual motor stop"
-        ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}' 2>&1 | tee -a "$SHUTDOWN_LOG" || true
-    }
-else
-    shutdown_log "WARNING: stop_motors.sh not found or not executable, manually stopping motors"
-    ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}' 2>&1 | tee -a "$SHUTDOWN_LOG" || true
-fi
+
+# Try multiple methods to ensure motors stop
+shutdown_log "Sending continuous zero velocity commands to ensure motors stop"
+
+# Method 1: Send multiple zero velocity commands with rate
+timeout 3 ros2 topic pub /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}' --rate 10 2>&1 | tee -a "$SHUTDOWN_LOG" &
+
+# Method 2: Cancel any active navigation goals
+shutdown_log "Canceling any active navigation goals"
+ros2 action send_goal /cancel_navigation nav2_msgs/action/NavigateToPose '{}' 2>/dev/null &
+ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose '{}' 2>/dev/null &
+
+# Method 3: Send emergency stop if available
+ros2 topic pub --once /emergency_stop std_msgs/msg/Bool '{data: true}' 2>/dev/null &
+
+# Wait for commands to take effect
 sleep 2
+
+# Method 4: Final single zero velocity command
+shutdown_log "Sending final stop command"
+ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}' 2>&1 | tee -a "$SHUTDOWN_LOG" || true
+
+# Kill any remaining velocity pub processes
+pkill -f "ros2 topic pub /cmd_vel" 2>/dev/null || true
+
+# Extra safety wait
+sleep 1
 shutdown_log "Motor stop sequence completed"
 
 # Step 1: Stop all ROS2 nodes gracefully (except YB_Car_Node if --keep-agent)
