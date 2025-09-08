@@ -48,18 +48,33 @@ shutdown_log "B4M Robot shutdown script started"
 
 # Step 0: Emergency stop motors first for safety
 shutdown_log "Step 0: Emergency stopping robot motors for safety"
-if [ -f "$WORKSPACE_ROOT/stop_motors.sh" ] && [ -x "$WORKSPACE_ROOT/stop_motors.sh" ]; then
-    shutdown_log "Running stop_motors.sh to halt robot movement"
-    # Run stop_motors.sh in background to avoid blocking, but wait for completion
-    timeout 10 bash "$WORKSPACE_ROOT/stop_motors.sh" 2>&1 | tee -a "$SHUTDOWN_LOG" || {
-        shutdown_log "WARNING: stop_motors.sh timed out or failed, attempting manual motor stop"
-        ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}' 2>&1 | tee -a "$SHUTDOWN_LOG" || true
-    }
-else
-    shutdown_log "WARNING: stop_motors.sh not found or not executable, manually stopping motors"
-    ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}' 2>&1 | tee -a "$SHUTDOWN_LOG" || true
-fi
+
+# Try multiple methods to ensure motors stop
+shutdown_log "Sending continuous zero velocity commands to ensure motors stop"
+
+# Method 1: Send multiple zero velocity commands with rate
+timeout 3 ros2 topic pub /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}' --rate 10 2>&1 | tee -a "$SHUTDOWN_LOG" &
+
+# Method 2: Cancel any active navigation goals
+shutdown_log "Canceling any active navigation goals"
+ros2 action send_goal /cancel_navigation nav2_msgs/action/NavigateToPose '{}' 2>/dev/null &
+ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose '{}' 2>/dev/null &
+
+# Method 3: Send emergency stop if available
+ros2 topic pub --once /emergency_stop std_msgs/msg/Bool '{data: true}' 2>/dev/null &
+
+# Wait for commands to take effect
 sleep 2
+
+# Method 4: Final single zero velocity command
+shutdown_log "Sending final stop command"
+ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}' 2>&1 | tee -a "$SHUTDOWN_LOG" || true
+
+# Kill any remaining velocity pub processes
+pkill -f "ros2 topic pub /cmd_vel" 2>/dev/null || true
+
+# Extra safety wait
+sleep 1
 shutdown_log "Motor stop sequence completed"
 
 # Step 1: Stop all ROS2 nodes gracefully (except YB_Car_Node if --keep-agent)
@@ -154,10 +169,12 @@ shutdown_log "Step 3: Stopping waypoint navigation and autonomous explorer proce
 pkill -f "b4m_waypoint_nav" 2>/dev/null
 pkill -f "autonomous_explorer" 2>/dev/null
 pkill -f "autonomous_exploration" 2>/dev/null
+pkill -f "ollama_explore_spatial" 2>/dev/null
 sleep 2
 pkill -9 -f "b4m_waypoint_nav" 2>/dev/null
 pkill -9 -f "autonomous_explorer" 2>/dev/null
 pkill -9 -f "autonomous_exploration" 2>/dev/null
+pkill -9 -f "ollama_explore_spatial" 2>/dev/null
 
 # Step 4: Stop Micro-ROS agent Docker container (if not keeping it)
 if [ "$KEEP_AGENT" = true ]; then
@@ -184,18 +201,50 @@ shutdown_log "Step 5: Cleaning up remaining Python processes"
 ps aux | grep "python.*yahboom" | grep -v "stop_motors" | awk '{print $2}' | xargs -r kill -9 2>/dev/null
 ps aux | grep "python.*b4m" | grep -v "stop_motors" | awk '{print $2}' | xargs -r kill -9 2>/dev/null
 
-# Step 6: Stop RViz if running
-shutdown_log "Step 6: Stopping RViz if running"
+# Step 6: Stop RViz and GUI applications
+shutdown_log "Step 6: Stopping RViz and GUI applications"
+# Stop RViz processes
 pkill -f "rviz2" 2>/dev/null
 sleep 2
 pkill -9 -f "rviz2" 2>/dev/null
+
+# Clean up RViz Qt applications specifically (not all Qt apps)
+pkill -f "rviz.*qt" 2>/dev/null
+pkill -f "rviz.*Qt" 2>/dev/null
+sleep 1
+pkill -9 -f "rviz.*qt" 2>/dev/null
+pkill -9 -f "rviz.*Qt" 2>/dev/null
+
+# Clean up RViz-specific display processes only
+if [ ! -z "$DISPLAY" ]; then
+    shutdown_log "Cleaning up RViz display processes on $DISPLAY"
+    # Only kill RViz and robot-specific display processes, not ALL display processes
+    pkill -f "rviz.*DISPLAY=$DISPLAY" 2>/dev/null
+    pkill -f "gazebo.*DISPLAY=$DISPLAY" 2>/dev/null
+    sleep 1
+    pkill -9 -f "rviz.*DISPLAY=$DISPLAY" 2>/dev/null
+    pkill -9 -f "gazebo.*DISPLAY=$DISPLAY" 2>/dev/null
+fi
+
+# Clean up any remaining GUI resource locks
+shutdown_log "Cleaning up GUI resource locks"
+# Remove stale X11 locks if they exist
+find /tmp -name ".X*-lock" -user $(whoami) -delete 2>/dev/null || true
+# Clean up Qt/GUI temporary files
+find /tmp -name "qt_temp*" -user $(whoami) -delete 2>/dev/null || true
+find /tmp -name "rviz*" -user $(whoami) -delete 2>/dev/null || true
 
 # Step 7: Clean up any remaining terminals from the launch script
 shutdown_log "Step 7: Cleaning up launch script terminals"
 pkill -f "xterm.*b4m_step" 2>/dev/null
 
-# Step 8: Stop ROS2 daemon to ensure all node discovery is cleared
+# Step 8: Stop ROS2 daemon
 shutdown_log "Step 8: Stopping ROS2 daemon"
+# Note: We do NOT reset display connections or kill D-Bus sessions
+# as these are critical for the desktop environment and could crash the user's session
+# Only clean up robot-specific display resources if needed
+
+shutdown_log "Stopping ROS2 daemon"
 ros2 daemon stop 2>/dev/null || true
 sleep 2
 
