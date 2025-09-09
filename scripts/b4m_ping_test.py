@@ -2,7 +2,13 @@
 
 """
 B4M API Ping Test Script
-Tests the B4M API endpoint with robot navigation messages
+Tests the B4M API endpoint with robot navigation messages using the documented polling mechanism.
+
+Implements the B4M API integration as specified in B4M_API.md:
+- Uses the correct polling endpoint: /api/sessions/{sessionId}/chat/{questId}
+- Follows 7-second polling intervals with 15 attempts max (105 seconds)
+- Implements multiple fallback methods for extracting AI responses
+- Supports both direct responses and quest-based polling system
 """
 
 import requests
@@ -173,102 +179,102 @@ class B4MPingTest:
             return None
     
     def poll_for_response(self, initial_response, headers):
-        """Poll for the final response if needed"""
-        # Try to get quest ID or polling URL from initial response
-        quest_id = initial_response.get('questId') or initial_response.get('id')
+        """Poll for the final response using the documented B4M API polling endpoint"""
+        # Get quest ID from initial response
+        quest_id = initial_response.get('id')
         
         if not quest_id:
             print("⚠️ No quest ID found in response, returning initial response")
             return initial_response
         
-        # Try polling variations of the documented /api/ai/llm endpoint
-        poll_endpoints = [
-            f"https://app.bike4mind.com/api/ai/llm/{quest_id}",  # Direct quest ID path
-            f"https://app.bike4mind.com/api/ai/llm/status/{quest_id}",  # Status subpath
-            f"https://app.bike4mind.com/api/ai/llm/response/{quest_id}",  # Response subpath
-            f"https://app.bike4mind.com/api/ai/llm/result/{quest_id}",  # Result subpath
-            f"https://app.bike4mind.com/api/ai/llm?questId={quest_id}",  # Query param
-            f"https://app.bike4mind.com/api/ai/llm?id={quest_id}",  # ID param
-            f"https://app.bike4mind.com/api/ai/llm?sessionId={self.session_id}&questId={quest_id}",  # Both params
-            f"https://app.bike4mind.com/api/ai/llm?sessionId={self.session_id}&id={quest_id}",  # Session + ID
-        ]
+        # Use the documented polling endpoint from B4M_API.md
+        poll_url = f"https://app.bike4mind.com/api/sessions/{self.session_id}/chat/{quest_id}"
         
         print(f"📊 Polling for quest ID: {quest_id}")
+        print(f"   Using documented endpoint: /api/sessions/{self.session_id}/chat/{quest_id}")
         print("   Polling every 7 seconds, up to 15 attempts (105 seconds max)")
         
-        max_polls = 15  # Maximum 15 polling attempts
-        poll_interval = 7.0  # Poll every 7 seconds
+        max_polls = 15  # Maximum 15 polling attempts (105 seconds)
+        poll_interval = 7.0  # Poll every 7 seconds as documented
         
         for i in range(max_polls):
             time.sleep(poll_interval)
             
-            # Try each polling endpoint
-            for endpoint_idx, poll_url in enumerate(poll_endpoints):
-                try:
-                    poll_response = requests.get(
-                        poll_url,
-                        headers=headers,
-                        timeout=10.0  # Increased timeout
-                    )
+            try:
+                poll_response = requests.get(
+                    poll_url,
+                    headers=headers,
+                    timeout=5.0  # 5 second timeout as documented
+                )
+                
+                if poll_response.status_code == 200:
+                    result = poll_response.json()
+                    status = result.get('status', 'unknown')
                     
-                    if poll_response.status_code == 200:
-                        result = poll_response.json()
-                        
-                        # Check if this is a valid quest/message response
-                        has_replies = result.get('replies') and len(result.get('replies', [])) > 0
-                        status = result.get('status', 'unknown')
-                        response_type = result.get('type', 'unknown')
-                        
-                        # Debug logging for first few polls on first few endpoints
-                        if i < 3 and endpoint_idx < 3:
-                            print(f"\n   Debug Poll {i+1}: endpoint={poll_url.split('/')[-1]}")
-                            print(f"   Response keys: {list(result.keys())}")
-                            print(f"   Type: '{response_type}', Status: '{status}', Replies: {len(result.get('replies', []))} items")
-                            
-                            # Show questId to confirm this is our quest
-                            result_quest_id = result.get('questId') or result.get('id')
-                            if result_quest_id:
-                                print(f"   Quest ID: {result_quest_id} {'✓' if result_quest_id == quest_id else '✗'}")
-                            
-                            if 'replies' in result and result['replies']:
-                                print(f"   Replies: {result['replies']}")
-                        
-                        # Check if response is complete
-                        if has_replies:
-                            print(f"\n✅ Final response received after {i+1} polls from endpoint {endpoint_idx+1}")
-                            print(f"   Successful endpoint: {poll_url}")
+                    # Debug info for first few polls
+                    if i < 3:
+                        print(f"\n   Poll {i+1}: Status = '{status}'")
+                        if 'replies' in result:
+                            print(f"   Replies: {len(result.get('replies', []))} items")
+                            if result.get('replies'):
+                                print(f"   Sample reply: {result['replies'][0][:100]}...")
+                    else:
+                        print(f"   Poll {i+1}/15: Status = '{status}'", end='\r')
+                    
+                    # Check completion status as documented
+                    if status == 'done':
+                        ai_response = self.extract_ai_response(result)
+                        if ai_response:
+                            print(f"\n✅ Final response received after {i+1} polls")
                             return result
-                        elif status == 'done':
-                            print(f"\n✅ Final response received after {i+1} polls (status=done)")
+                        else:
+                            print(f"\n⚠️ Quest marked done but no AI response found")
                             return result
-                        elif status == 'error':
-                            print(f"\n❌ Error in processing: {result.get('error', 'Unknown error')}")
-                            return None
-                        
-                        # Still processing - continue to next endpoint
-                        if endpoint_idx == 0:  # Only print status from first endpoint to avoid spam
-                            print(f"   Poll {i+1}/15: Status = '{status}', trying endpoint {endpoint_idx+1}/8", end='\r')
-                        continue  # Try next endpoint
-                            
-                    elif poll_response.status_code == 404:
-                        # This endpoint doesn't exist, try next one
-                        continue
-                        
-                except requests.Timeout:
-                    if endpoint_idx == 0:  # Only print timeout from first endpoint
-                        print(f"\n⚠️ Poll {i+1}: Timeout on endpoint {endpoint_idx+1}, trying next...")
-                    continue  # Try next endpoint
-                except Exception as e:
-                    if endpoint_idx == 0:  # Only print error from first endpoint
-                        print(f"\n⚠️ Poll {i+1}: Error on endpoint {endpoint_idx+1}: {str(e)}")
-                    continue  # Try next endpoint
-            
-            # If we get here, all endpoints failed for this poll iteration
-            # Continue to next poll cycle
+                    elif status == 'stopped':
+                        print(f"\n❌ Quest was stopped")
+                        return None
+                    # Continue polling if status is 'running'
+                    
+                else:
+                    print(f"\n⚠️ Poll {i+1}: HTTP {poll_response.status_code}")
+                    if i < 3:  # Only show error details for first few attempts
+                        print(f"   Response: {poll_response.text[:200]}")
+                    
+            except requests.Timeout:
+                print(f"\n⚠️ Poll {i+1}: Timeout (5s)")
+                continue
+            except Exception as e:
+                print(f"\n⚠️ Poll {i+1}: Error: {str(e)}")
+                continue
         
         print(f"\n⏰ Polling timeout after {max_polls} attempts (105 seconds)")
         return None
     
+    def extract_ai_response(self, quest_data):
+        """Extract AI response using multiple fallback methods as documented in B4M_API.md"""
+        # Primary: check replies array (current B4M structure)
+        if (quest_data.get('replies') and 
+            isinstance(quest_data['replies'], list) and 
+            len(quest_data['replies']) > 0):
+            return '\n'.join(quest_data['replies'])
+        
+        # Fallback 1: check single reply field (legacy)
+        elif quest_data.get('reply'):
+            return quest_data['reply']
+        
+        # Fallback 2: check questMasterReply
+        elif quest_data.get('questMasterReply'):
+            return quest_data['questMasterReply']
+        
+        # Fallback 3: check Research Mode results
+        elif (quest_data.get('researchModeResults') and 
+              isinstance(quest_data['researchModeResults'], list)):
+            results = [r['response'] for r in quest_data['researchModeResults'] 
+                      if r.get('response')]
+            if results:
+                return '\n\n'.join(results)
+        
+        return None
     
     def display_response(self, response):
         """Display the B4M API response"""
@@ -278,9 +284,9 @@ class B4MPingTest:
         print("\n📥 B4M API Response:")
         print("=" * 60)
         
-        # Extract and display the AI response
-        if 'replies' in response and len(response['replies']) > 0:
-            ai_response = response['replies'][0]
+        # Extract and display the AI response using the documented extraction method
+        ai_response = self.extract_ai_response(response)
+        if ai_response:
             print(f"AI Response: {ai_response}")
             
             # Try to parse as navigation command if it looks like JSON
@@ -293,6 +299,8 @@ class B4MPingTest:
                     print(f"   Confidence: {nav_command.get('confidence', 0.0)}")
             except json.JSONDecodeError:
                 pass  # Not a JSON response, that's okay
+        else:
+            print("⚠️ No AI response found in the quest data")
         
         # Display metadata
         if 'promptMeta' in response:

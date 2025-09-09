@@ -171,18 +171,63 @@ The robot will send spatial context to B4M API using this prompt structure:
 }
 ```
 
-## Response Processing
+## Response Processing and Polling
 
-The B4M API response will be parsed to extract the navigation command:
+The B4M API uses an asynchronous quest-based system requiring polling for responses:
 
+### Initial Request Response
+The initial POST to `/api/ai/llm` returns a quest object with status "running":
+```json
+{
+  "id": "68b23f3796f873a3cbbb187a",
+  "sessionId": "68b1e0fcac3f77504fce09b5",
+  "status": "running",
+  "replies": [],
+  ...
+}
+```
+
+### Polling for Completion
+Poll the quest endpoint every 7 seconds until status becomes "done":
+- **Quest-specific endpoint**: `/sessions/{sessionId}/chat/{questId}`
+- **Polling interval**: 7 seconds
+- **Timeout**: 15 attempts (105 seconds)
+- **Status values**: "running", "done", "stopped"
+
+### Response Extraction (Multiple Fallback Methods)
 ```python
-# B4M API returns response in 'replies' array
-b4m_response = response.json()
-ai_response_text = b4m_response['replies'][0]
+def extract_ai_response(quest_data):
+    """Extract AI response with multiple fallback methods"""
+    ai_reply = None
+    
+    # Primary: check replies array (current B4M structure)
+    if (quest_data.get('replies') and 
+        isinstance(quest_data['replies'], list) and 
+        len(quest_data['replies']) > 0):
+        ai_reply = '\n'.join(quest_data['replies'])
+    
+    # Fallback 1: check single reply field (legacy)
+    elif quest_data.get('reply'):
+        ai_reply = quest_data['reply']
+    
+    # Fallback 2: check questMasterReply
+    elif quest_data.get('questMasterReply'):
+        ai_reply = quest_data['questMasterReply']
+    
+    # Fallback 3: check Research Mode results
+    elif (quest_data.get('researchModeResults') and 
+          isinstance(quest_data['researchModeResults'], list)):
+        results = [r['response'] for r in quest_data['researchModeResults'] 
+                  if r.get('response')]
+        if results:
+            ai_reply = '\n\n'.join(results)
+    
+    return ai_reply
 
-# Parse the JSON navigation command from the text
-navigation_command = json.loads(ai_response_text)
-# Expected: {"action": "turn_left", "reason": "...", "confidence": 0.95}
+# Parse the JSON navigation command from the extracted text
+if ai_reply:
+    navigation_command = json.loads(ai_reply)
+    # Expected: {"action": "turn_left", "reason": "...", "confidence": 0.95}
 ```
 
 ## Python Implementation Example
@@ -233,23 +278,86 @@ class B4MNavigator:
         }
         
         try:
+            # Step 1: Submit the quest
             response = requests.post(
                 self.api_url,
                 headers=headers,
                 json=payload,
-                timeout=5.0  # 5 second timeout for safety
+                timeout=5.0
             )
             
-            if response.status_code == 200:
-                result = response.json()
-                # Extract navigation command from replies array
-                ai_response = result['replies'][0]
-                return json.loads(ai_response)
-            else:
+            if response.status_code != 200:
                 return self.get_fallback_decision(spatial_context)
+                
+            quest_data = response.json()
+            quest_id = quest_data.get('id')
+            
+            if not quest_id:
+                return self.get_fallback_decision(spatial_context)
+            
+            # Step 2: Poll for completion
+            return self.poll_for_quest_completion(quest_id, spatial_context)
                 
         except (requests.Timeout, requests.RequestException, json.JSONDecodeError):
             return self.get_fallback_decision(spatial_context)
+    
+    def poll_for_quest_completion(self, quest_id, spatial_context):
+        """Poll the quest endpoint until completion or timeout"""
+        import time
+        
+        poll_url = f"https://app.bike4mind.com/api/sessions/{self.session_id}/chat/{quest_id}"
+        headers = {"X-API-Key": self.api_key}
+        
+        for attempt in range(15):  # 15 attempts = 105 seconds max
+            try:
+                time.sleep(7)  # 7 second intervals
+                
+                response = requests.get(poll_url, headers=headers, timeout=5.0)
+                
+                if response.status_code == 200:
+                    quest_data = response.json()
+                    
+                    if quest_data.get('status') == 'done':
+                        ai_response = self.extract_ai_response(quest_data)
+                        if ai_response:
+                            return json.loads(ai_response)
+                    
+                    elif quest_data.get('status') == 'stopped':
+                        break  # Quest was stopped, use fallback
+                        
+                    # Continue polling if status is 'running'
+                    
+            except (requests.Timeout, requests.RequestException, json.JSONDecodeError):
+                continue  # Continue polling on errors
+        
+        # Timeout or stopped quest - use fallback
+        return self.get_fallback_decision(spatial_context)
+    
+    def extract_ai_response(self, quest_data):
+        """Extract AI response using multiple fallback methods"""
+        # Primary: check replies array (current B4M structure)
+        if (quest_data.get('replies') and 
+            isinstance(quest_data['replies'], list) and 
+            len(quest_data['replies']) > 0):
+            return '\n'.join(quest_data['replies'])
+        
+        # Fallback 1: check single reply field (legacy)
+        elif quest_data.get('reply'):
+            return quest_data['reply']
+        
+        # Fallback 2: check questMasterReply
+        elif quest_data.get('questMasterReply'):
+            return quest_data['questMasterReply']
+        
+        # Fallback 3: check Research Mode results
+        elif (quest_data.get('researchModeResults') and 
+              isinstance(quest_data['researchModeResults'], list)):
+            results = [r['response'] for r in quest_data['researchModeResults'] 
+                      if r.get('response')]
+            if results:
+                return '\n\n'.join(results)
+        
+        return None
 ```
 
 ## Configuration File
@@ -259,6 +367,7 @@ The B4M API configuration will be stored in `/home/mike/projects/b4m_yahboom/con
 ```yaml
 b4m_api:
   endpoint: https://app.bike4mind.com/api/ai/llm
+  poll_endpoint: https://app.bike4mind.com/api/sessions
   model: gpt-4o-mini
   timeout: 5.0
   user_id: 65563f622213b120cd1d9592  # Default user ID
@@ -267,6 +376,11 @@ generation:
   temperature: 0.3  # Low for deterministic navigation
   max_tokens: 100
   history_count: 10  # Number of previous interactions to include
+  
+polling:
+  interval_seconds: 7
+  max_attempts: 15  # 105 seconds total timeout
+  quest_timeout: 105
   
 navigation:
   confidence_threshold: 0.7
