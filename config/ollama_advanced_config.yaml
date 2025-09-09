@@ -1,0 +1,54 @@
+# Ollama Advanced Configuration for B4M Robot Navigation
+# This file configures the advanced Ollama LLM integration with 360° spatial awareness
+
+ollama:
+  host: localhost
+  port: 11434
+  model: llama3.2:latest  # Can be changed to mistral, phi3, or qwen2:0.5b for faster responses
+  timeout: 45.0  # Increased timeout for slow model responses
+  # Alternative faster models for better performance:
+  # - phi3:mini (3.8B parameters, faster than llama3.2)
+  # - qwen2:0.5b (0.5B parameters, very fast responses)
+  # - gemma2:2b (2B parameters, good balance of speed and capability)
+  
+generation:
+  temperature: 0.1  # Lower temperature for more deterministic responses
+  top_p: 0.9
+  max_tokens: 50  # Reduced tokens for faster responses
+  format: text  # Natural language responses, not JSON
+  stream: false
+  
+navigation:
+  decision_interval_distance: 5.0  # Stop every 5 meters for decisions
+  decision_interval_time: 30.0  # Or every 30 seconds, whichever comes first
+  continuous_movement: true  # Move continuously between decision points
+  default_forward_speed: 0.2  # m/s
+  default_turn_speed: 0.5  # rad/s
+  
+spatial_context:
+  sector_size_degrees: 15  # Divide 360° into 24 sectors
+  obstacle_threshold: 0.5  # Consider <0.5m as obstacle
+  clear_threshold: 3.0  # Consider >3.0m as clear
+  group_similar_sectors: true  # Group adjacent similar sectors in description
+  
+safety:
+  emergency_stop_distance: 0.15
+  one_foot_decision_trigger: 0.305  # Stop for new decision when obstacle within 1 foot (0.305m)
+  max_forward_distance: 10.0  # Maximum distance for single forward command
+  max_turn_angle: 360  # Maximum turn angle in degrees
+  enable_manual_override: true
+  collision_prediction: true  # Predict and prevent collisions
+  
+response_parsing:
+  use_nlp: true  # Use natural language parsing
+  fallback_to_keywords: true  # Fallback to keyword matching if NLP fails
+  confidence_threshold: 0.5  # Minimum confidence for parsed commands
+  max_retries: 3  # Number of retries on parse failure with same prompt
+  
+# Prompt configuration
+prompt:
+  system_role: "You are a mobile robot with 360-degree vision navigating through space."
+  response_format: "Turn [N] degrees, and then move ahead [M] meters or until we reach an obstacle."
+  include_feature_detection: true  # Include corridor/corner detection
+  include_navigation_analysis: true  # Include clearest path analysis
+  units: "metric"  # metric or imperial for distance display

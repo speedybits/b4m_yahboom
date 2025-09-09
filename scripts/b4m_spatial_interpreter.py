@@ -17,8 +17,502 @@ Features:
 Author: B4M Robot System
 """
 
+class OllamaAdvancedNavigator:
+    """Handles advanced Ollama API communication for 360° spatial navigation"""
+    
+    def __init__(self, config):
+        self.config = config
+        self.api_url = f"http://{config['ollama']['host']}:{config['ollama']['port']}/api/generate"
+        self.model = config['ollama']['model']
+        self.timeout = config['ollama']['timeout']
+        
+    def generate_360_spatial_context(self, laser_data):
+        """Generate comprehensive 360° spatial analysis from laser scan"""
+        if laser_data is None:
+            return None
+            
+        ranges = np.array(laser_data.ranges)
+        ranges[np.isinf(ranges)] = laser_data.range_max
+        ranges[np.isnan(ranges)] = laser_data.range_max
+        ranges[ranges == 0.0] = laser_data.range_max  # Invalid readings
+        ranges[ranges <= laser_data.range_min] = laser_data.range_max  # Below sensor min
+        
+        num_readings = len(ranges)
+        angle_range = laser_data.angle_max - laser_data.angle_min
+        angle_increment = angle_range / (num_readings - 1) if num_readings > 1 else laser_data.angle_increment
+        
+        # Divide into 24 sectors (15° each)
+        sector_size = self.config['spatial_context']['sector_size_degrees']
+        num_sectors = 360 // sector_size
+        sectors = []
+        
+        for i in range(num_sectors):
+            start_angle = (i * sector_size - 180)  # Start from -180°
+            end_angle = start_angle + sector_size
+            
+            # Convert to radians and get indices
+            start_rad = math.radians(start_angle)
+            end_rad = math.radians(end_angle)
+            
+            start_idx = max(0, int((start_rad - laser_data.angle_min) / angle_increment))
+            end_idx = min(num_readings - 1, int((end_rad - laser_data.angle_min) / angle_increment))
+            
+            if start_idx <= end_idx:
+                sector_ranges = ranges[start_idx:end_idx + 1]
+            else:
+                # Handle wraparound for sectors crossing ±180°
+                sector_ranges = np.concatenate([ranges[start_idx:], ranges[:end_idx + 1]])
+            
+            if len(sector_ranges) > 0:
+                min_dist = np.min(sector_ranges)
+                avg_dist = np.mean(sector_ranges)
+                
+                # Classify sector
+                obstacle_threshold = self.config['spatial_context']['obstacle_threshold']
+                clear_threshold = self.config['spatial_context']['clear_threshold']
+                
+                if min_dist < obstacle_threshold:
+                    status = 'BLOCKED'
+                elif min_dist < clear_threshold:
+                    status = 'PASSABLE'
+                else:
+                    status = 'CLEAR'
+                    
+                sectors.append({
+                    'angle': start_angle + sector_size/2,  # Center angle
+                    'direction': self.angle_to_direction(start_angle + sector_size/2),
+                    'status': status,
+                    'min_distance': min_dist,
+                    'avg_distance': avg_dist,
+                    'start_angle': start_angle,
+                    'end_angle': end_angle
+                })
+        
+        return self.analyze_sectors(sectors)
+    
+    def angle_to_direction(self, angle):
+        """Convert angle to human-readable direction"""
+        # Normalize angle to 0-360
+        angle = angle % 360
+        if angle > 180:
+            angle -= 360
+            
+        directions = [
+            (0, "front"),
+            (45, "right-front"), 
+            (90, "right-side"),
+            (135, "back-right"),
+            (180, "behind"),
+            (-135, "left-back"),
+            (-90, "left-side"),
+            (-45, "front-left")
+        ]
+        
+        # Find closest direction
+        closest = min(directions, key=lambda x: abs(x[0] - angle))
+        return closest[1]
+    
+    def analyze_sectors(self, sectors):
+        """Analyze sectors and generate spatial context summary"""
+        if not sectors:
+            return None
+            
+        # Find closest obstacle
+        closest_sector = min(sectors, key=lambda x: x['min_distance'])
+        
+        # Find clearest path (highest average distance)
+        clearest_sector = max(sectors, key=lambda x: x['avg_distance'])
+        
+        # Count blocked sectors
+        blocked_count = sum(1 for s in sectors if s['status'] == 'BLOCKED')
+        
+        # Calculate average clearance
+        avg_clearance = np.mean([s['avg_distance'] for s in sectors])
+        
+        # Group similar adjacent sectors for description
+        grouped_sectors = self.group_similar_sectors(sectors) if self.config['spatial_context']['group_similar_sectors'] else sectors
+        
+        # Detect features
+        features = self.detect_spatial_features(sectors, blocked_count, avg_clearance)
+        
+        # Check for immediate warnings
+        warnings = []
+        emergency_threshold = 0.3
+        for sector in sectors:
+            if sector['min_distance'] < emergency_threshold:
+                warnings.append({
+                    'direction': sector['direction'],
+                    'distance': sector['min_distance']
+                })
+        
+        return {
+            'sectors': sectors,
+            'grouped_sectors': grouped_sectors,
+            'closest_obstacle': {
+                'direction': closest_sector['direction'],
+                'distance': closest_sector['min_distance']
+            },
+            'clearest_path': {
+                'direction': clearest_sector['direction'],
+                'distance': clearest_sector['avg_distance']
+            },
+            'blocked_sectors': blocked_count,
+            'total_sectors': len(sectors),
+            'average_clearance': avg_clearance,
+            'features': features,
+            'warnings': warnings
+        }
+    
+    def group_similar_sectors(self, sectors):
+        """Group adjacent sectors with similar status"""
+        if not sectors:
+            return []
+            
+        grouped = []
+        current_group = [sectors[0]]
+        
+        for i in range(1, len(sectors)):
+            if sectors[i]['status'] == current_group[-1]['status']:
+                current_group.append(sectors[i])
+            else:
+                # Finalize current group
+                if len(current_group) == 1:
+                    grouped.extend(current_group)
+                else:
+                    # Create group summary
+                    group_summary = {
+                        'start_direction': current_group[0]['direction'],
+                        'end_direction': current_group[-1]['direction'],
+                        'status': current_group[0]['status'],
+                        'min_distance': min(s['min_distance'] for s in current_group),
+                        'avg_distance': np.mean([s['avg_distance'] for s in current_group]),
+                        'sector_count': len(current_group)
+                    }
+                    grouped.append(group_summary)
+                
+                # Start new group
+                current_group = [sectors[i]]
+        
+        # Handle last group
+        if len(current_group) == 1:
+            grouped.extend(current_group)
+        else:
+            group_summary = {
+                'start_direction': current_group[0]['direction'],
+                'end_direction': current_group[-1]['direction'],
+                'status': current_group[0]['status'],
+                'min_distance': min(s['min_distance'] for s in current_group),
+                'avg_distance': np.mean([s['avg_distance'] for s in current_group]),
+                'sector_count': len(current_group)
+            }
+            grouped.append(group_summary)
+        
+        return grouped
+    
+    def detect_spatial_features(self, sectors, blocked_count, avg_clearance):
+        """Detect common spatial patterns"""
+        features = []
+        total_sectors = len(sectors)
+        
+        # Corridor detection - clear ahead with blocked sides
+        front_sectors = [s for s in sectors if abs(s['angle']) <= 30]  # ±30° from front
+        side_sectors = [s for s in sectors if 60 <= abs(s['angle']) <= 120]  # Side areas
+        
+        front_clear = all(s['status'] != 'BLOCKED' for s in front_sectors)
+        sides_blocked = sum(1 for s in side_sectors if s['status'] == 'BLOCKED') >= len(side_sectors) * 0.6
+        
+        if front_clear and sides_blocked:
+            features.append("You appear to be in a CORRIDOR extending forward")
+        
+        # Tight corner detection
+        if blocked_count >= 18:  # 18+ out of 24 sectors blocked
+            features.append("You are in a TIGHT CORNER with limited maneuvering space")
+        
+        # Open area detection
+        if avg_clearance > 5.0:
+            features.append("You are in an OPEN AREA with plenty of space")
+        
+        # Dead end detection
+        if blocked_count >= 20:  # 20+ out of 24 sectors blocked
+            features.append("This appears to be a DEAD END")
+        
+        return features
+    
+    def generate_natural_language_description(self, spatial_context):
+        """Generate natural language description from spatial context"""
+        if not spatial_context:
+            return "No spatial data available."
+        
+        description = []
+        
+        # System prompt
+        description.append("You are a mobile robot with 360-degree vision. Here's what surrounds you:")
+        description.append("")
+        
+        # Immediate warnings
+        if spatial_context['warnings']:
+            for warning in spatial_context['warnings']:
+                description.append(f"⚠️ IMMEDIATE OBSTACLE: {warning['distance']:.2f}m to your {warning['direction']}")
+            description.append("")
+        
+        # Environment summary using grouped sectors
+        description.append("SURROUNDING ENVIRONMENT:")
+        for group in spatial_context['grouped_sectors']:
+            if 'start_direction' in group:
+                # This is a grouped sector
+                direction_desc = f"{group['start_direction']} to {group['end_direction']}"
+                status_desc = f"{group['status']} - "
+                if group['status'] == 'BLOCKED':
+                    status_desc += f"obstacle at {group['min_distance']:.2f}m"
+                elif group['status'] == 'PASSABLE':
+                    status_desc += f"nearest object at {group['min_distance']:.2f}m"
+                else:  # CLEAR
+                    status_desc += f"open space for at least {group['avg_distance']:.1f}m"
+                description.append(f"• {direction_desc}: {status_desc}")
+            else:
+                # Single sector
+                status_desc = f"{group['status']} - "
+                if group['status'] == 'BLOCKED':
+                    status_desc += f"obstacle at {group['min_distance']:.2f}m"
+                elif group['status'] == 'PASSABLE':
+                    status_desc += f"nearest object at {group['min_distance']:.2f}m"
+                else:  # CLEAR
+                    status_desc += f"open space for at least {group['avg_distance']:.1f}m"
+                description.append(f"• {group['direction']}: {status_desc}")
+        
+        description.append("")
+        
+        # Navigation analysis
+        description.append("NAVIGATION ANALYSIS:")
+        description.append(f"• Clearest path: {spatial_context['clearest_path']['direction']}")
+        description.append(f"• Blocked directions: {spatial_context['blocked_sectors']} of {spatial_context['total_sectors']} sectors")
+        description.append(f"• Average clearance: {spatial_context['average_clearance']:.2f}m")
+        
+        # Detected features
+        if spatial_context['features']:
+            description.append("")
+            description.append("DETECTED FEATURES:")
+            for feature in spatial_context['features']:
+                description.append(f"• {feature}")
+        
+        return "\n".join(description)
+    
+    def generate_ollama_prompt(self, natural_description):
+        """Generate optimized prompt for Ollama with faster response"""
+        # Create a more concise prompt for faster processing
+        lines = natural_description.split('\n')
+        
+        # Extract key information only
+        key_info = []
+        for line in lines:
+            if ('IMMEDIATE OBSTACLE' in line or 
+                'Clearest path:' in line or 
+                'Blocked directions:' in line or
+                'CORRIDOR' in line or 'DEAD END' in line):
+                key_info.append(line.strip())
+        
+        concise_description = '\n'.join(key_info[:5])  # Limit to 5 most important lines
+        
+        prompt = f"""Robot navigation decision needed.
+        
+{concise_description}
+
+Respond ONLY with: "Turn [N] degrees, and then move ahead [M] meters or until we reach an obstacle."
+
+Where N is turn angle (-180 to 180) and M is distance (0.5 to 5.0)."""
+        
+        return prompt
+    
+    def get_navigation_decision(self, laser_data, distance_traveled=0):
+        """Get advanced navigation decision from Ollama using 360° context with retry logic"""
+        call_id = int(time.time() * 1000) % 10000
+        max_retries = self.config['response_parsing']['max_retries']
+        
+        print(f"[{get_timestamp()}] 🔥 OLLAMA ADVANCED API CALL #{call_id} STARTING")
+        
+        try:
+            # Generate 360° spatial context
+            print(f"[{get_timestamp()}] 🌐 Analyzing 360° spatial context...")
+            spatial_context = self.generate_360_spatial_context(laser_data)
+            if not spatial_context:
+                return None, None, None
+            
+            # Generate natural language description
+            print(f"[{get_timestamp()}] 📝 Generating natural language description...")
+            natural_description = self.generate_natural_language_description(spatial_context)
+            
+            # Generate optimized prompt
+            prompt = self.generate_ollama_prompt(natural_description)
+            
+            # Display the spatial analysis (condensed for performance)
+            print(f"\n[{get_timestamp()}] 🌐 360° SPATIAL ANALYSIS:")
+            key_lines = [line for line in natural_description.split('\n') 
+                        if ('OBSTACLE' in line or 'Clearest path' in line or 'CORRIDOR' in line or 'DEAD END' in line)]
+            for line in key_lines[:3]:  # Show only top 3 key insights
+                print(f"   {line}")
+            print()
+            
+            # Attempt API call with retry logic
+            for attempt in range(max_retries + 1):
+                try:
+                    payload = {
+                        "model": self.model,
+                        "prompt": prompt,
+                        "stream": False,
+                        "options": {
+                            "temperature": self.config['generation']['temperature'],
+                            "top_p": self.config['generation']['top_p'],
+                            "num_predict": self.config['generation']['max_tokens']
+                        }
+                    }
+                    
+                    timeout = self.timeout * (attempt + 1)  # Increase timeout with each retry
+                    print(f"[{get_timestamp()}] 🦙 Consulting Ollama (attempt {attempt + 1}/{max_retries + 1}, timeout: {timeout}s)...")
+                    
+                    start_time = time.time()
+                    response = requests.post(
+                        self.api_url,
+                        json=payload,
+                        timeout=timeout
+                    )
+                    response_time = time.time() - start_time
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        ollama_response = result['response'].strip()
+                        print(f"\n[{get_timestamp()}] 💭 OLLAMA RESPONSE: {ollama_response}")
+                        
+                        # Parse the response
+                        parsed_command = self.parse_navigation_response(ollama_response)
+                        
+                        if parsed_command['success']:
+                            print(f"\n[{get_timestamp()}] 🎯 PARSED COMMAND:")
+                            print(f"   • Turn: {parsed_command['turn_angle']}° ({'no rotation' if parsed_command['turn_angle'] == 0 else 'right rotation' if parsed_command['turn_angle'] > 0 else 'left rotation'})")
+                            print(f"   • Move: {parsed_command['move_distance']} meters forward")
+                            print(f"   • Parse method: {parsed_command['parse_method']}")
+                            return parsed_command, prompt, response_time
+                        else:
+                            if attempt < max_retries:
+                                print(f"[{get_timestamp()}] ❌ Parse failed, retrying...")
+                                time.sleep(2 ** attempt)  # Exponential backoff
+                                continue
+                            else:
+                                print(f"\n[{get_timestamp()}] ❌ Failed to parse after {max_retries + 1} attempts: {parsed_command.get('error', 'Unknown error')}")
+                                # Return a safe default command
+                                return self.get_safe_fallback_command(), prompt, response_time
+                    else:
+                        print(f"[{get_timestamp()}] ❌ HTTP error {response.status_code}")
+                        if attempt < max_retries:
+                            print(f"[{get_timestamp()}] 🔄 Retrying in {2 ** attempt}s...")
+                            time.sleep(2 ** attempt)
+                            continue
+                        else:
+                            return self.get_safe_fallback_command(), None, response_time
+                            
+                except requests.Timeout as e:
+                    if attempt < max_retries:
+                        backoff_time = 2 ** attempt
+                        print(f"[{get_timestamp()}] ⏰ Timeout after {timeout}s, retrying in {backoff_time}s...")
+                        time.sleep(backoff_time)
+                        continue
+                    else:
+                        print(f"[{get_timestamp()}] ⚠️ OLLAMA TIMEOUT after {max_retries + 1} attempts")
+                        return self.get_safe_fallback_command(), prompt, timeout
+                        
+        except Exception as e:
+            print(f"[{get_timestamp()}] ⚠️ OLLAMA ADVANCED API CALL #{call_id} FAILED: {type(e).__name__}: {str(e)}")
+            return self.get_safe_fallback_command(), None, None
+    
+    def get_safe_fallback_command(self):
+        """Return a safe fallback navigation command when Ollama fails"""
+        return {
+            'success': True,
+            'turn_angle': 0,
+            'move_distance': 1.0,  # Move forward 1 meter
+            'parse_method': 'fallback',
+            'original_response': 'FALLBACK: Continue forward slowly'
+        }
+    
+    def parse_navigation_response(self, response_text):
+        """Parse Ollama's natural language response into structured navigation command"""
+        response_text = response_text.strip()
+        
+        # Primary pattern: exact format match
+        primary_pattern = r'Turn\s+([-]?\d+)\s+degrees,\s+and\s+then\s+move\s+ahead\s+(\d+(?:\.\d+)?)\s+meters'
+        match = re.search(primary_pattern, response_text, re.IGNORECASE)
+        
+        if match:
+            turn_angle = int(match.group(1))
+            move_distance = float(match.group(2))
+            
+            # Apply safety limits
+            max_turn = self.config['safety']['max_turn_angle']
+            max_distance = self.config['safety']['max_forward_distance']
+            
+            if abs(turn_angle) > max_turn:
+                print(f"   ⚠️ Turn angle {turn_angle}° exceeds limit, capping to {max_turn if turn_angle > 0 else -max_turn}°")
+                turn_angle = max_turn if turn_angle > 0 else -max_turn
+            
+            if move_distance > max_distance:
+                print(f"   ⚠️ Move distance {move_distance}m exceeds limit, capping to {max_distance}m")
+                move_distance = max_distance
+            
+            return {
+                'success': True,
+                'turn_angle': turn_angle,
+                'move_distance': move_distance,
+                'parse_method': 'structured',
+                'original_response': response_text
+            }
+        
+        # Fallback patterns
+        fallback_patterns = [
+            (r'turn\s+([-]?\d+)\s+degrees.*move\s+(?:ahead\s+)?(\d+(?:\.\d+)?)\s+meters', 'fallback_turn_move'),
+            (r'turn\s+([-]?\d+)\s+degrees', 'fallback_turn_only'),
+            (r'move\s+(?:ahead\s+)?(\d+(?:\.\d+)?)\s+meters', 'fallback_move_only')
+        ]
+        
+        for pattern, method in fallback_patterns:
+            match = re.search(pattern, response_text, re.IGNORECASE)
+            if match:
+                if method == 'fallback_turn_move':
+                    turn_angle = int(match.group(1))
+                    move_distance = float(match.group(2))
+                elif method == 'fallback_turn_only':
+                    turn_angle = int(match.group(1))
+                    move_distance = 0.0
+                elif method == 'fallback_move_only':
+                    turn_angle = 0
+                    move_distance = float(match.group(1))
+                
+                # Apply safety limits
+                max_turn = self.config['safety']['max_turn_angle']
+                max_distance = self.config['safety']['max_forward_distance']
+                
+                if abs(turn_angle) > max_turn:
+                    turn_angle = max_turn if turn_angle > 0 else -max_turn
+                
+                if move_distance > max_distance:
+                    move_distance = max_distance
+                
+                return {
+                    'success': True,
+                    'turn_angle': turn_angle,
+                    'move_distance': move_distance,
+                    'parse_method': method,
+                    'original_response': response_text
+                }
+        
+        # No valid pattern found
+        return {
+            'success': False,
+            'error': f'Could not parse response: {response_text[:100]}...',
+            'original_response': response_text
+        }
+
+
 class OllamaNavigator:
-    """Handles Ollama API communication for navigation decisions"""
+    """Handles basic Ollama API communication for navigation decisions"""
     
     def __init__(self, config):
         self.config = config
@@ -135,6 +629,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import LaserScan
+from nav_msgs.msg import Odometry
 import numpy as np
 import math
 import time
@@ -148,6 +643,7 @@ import yaml
 import requests
 import json
 from datetime import datetime
+import re
 
 def get_timestamp():
     """Get formatted timestamp for debug output"""
@@ -159,29 +655,49 @@ def print_flush(*args, **kwargs):
     sys.stdout.flush()
 
 class B4MSpatialInterpreter(Node):
-    def __init__(self, ollama_mode=False):
+    def __init__(self, ollama_mode=False, ollama_advanced_mode=False):
         super().__init__('b4m_spatial_interpreter')
         
-        # Check if running in Ollama mode
+        # Check if running in Ollama mode (basic or advanced)
         self.ollama_mode = ollama_mode
+        self.ollama_advanced_mode = ollama_advanced_mode
         self.ollama_navigator = None
         self.debug_verbose = False  # Disable verbose debug output by default
         
-        if self.ollama_mode:
-            # Load Ollama configuration
-            self.config = self.load_ollama_config()
+        # Advanced mode tracking
+        self.last_decision_time = 0
+        self.last_decision_position = [0.0, 0.0]  # x, y position
+        self.distance_since_last_decision = 0.0
+        self.decision_in_progress = False
+        
+        if self.ollama_mode or self.ollama_advanced_mode:
+            # Load appropriate Ollama configuration
+            config_file = 'ollama_advanced_config.yaml' if self.ollama_advanced_mode else 'ollama_config.yaml'
+            self.config = self.load_ollama_config(config_file)
             if self.config:
-                self.ollama_navigator = OllamaNavigator(self.config)
-                self.get_logger().info("🦙 Ollama mode activated")
-                print(f"\n[{get_timestamp()}] 🦙 OLLAMA MODE ACTIVATED")
-                print("=" * 63)
-                print(f"[{get_timestamp()}] Robot will use Ollama LLM for navigation decisions")
-                print(f"[{get_timestamp()}] Model: {self.config['ollama']['model']}")
-                print(f"[{get_timestamp()}] API: {self.config['ollama']['host']}:{self.config['ollama']['port']}")
-                print("=" * 63)
+                if self.ollama_advanced_mode:
+                    self.ollama_navigator = OllamaAdvancedNavigator(self.config)
+                    self.get_logger().info("🦙 Ollama Advanced mode activated")
+                    print(f"\n[{get_timestamp()}] 🦙 OLLAMA ADVANCED MODE ACTIVATED")
+                    print("=" * 63)
+                    print(f"[{get_timestamp()}] Robot will use 360° spatial context for navigation")
+                    print(f"[{get_timestamp()}] Decision interval: {self.config['navigation']['decision_interval_distance']}m")
+                    print(f"[{get_timestamp()}] Model: {self.config['ollama']['model']}")
+                    print(f"[{get_timestamp()}] API: {self.config['ollama']['host']}:{self.config['ollama']['port']}")
+                    print("=" * 63)
+                else:
+                    self.ollama_navigator = OllamaNavigator(self.config)
+                    self.get_logger().info("🦙 Ollama mode activated")
+                    print(f"\n[{get_timestamp()}] 🦙 OLLAMA MODE ACTIVATED")
+                    print("=" * 63)
+                    print(f"[{get_timestamp()}] Robot will use Ollama LLM for navigation decisions")
+                    print(f"[{get_timestamp()}] Model: {self.config['ollama']['model']}")
+                    print(f"[{get_timestamp()}] API: {self.config['ollama']['host']}:{self.config['ollama']['port']}")
+                    print("=" * 63)
             else:
                 self.get_logger().error("Failed to load Ollama configuration")
                 self.ollama_mode = False
+                self.ollama_advanced_mode = False
         
         # Create QoS profile for reliable communication
         qos_profile = QoSProfile(depth=10)
@@ -196,6 +712,17 @@ class B4MSpatialInterpreter(Node):
             qos_profile
         )
         
+        # Add odometry subscription for advanced mode
+        if self.ollama_advanced_mode:
+            self.odom_sub = self.create_subscription(
+                Odometry,
+                '/odom',
+                self.odometry_callback,
+                qos_profile
+            )
+            self.current_position = [0.0, 0.0]  # x, y
+            self.current_orientation = 0.0  # yaw in radians
+        
         # Robot parameters
         self.linear_speed = 0.08  # Slow speed for safety (m/s)
         self.angular_speed = 0.5  # Turning speed (rad/s)
@@ -204,7 +731,18 @@ class B4MSpatialInterpreter(Node):
         self.safe_distance = 0.40  # Resume when clear at 40cm
         
         # State management
-        self.state = "moving_forward"  # States: moving_forward, stopped_waiting, turning, moving_forward_manual
+        if self.ollama_advanced_mode:
+            # Advanced mode states: continuous_forward, scheduled_decision, executing_turn, executing_forward
+            self.state = "continuous_forward"
+            self.scheduled_turn_angle = 0  # Target turn angle for advanced mode
+            self.scheduled_move_distance = 0  # Target move distance for advanced mode
+            self.turn_start_angle = 0  # Starting orientation for turn
+            self.move_start_position = [0.0, 0.0]  # Starting position for move
+            self.advanced_navigation_active = True
+        else:
+            # Basic mode states: moving_forward, stopped_waiting, turning, moving_forward_manual
+            self.state = "moving_forward"
+            
         self.turn_direction = 0  # 1 for left, -1 for right
         self.laser_data = None
         self.obstacle_detected = False
@@ -260,11 +798,11 @@ class B4MSpatialInterpreter(Node):
             print_flush(f"\n[{get_timestamp()}] 🤖 B4M Spatial Interpreter started")
         # After this, stay quiet until obstacle detected
     
-    def load_ollama_config(self):
+    def load_ollama_config(self, config_filename='ollama_config.yaml'):
         """Load Ollama configuration from YAML file"""
         config_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            'config', 'ollama_config.yaml'
+            'config', config_filename
         )
         
         try:
@@ -272,8 +810,29 @@ class B4MSpatialInterpreter(Node):
                 config = yaml.safe_load(f)
                 return config
         except Exception as e:
-            print(f"⚠️ Error loading Ollama config: {e}")
+            print(f"⚠️ Error loading Ollama config from {config_filename}: {e}")
             return None
+    
+    def odometry_callback(self, msg):
+        """Process odometry data for advanced mode position tracking"""
+        if not self.ollama_advanced_mode:
+            return
+            
+        # Extract position
+        self.current_position[0] = msg.pose.pose.position.x
+        self.current_position[1] = msg.pose.pose.position.y
+        
+        # Extract yaw from quaternion
+        orientation_q = msg.pose.pose.orientation
+        siny_cosp = 2 * (orientation_q.w * orientation_q.z + orientation_q.x * orientation_q.y)
+        cosy_cosp = 1 - 2 * (orientation_q.y * orientation_q.y + orientation_q.z * orientation_q.z)
+        self.current_orientation = math.atan2(siny_cosp, cosy_cosp)
+        
+        # Calculate distance since last decision
+        if hasattr(self, 'last_decision_position'):
+            dx = self.current_position[0] - self.last_decision_position[0]
+            dy = self.current_position[1] - self.last_decision_position[1]
+            self.distance_since_last_decision = math.sqrt(dx*dx + dy*dy)
         
     def laser_callback(self, msg):
         """Process laser scan data for obstacle detection"""
@@ -709,6 +1268,228 @@ class B4MSpatialInterpreter(Node):
         
         return False
     
+    def should_trigger_decision(self):
+        """Check if it's time for a scheduled decision in advanced mode"""
+        if not self.ollama_advanced_mode:
+            return False
+            
+        current_time = time.time()
+        
+        # Distance-based trigger
+        distance_trigger = (self.distance_since_last_decision >= 
+                           self.config['navigation']['decision_interval_distance'])
+        
+        # Time-based trigger
+        time_trigger = (current_time - self.last_decision_time >= 
+                       self.config['navigation']['decision_interval_time'])
+        
+        # Emergency obstacle trigger (basic front obstacle detection)
+        emergency_trigger = self.obstacle_detected
+        
+        # 360-degree obstacle detection (1 foot = 0.305m in any direction)
+        obstacle_1_foot_trigger = self.detect_obstacle_within_1_foot()
+        
+        return distance_trigger or time_trigger or emergency_trigger or obstacle_1_foot_trigger
+    
+    def detect_obstacle_within_1_foot(self):
+        """Detect if any obstacle is within 1 foot (configurable) in any direction"""
+        if self.laser_data is None:
+            return False
+            
+        ranges = self.get_clean_laser_ranges()
+        if len(ranges) == 0:
+            return False
+        
+        # Get threshold from config (default 1 foot = 0.305m)
+        one_foot_threshold = self.config.get('safety', {}).get('one_foot_decision_trigger', 0.305)
+        
+        # Find minimum distance in all directions
+        min_distance_all_directions = np.min(ranges)
+        
+        return min_distance_all_directions < one_foot_threshold
+    
+    def get_clean_laser_ranges(self):
+        """Get cleaned laser scan ranges for analysis"""
+        if self.laser_data is None:
+            return np.array([])
+            
+        ranges = np.array(self.laser_data.ranges)
+        ranges[np.isinf(ranges)] = self.laser_data.range_max
+        ranges[np.isnan(ranges)] = self.laser_data.range_max
+        ranges[ranges == 0.0] = self.laser_data.range_max  # Invalid readings
+        ranges[ranges <= self.laser_data.range_min] = self.laser_data.range_max  # Below sensor min
+        
+        return ranges
+    
+    def execute_advanced_navigation_command(self, parsed_command):
+        """Execute a parsed advanced navigation command"""
+        if not parsed_command or not parsed_command.get('success'):
+            return False
+            
+        turn_angle = parsed_command['turn_angle']
+        move_distance = parsed_command['move_distance']
+        
+        print(f"\n[{get_timestamp()}] ⚙️ Executing advanced navigation command:")
+        print(f"   Turn: {turn_angle}° ({'no rotation' if turn_angle == 0 else 'right' if turn_angle > 0 else 'left'})")
+        print(f"   Move: {move_distance}m forward")
+        
+        # Store command parameters
+        self.scheduled_turn_angle = turn_angle
+        self.scheduled_move_distance = move_distance
+        
+        # Start with turn if needed, otherwise start forward movement
+        if turn_angle != 0:
+            self.state = "executing_turn"
+            self.turn_start_angle = self.current_orientation
+            print(f"[{get_timestamp()}] 🔄 Starting turn of {turn_angle}°...")
+        elif move_distance > 0:
+            self.state = "executing_forward"
+            self.move_start_position = self.current_position[:]
+            print(f"[{get_timestamp()}] ➡️ Starting forward movement of {move_distance}m...")
+        else:
+            # No movement commanded, resume continuous forward
+            self.state = "continuous_forward"
+            print(f"[{get_timestamp()}] ⏸️ No movement commanded, resuming continuous forward...")
+        
+        # Update decision tracking
+        self.last_decision_time = time.time()
+        self.last_decision_position = self.current_position[:]
+        self.decision_in_progress = False
+        
+        return True
+    
+    def advanced_control_loop(self, cmd):
+        """Advanced mode control loop with 360° spatial awareness"""
+        
+        # Check for scheduled decision points
+        if (self.state == "continuous_forward" and not self.decision_in_progress and 
+            self.should_trigger_decision()):
+            
+            # Stop and make a decision
+            print(f"\n[{get_timestamp()}] 🔄 Decision point reached - stopping for 360° analysis")
+            
+            # Determine and report the trigger reason
+            distance_trigger = self.distance_since_last_decision >= self.config['navigation']['decision_interval_distance']
+            time_trigger = time.time() - self.last_decision_time >= self.config['navigation']['decision_interval_time']
+            emergency_trigger = self.obstacle_detected
+            one_foot_trigger = self.detect_obstacle_within_1_foot()
+            
+            if distance_trigger:
+                print(f"   Trigger: Distance ({self.distance_since_last_decision:.1f}m >= {self.config['navigation']['decision_interval_distance']}m)")
+            elif time_trigger:
+                print(f"   Trigger: Time ({time.time() - self.last_decision_time:.1f}s >= {self.config['navigation']['decision_interval_time']}s)")
+            elif emergency_trigger:
+                print(f"   Trigger: Emergency front obstacle detected")
+            elif one_foot_trigger:
+                min_dist = np.min(self.get_clean_laser_ranges()) if self.laser_data else 0
+                print(f"   Trigger: Obstacle within 1 foot detected (closest: {min_dist:.2f}m = {min_dist*3.28:.1f} feet)")
+                
+            cmd.linear.x = 0.0
+            cmd.angular.z = 0.0
+            self.cmd_pub.publish(cmd)
+            
+            self.decision_in_progress = True
+            self.state = "scheduled_decision"
+            
+            # Get advanced navigation decision
+            try:
+                decision, prompt, response_time = self.ollama_navigator.get_navigation_decision(
+                    self.laser_data, self.distance_since_last_decision
+                )
+                
+                if decision and decision.get('success'):
+                    self.execute_advanced_navigation_command(decision)
+                else:
+                    print(f"\n[{get_timestamp()}] ❌ Failed to get navigation decision - stopping")
+                    self.state = "continuous_forward"
+                    self.decision_in_progress = False
+                    
+            except Exception as e:
+                print(f"[{get_timestamp()}] ⚠️ Error in advanced navigation decision: {e}")
+                self.state = "continuous_forward"
+                self.decision_in_progress = False
+            
+            return
+        
+        elif self.state == "continuous_forward":
+            # Continue moving forward until next decision point
+            if not self.obstacle_detected:
+                cmd.linear.x = self.config['navigation']['default_forward_speed']
+                cmd.angular.z = 0.0
+            else:
+                # Emergency stop for immediate obstacles
+                cmd.linear.x = 0.0
+                cmd.angular.z = 0.0
+                
+        elif self.state == "executing_turn":
+            # Execute the commanded turn angle
+            current_turned = self.normalize_angle(self.current_orientation - self.turn_start_angle)
+            target_angle = math.radians(self.scheduled_turn_angle)
+            
+            angle_error = self.normalize_angle(target_angle - current_turned)
+            
+            if abs(angle_error) > math.radians(5):  # 5 degree tolerance
+                # Continue turning
+                turn_speed = self.config['navigation']['default_turn_speed']
+                cmd.linear.x = 0.0
+                cmd.angular.z = turn_speed if angle_error > 0 else -turn_speed
+            else:
+                # Turn complete
+                print(f"[{get_timestamp()}] ✅ Turn complete")
+                if self.scheduled_move_distance > 0:
+                    # Start forward movement
+                    self.state = "executing_forward"
+                    self.move_start_position = self.current_position[:]
+                    print(f"[{get_timestamp()}] ➡️ Starting forward movement of {self.scheduled_move_distance}m...")
+                else:
+                    # No forward movement, resume continuous forward
+                    self.state = "continuous_forward"
+                    print(f"[{get_timestamp()}] ➡️ Resuming continuous forward movement...")
+                cmd.linear.x = 0.0
+                cmd.angular.z = 0.0
+                
+        elif self.state == "executing_forward":
+            # Execute the commanded forward distance
+            dx = self.current_position[0] - self.move_start_position[0]
+            dy = self.current_position[1] - self.move_start_position[1]
+            distance_moved = math.sqrt(dx*dx + dy*dy)
+            
+            if distance_moved < self.scheduled_move_distance and not self.obstacle_detected:
+                # Continue forward movement
+                cmd.linear.x = self.config['navigation']['default_forward_speed']
+                cmd.angular.z = 0.0
+                
+                # Show progress
+                if int(distance_moved * 2) > int((distance_moved - 0.1) * 2):  # Every 0.5m
+                    remaining = self.scheduled_move_distance - distance_moved
+                    print(f"[{get_timestamp()}] 📏 Progress: {distance_moved:.1f}m moved, {remaining:.1f}m remaining")
+            else:
+                # Movement complete or obstacle detected
+                if self.obstacle_detected:
+                    print(f"[{get_timestamp()}] ⚠️ Forward movement interrupted by obstacle (moved {distance_moved:.1f}m)")
+                else:
+                    print(f"[{get_timestamp()}] ✅ Forward movement complete (moved {distance_moved:.1f}m)")
+                
+                self.state = "continuous_forward"
+                cmd.linear.x = 0.0
+                cmd.angular.z = 0.0
+                
+        elif self.state == "scheduled_decision":
+            # Waiting for decision processing - stay stopped
+            cmd.linear.x = 0.0
+            cmd.angular.z = 0.0
+        
+        # Publish command
+        self.cmd_pub.publish(cmd)
+    
+    def normalize_angle(self, angle):
+        """Normalize angle to [-pi, pi]"""
+        while angle > math.pi:
+            angle -= 2 * math.pi
+        while angle < -math.pi:
+            angle += 2 * math.pi
+        return angle
+    
     def control_loop(self):
         """Main control loop for spatial interpreter"""
         # ULTRA DEBUG: Track control loop iterations
@@ -748,6 +1529,11 @@ class B4MSpatialInterpreter(Node):
         
         cmd = Twist()
         
+        # Handle advanced mode navigation
+        if self.ollama_advanced_mode:
+            return self.advanced_control_loop(cmd)
+        
+        # Handle basic mode navigation
         if self.state == "moving_forward":
             # Reset just_turned flag after 2 seconds of forward movement
             if self.just_turned and time.time() - self.forward_start_time > 2.0:
@@ -973,16 +1759,27 @@ def main():
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description='B4M Spatial Interpreter for robot navigation')
     parser.add_argument('--ollama-mode', action='store_true',
-                       help='Enable Ollama LLM navigation mode')
+                       help='Enable Ollama LLM navigation mode (basic cardinal directions)')
+    parser.add_argument('--ollama-advanced-mode', action='store_true',
+                       help='Enable Ollama Advanced navigation mode (360° spatial context)')
     parser.add_argument('--debug-verbose', action='store_true',
                        help='Enable verbose debug output')
     args, unknown = parser.parse_known_args()
+    
+    # Validate arguments
+    if args.ollama_mode and args.ollama_advanced_mode:
+        print("ERROR: Cannot use both --ollama-mode and --ollama-advanced-mode together")
+        print("Choose either basic or advanced Ollama integration")
+        exit(1)
     
     # Initialize ROS2
     rclpy.init(args=unknown)  # Pass remaining args to ROS2
     
     try:
-        interpreter = B4MSpatialInterpreter(ollama_mode=args.ollama_mode)
+        interpreter = B4MSpatialInterpreter(
+            ollama_mode=args.ollama_mode,
+            ollama_advanced_mode=args.ollama_advanced_mode
+        )
         if args.debug_verbose:
             interpreter.debug_verbose = True
             print(f"[{get_timestamp()}] 📢 Verbose debug output enabled")
