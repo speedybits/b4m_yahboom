@@ -1665,7 +1665,33 @@ if [ "$B4M_NAV_EXPLORE_MODE" = true ]; then
     echo ""
     
     # CRITICAL: Set up local signal trap for clean GUI shutdown
-    trap 'echo "🛑 Stopping B4M exploration..."; [ ! -z "$B4M_PID" ] && kill $B4M_PID 2>/dev/null; [ ! -z "$SLAM_NAV_PID" ] && kill $SLAM_NAV_PID 2>/dev/null; [ ! -z "$TF_BRIDGE_PID" ] && kill $TF_BRIDGE_PID 2>/dev/null; [ ! -z "$RVIZ_PID" ] && kill $RVIZ_PID 2>/dev/null; [ ! -z "$BRINGUP_PID" ] && kill $BRINGUP_PID 2>/dev/null; if [ "$SIMULATION_MODE" = true ]; then [ ! -z "$GAZEBO_PID" ] && kill $GAZEBO_PID 2>/dev/null; fi; ./b4m_shutdown.sh --keep-agent > /dev/null 2>&1; echo "✅ B4M exploration stopped"; exit 0' INT
+    cleanup_b4m_explore() {
+        echo "🛑 Stopping B4M exploration..."
+        
+        # Kill B4M exploration process
+        [ ! -z "$B4M_PID" ] && kill -TERM $B4M_PID 2>/dev/null && sleep 1 && kill -KILL $B4M_PID 2>/dev/null
+        
+        # Kill SLAM navigation process
+        [ ! -z "$SLAM_NAV_PID" ] && kill -TERM $SLAM_NAV_PID 2>/dev/null && sleep 1 && kill -KILL $SLAM_NAV_PID 2>/dev/null
+        
+        # Kill other processes
+        [ ! -z "$TF_BRIDGE_PID" ] && kill $TF_BRIDGE_PID 2>/dev/null
+        [ ! -z "$RVIZ_PID" ] && kill $RVIZ_PID 2>/dev/null
+        [ ! -z "$BRINGUP_PID" ] && kill $BRINGUP_PID 2>/dev/null
+        
+        # Kill Gazebo if in simulation mode
+        if [ "$SIMULATION_MODE" = true ]; then
+            [ ! -z "$GAZEBO_PID" ] && kill $GAZEBO_PID 2>/dev/null
+        fi
+        
+        # ALWAYS run shutdown script with --keep-agent
+        echo "Running cleanup script..."
+        ./b4m_shutdown.sh --keep-agent
+        
+        echo "✅ B4M exploration stopped"
+        exit 0
+    }
+    trap cleanup_b4m_explore INT TERM
     
     # Keep the script running and show periodic status
     while true; do
