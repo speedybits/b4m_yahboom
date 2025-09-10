@@ -57,18 +57,18 @@ timeout 3 ros2 topic pub /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.0, y: 
 
 # Method 2: Cancel any active navigation goals
 shutdown_log "Canceling any active navigation goals"
-ros2 action send_goal /cancel_navigation nav2_msgs/action/NavigateToPose '{}' 2>/dev/null &
-ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose '{}' 2>/dev/null &
+timeout 5 ros2 action send_goal /cancel_navigation nav2_msgs/action/NavigateToPose '{}' 2>/dev/null &
+timeout 5 ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose '{}' 2>/dev/null &
 
 # Method 3: Send emergency stop if available
-ros2 topic pub --once /emergency_stop std_msgs/msg/Bool '{data: true}' 2>/dev/null &
+timeout 5 ros2 topic pub --once /emergency_stop std_msgs/msg/Bool '{data: true}' 2>/dev/null &
 
 # Wait for commands to take effect
 sleep 2
 
 # Method 4: Final single zero velocity command
 shutdown_log "Sending final stop command"
-ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}' 2>&1 | tee -a "$SHUTDOWN_LOG" || true
+timeout 5 ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}' 2>&1 | tee -a "$SHUTDOWN_LOG" || true
 
 # Kill any remaining velocity pub processes
 pkill -f "ros2 topic pub /cmd_vel" 2>/dev/null || true
