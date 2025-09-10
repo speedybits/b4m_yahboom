@@ -935,21 +935,30 @@ CURRENT SITUATION:
 • Position: ({robot_x:.2f}, {robot_y:.2f}) facing {robot_heading:.0f}°
 • Surroundings: """
         
-        # Build environmental description
+        # Build detailed environmental description using 8 sectors
         env_descriptions = []
-        if context.front_clear:
-            env_descriptions.append("Open space ahead")
-        if context.left_clear:
-            env_descriptions.append("Open space to the left")
-        if context.right_clear:
-            env_descriptions.append("Open space to the right")
-        if context.closest_obstacle_distance < 1.0:
-            env_descriptions.append(f"Wall/obstacle close at {context.closest_obstacle_angle:.0f}°")
         
-        if env_descriptions:
-            prompt += ", ".join(env_descriptions[:3])
-        else:
-            prompt += "Confined space"
+        # Detailed sector analysis as per OLLAMA_NAV.md spec
+        directions = [
+            (0, "FRONT"), (45, "FRONT-RIGHT"), (90, "RIGHT"), (135, "BACK-RIGHT"),
+            (180, "BACK"), (225, "BACK-LEFT"), (270, "LEFT"), (315, "FRONT-LEFT")
+        ]
+        
+        for angle, direction in directions:
+            if angle in context.sectors:
+                distance = context.sectors[angle]
+                if distance > 3.0:
+                    status = f"Clear path {distance:.1f}m"
+                elif distance > 1.5:
+                    status = f"Open space {distance:.1f}m"
+                elif distance > 0.8:
+                    status = f"Narrow path {distance:.1f}m"
+                else:
+                    status = f"Blocked {distance:.1f}m"
+                env_descriptions.append(f"• {direction}: {status}")
+        
+        # Join the top 4 most relevant directions
+        prompt += "\n" + "\n".join(env_descriptions[:4])
         
         prompt += "\n\nAVAILABLE SAFE DESTINATIONS (choose one):\n"
         
@@ -959,11 +968,20 @@ CURRENT SITUATION:
             prompt += f"{i}. Move {dest.distance:.1f}m {self.bearing_to_compass(dest.relative_bearing)} "
             prompt += f"(bearing {dest.relative_bearing:+.0f}°){indicator}\n"
         
-        # Add strategic context
+        # Add strategic context with detailed exploration guidance
         prompt += "\nSTRATEGIC CONTEXT:\n"
         if context.frontiers:
             frontier_bearings = [f"{bearing:.0f}°" for bearing, _ in context.frontiers[:3]]
             prompt += f"• Unexplored frontiers detected near: {', '.join(frontier_bearings)}\n"
+            prompt += f"• Exploration progress: {context.exploration_percentage:.0f}% of accessible area mapped\n"
+            prompt += f"• Clearest direction for movement: {context.clearest_direction:.0f}° ({context.sectors.get(int(context.clearest_direction), 0):.1f}m range)\n"
+        else:
+            prompt += f"• No major frontiers visible - {context.exploration_percentage:.0f}% explored\n"
+            prompt += f"• Recommend exploring toward clearest direction: {context.clearest_direction:.0f}°\n"
+        
+        # Add closest obstacle warning if relevant
+        if context.closest_obstacle_distance < 1.0:
+            prompt += f"• CAUTION: Obstacle detected {context.closest_obstacle_distance:.1f}m away at {context.closest_obstacle_angle:.0f}°\n"
         
         prompt += f"""
 Select destination by number (1-{len(safe_destinations)}) in JSON format:
