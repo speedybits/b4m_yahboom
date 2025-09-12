@@ -1017,17 +1017,22 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
             self.state = ExploreState.ERROR
             return None
         
-        # Display analysis in console (ORIGINAL LOGIC - just reformatted per B4M_OUTPUT.md)
+        # Display analysis in console (per B4M_OUTPUT.md specification)
         robot_x, robot_y = self.get_current_position()
         robot_heading = math.degrees(self.get_current_heading())
         
-        print("🔍 ENVIRONMENTAL ANALYSIS")
-        print(f"Current Position: ({robot_x:.2f}, {robot_y:.2f}) facing {robot_heading:.0f}°")
-        print(f"Found {len(safe_destinations)} safe navigation options")
+        print("🔍 Analyzing environment...")
+        print(f"📍 Position: ({robot_x:.2f}, {robot_y:.2f}) facing {robot_heading:.0f}°")
+        
+        # Calculate and display exploration percentage
+        exploration_pct = context.exploration_percentage if hasattr(context, 'exploration_percentage') else 0
+        print(f"📊 Exploration: {exploration_pct:.0f}% complete")
+        
+        print(f"🎯 Found {len(safe_destinations)} safe destinations")
         print("")
         
-        # Generate UTC timestamp for both prompt and console output
-        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+        # Generate local timestamp for both prompt and console output
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S CDT")
         
         # Build and display prompt (ORIGINAL LOGIC)
         prompt = self.build_exploration_prompt(context, safe_destinations, timestamp)
@@ -1040,13 +1045,8 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
             prompt += retry_message
             self._goal_rejected_once = False  # Reset flag
         
-        print(f"📤 B4M PROMPT: [{timestamp}]")
-        print("=" * 40)
-        print(prompt)
-        print("=" * 40)
-        print("")
-        
-        print("🧠 Waiting for B4M response... (timeout: 120s)")
+        print(f"📤 Sending prompt to AI... [{timestamp}]")
+        print("⏳ Waiting for LLM response...")
         
         # Log same information (ORIGINAL LOGIC - just no duplicate per B4M_OUTPUT.md)
         self.logger.info(f"Environmental analysis - position: ({robot_x:.6f}, {robot_y:.6f}), heading: {robot_heading:.2f}°")
@@ -1110,11 +1110,10 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
                     self.logger.error("B4M polling timeout or failed")
                     return None
                 
-                # Display and log response (ORIGINAL LOGIC - just no duplication per B4M_OUTPUT.md)
-                print(f"📥 B4M RESPONSE ({response_time:.1f}s):")
-                print(response_text)
-                print("")
+                # Display response (per B4M_OUTPUT.md specification)
+                print(f"📥 LLM responded with decision")
                 
+                # Log response (technical details)
                 self.logger.info(f"B4M API response - time: {response_time:.1f}s, content: {response_text[:200]}...")
                 
                 # Parse JSON response
@@ -1149,8 +1148,12 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
                             timestamp=datetime.now()
                         )
                         
-                        # ORIGINAL LOGIC - just no duplication per B4M_OUTPUT.md
-                        print(f"✅ Goal validated: Selected destination {selection} - {selected_dest.description}")
+                        # Display AI choice (per B4M_OUTPUT.md specification)
+                        reasoning = goal.reasoning if hasattr(goal, 'reasoning') else goal_data.get('reasoning', 'No reasoning provided')
+                        print(f"💭 Choice: {selected_dest.description} - \"{reasoning}\"")
+                        print("")
+                        
+                        # Log validation (technical details)
                         self.logger.info(f"Goal validated: destination {selection}, description: {selected_dest.description}")
                         
                         return goal
@@ -1372,8 +1375,11 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
             pose.pose.orientation.z = target_quaternion[2]
             pose.pose.orientation.w = target_quaternion[3]
             
-            print(f"🎯 Target coordinates: ({target_x:.2f}, {target_y:.2f}) facing {math.degrees(target_heading):.0f}°")
-            self.logger.info(f"🎯 Target coordinates: ({target_x:.2f}, {target_y:.2f}) facing {math.degrees(target_heading):.0f}°")
+            # Console: Simple goal sending message (per B4M_OUTPUT.md)
+            print("🚀 Sending goal to Nav2...")
+            
+            # Log: Technical details
+            self.logger.info(f"Target coordinates: ({target_x:.6f}, {target_y:.6f}), heading: {math.degrees(target_heading):.2f}°")
             
             return pose
             
@@ -1503,7 +1509,11 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
             self.state = ExploreState.ANALYZING
             return
             
-        # Log file output - goal accepted (per B4M_OUTPUT.md)
+        # Console: Goal acceptance (per B4M_OUTPUT.md)
+        print("✅ Nav2 accepted navigation goal")
+        print("⚙️ Navigation in progress...")
+        
+        # Log file output - technical details
         self.logger.info(f"Goal accepted with ID: {goal_handle.goal_id}")
         self.current_goal_handle = goal_handle
         
@@ -1519,7 +1529,9 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
         if self.validate_movement():
             # Console output - success message (per B4M_OUTPUT.md)
             print("✅ Navigation completed successfully")
-            print("\n---\n")  # Separator between navigation cycles
+            print("")
+            print("---")
+            print("")
             
             # Log file output - technical details (per B4M_OUTPUT.md)
             if self.current_pose:
@@ -1535,7 +1547,9 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
         else:
             # Console output - warning message (per B4M_OUTPUT.md)
             print("⚠️  Navigation completed with minimal movement detected")
-            print("\n---\n")  # Separator between navigation cycles
+            print("")
+            print("---")
+            print("")
             
             # Log file output - technical warning (per B4M_OUTPUT.md)
             distance = self.calculate_distance_moved() if self.current_pose and self.last_position else 0.0
