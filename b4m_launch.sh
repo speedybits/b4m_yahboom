@@ -1643,7 +1643,7 @@ if [ "$B4M_NAV_EXPLORE_MODE" = true ]; then
     # Launch B4M exploration
     echo "🧠 Step 7: Starting B4M Exploration Spatial Analysis"
     echo "   This will analyze surroundings every 30 seconds and suggest navigation goals"
-    python3 scripts/b4m_explore_spatial.py > "$LOGS_DIR/b4m_spatial_$TIMESTAMP.log" 2>&1 &
+    python3 scripts/b4m_explore_spatial.py &
     B4M_PID=$!
     track_process $B4M_PID "b4m"
     echo "   ✅ B4M spatial analysis started (PID: $B4M_PID)"
@@ -1654,7 +1654,7 @@ if [ "$B4M_NAV_EXPLORE_MODE" = true ]; then
     echo "   - Environmental analysis triggers immediately after each navigation completion"
     echo "   - B4M LLM selects goals based on updated map data and spatial context"
     echo "   - Goals will appear as RViz markers and robot will navigate autonomously"
-    echo "   - Check logs for B4M reasoning: $LOGS_DIR/b4m_spatial_$TIMESTAMP.log"
+    echo "   - Navigation progress shown below, technical logs: $LOGS_DIR/b4m_spatial_$TIMESTAMP.log"
     echo ""
     echo "📊 Closed-Loop Operation:"
     echo "   1. System analyzes current environment with fresh SLAM map data"
