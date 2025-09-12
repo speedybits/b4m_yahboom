@@ -1121,7 +1121,12 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
                 
                 # Parse JSON response
                 try:
-                    goal_data = json.loads(response_text)
+                    # Clean the response first to remove markdown formatting
+                    cleaned_response = self.clean_response(response_text)
+                    self.logger.debug(f"Cleaned response: {cleaned_response}")
+                    
+                    goal_data = json.loads(cleaned_response)
+                    self.logger.debug(f"Parsed JSON: {goal_data}")
                     
                     # Check for numbered selection format
                     if 'selected_destination' in goal_data:
@@ -1162,19 +1167,46 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
                         return goal
                     else:
                         # Don't generate fallback, return None to trigger proper error handling
-                        self.logger.warning("Goal rejected: Missing 'selected_destination' field")
-                        print("⚠️ Goal rejected: Invalid response format")
+                        self.logger.warning(f"Goal rejected: Missing 'selected_destination' field. Available fields: {list(goal_data.keys())}")
+                        print(f"⚠️ Goal rejected: Invalid response format - missing 'selected_destination'")
                         # Set flag for retry with modified prompt
                         self._goal_rejected_once = True
                         return None
                         
                 except json.JSONDecodeError as e:
                     self.logger.error(f"Invalid JSON in B4M response: {e}")
-                    self.logger.error(f"Raw response was: {response_text[:200]}...")
+                    self.logger.error(f"Raw response was: {response_text[:500]}...")
+                    self.logger.error(f"Cleaned response was: {cleaned_response[:500]}...")
                     print(f"❌ Invalid JSON from B4M: {e}")
                     return None
             else:
-                self.logger.error(f"B4M HTTP error {response.status_code}: {response.text}")
+                # Handle rate limiting specifically
+                if response.status_code == 429:
+                    try:
+                        error_data = response.json()
+                        error_msg = error_data.get('error', 'Rate limit exceeded')
+                        self.logger.warning(f"B4M rate limit exceeded: {error_msg}")
+                        print("⏳ B4M API rate limit exceeded")
+                        
+                        # Extract wait time if available
+                        import re
+                        wait_match = re.search(r'Try again in ([\d.]+) seconds', error_msg)
+                        if wait_match:
+                            wait_time = float(wait_match.group(1))
+                            print(f"⏰ Waiting {wait_time:.1f} seconds before retry...")
+                            # Set a longer wait time for rate limiting
+                            self.wait_duration = max(wait_time + 5.0, 30.0)  # Add buffer time
+                        else:
+                            self.wait_duration = 60.0  # Default wait for rate limits
+                        
+                        # Mark this as a rate limit, not format error
+                        self._rate_limited = True
+                        return None
+                        
+                    except (json.JSONDecodeError, KeyError):
+                        self.logger.error(f"B4M HTTP error {response.status_code}: {response.text}")
+                else:
+                    self.logger.error(f"B4M HTTP error {response.status_code}: {response.text}")
                 
         except requests.Timeout:
             self.logger.error("B4M SERVICE UNAVAILABLE")
@@ -1189,6 +1221,22 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
             self.logger.error(f"B4M request failed: {e}")
             
         return None
+    
+    def clean_response(self, raw_response: str) -> str:
+        """Clean LLM response by removing markdown formatting"""
+        cleaned_response = raw_response.strip()
+        if cleaned_response.startswith('```json'):
+            # Remove ```json at start and ``` at end
+            lines = cleaned_response.split('\n')
+            if len(lines) >= 3 and lines[0].startswith('```') and lines[-1].strip() == '```':
+                cleaned_response = '\n'.join(lines[1:-1]).strip()
+        elif cleaned_response.startswith('```'):
+            # Handle general ```...``` blocks
+            lines = cleaned_response.split('\n')
+            if len(lines) >= 3 and lines[0].startswith('```') and lines[-1].strip() == '```':
+                cleaned_response = '\n'.join(lines[1:-1]).strip()
+        
+        return cleaned_response
         
     def get_direction_name(self, bearing: float) -> str:
         """Convert bearing to direction name"""
@@ -1663,13 +1711,26 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
                     self.consecutive_failures += 1
                     self.check_max_failures()
             else:
-                # LLM response invalid - mark rejection flag and try again  
-                print("⚠️ Goal rejected: Invalid LLM response format")
-                self.logger.warning("Goal rejected: Invalid LLM response format")
-                self._goal_rejected_once = True  # Set flag for retry prompt
-                self.state = ExploreState.ANALYZING  # Try again with modified prompt
-                self.consecutive_failures += 1
-                self.check_max_failures()
+                # Check if this was due to rate limiting
+                if hasattr(self, '_rate_limited') and self._rate_limited:
+                    # Rate limited - wait longer before retry
+                    print("⏳ Rate limited - waiting before retry...")
+                    self.logger.info("Rate limited - extending wait period")
+                    self.state = ExploreState.WAITING
+                    # Use the wait duration set by the rate limit handler
+                    if not hasattr(self, 'wait_duration'):
+                        self.wait_duration = 60.0  # Fallback wait time
+                    self.wait_until = time.time() + self.wait_duration
+                    self._rate_limited = False  # Reset flag
+                    return  # Don't increment failure count for rate limits
+                else:
+                    # LLM response invalid - mark rejection flag and try again  
+                    print("⚠️ Goal rejected: Invalid LLM response format")
+                    self.logger.warning("Goal rejected: Invalid LLM response format")
+                    self._goal_rejected_once = True  # Set flag for retry prompt
+                    self.state = ExploreState.ANALYZING  # Try again with modified prompt
+                    self.consecutive_failures += 1
+                    self.check_max_failures()
                 
         elif self.state == ExploreState.NAVIGATING:
             # Check for navigation timeout
