@@ -155,7 +155,7 @@ class B4MExploreController(Node):
     """Main controller for B4M LLM-guided autonomous exploration"""
     
     def __init__(self):
-        super().__init__('ollama_explore_spatial')
+        super().__init__('b4m_explore_spatial')
         
         # Setup logging
         self.setup_logging()
@@ -212,16 +212,15 @@ class B4MExploreController(Node):
         )
         os.makedirs(log_dir, exist_ok=True)
         
-        log_file = os.path.join(log_dir, f'ollama_spatial_{timestamp}.log')
+        log_file = os.path.join(log_dir, f'b4m_spatial_{timestamp}.log')
         
         # Configure Python logging
         logging.basicConfig(
             level=logging.INFO,
-            format='[%(asctime)s.%(msecs)03d] [%(levelname)s] [ollama_explore]: %(message)s',
+            format='[%(asctime)s.%(msecs)03d] [%(levelname)s] [b4m_explore]: %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S',
             handlers=[
-                logging.FileHandler(log_file),
-                logging.StreamHandler()
+                logging.FileHandler(log_file)
             ]
         )
         
@@ -390,13 +389,13 @@ class B4MExploreController(Node):
         
         self.marker_pub = self.create_publisher(
             MarkerArray,
-            '/ollama_explore_markers',
+            '/b4m_explore_markers',
             qos_reliable
         )
         
         self.status_pub = self.create_publisher(
             String,
-            '/ollama_explore_status',
+            '/b4m_explore_status',
             qos_reliable
         )
         
@@ -1296,7 +1295,7 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
                 if not isinstance(selection, int):
                     self.logger.warning(f"selected_destination must be integer, got {type(selection)}")
                     return False
-                # Note: Range validation done in query_ollama since we need safe_destinations list
+                # Note: Range validation done in query_b4m since we need safe_destinations list
                 return True
             else:
                 # Old format validation (shouldn't be used)
