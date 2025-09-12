@@ -926,7 +926,7 @@ class B4MExploreController(Node):
                 
         return closest_dir
 
-    def build_exploration_prompt(self, context: SpatialContext, safe_destinations: List[SafeDestination]) -> str:
+    def build_exploration_prompt(self, context: SpatialContext, safe_destinations: List[SafeDestination], timestamp: str) -> str:
         """Build the LLM prompt for exploration goal selection with numbered destinations"""
         robot_x, robot_y = self.get_current_position()
         robot_heading = math.degrees(self.get_current_heading())
@@ -934,9 +934,6 @@ class B4MExploreController(Node):
         # Check if we have safe destinations
         if not safe_destinations:
             return "NO_SAFE_DESTINATIONS"
-        
-        # Generate UTC timestamp for prompt
-        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
         
         prompt = f"""You are a robot explorer. Choose your next navigation destination from the PRE-VALIDATED safe options below.
 
@@ -1029,8 +1026,11 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
         print(f"Found {len(safe_destinations)} safe navigation options")
         print("")
         
+        # Generate UTC timestamp for both prompt and console output
+        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+        
         # Build and display prompt (ORIGINAL LOGIC)
-        prompt = self.build_exploration_prompt(context, safe_destinations)
+        prompt = self.build_exploration_prompt(context, safe_destinations, timestamp)
         
         # Add retry message if this is a second attempt after rejection
         if hasattr(self, '_goal_rejected_once') and self._goal_rejected_once:
