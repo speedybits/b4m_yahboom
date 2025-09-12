@@ -205,14 +205,18 @@ class B4MExploreController(Node):
         
     def setup_logging(self):
         """Setup comprehensive logging system"""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_dir = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            'logs'
-        )
-        os.makedirs(log_dir, exist_ok=True)
+        # Check if log file path is provided via environment variable
+        log_file = os.environ.get('B4M_LOG_FILE')
         
-        log_file = os.path.join(log_dir, f'b4m_spatial_{timestamp}.log')
+        if not log_file:
+            # Fallback: create our own log file with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            log_dir = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                'logs'
+            )
+            os.makedirs(log_dir, exist_ok=True)
+            log_file = os.path.join(log_dir, f'b4m_spatial_{timestamp}.log')
         
         # Configure Python logging
         logging.basicConfig(
@@ -1677,14 +1681,18 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
                     # Cancel current goal (but don't wait for response)
                     if self.current_goal_handle:
                         try:
-                            self.current_goal_handle.cancel_goal()
-                            self.logger.info("Goal cancellation requested")
+                            # Use async cancellation to prevent blocking/deadlock
+                            cancel_future = self.current_goal_handle.cancel_goal_async()
+                            self.logger.info("Goal cancellation requested (async)")
                         except Exception as e:
                             self.logger.warning(f"Failed to cancel goal: {e}")
                     
                     # Clear goal handle and reset state
                     self.current_goal_handle = None
                     self.last_goal_time = None
+                    
+                    # Set flag to inform LLM about the timeout
+                    self._goal_rejected_once = True
                     
                     # Return to analyzing state to continue exploration
                     self.state = ExploreState.ANALYZING

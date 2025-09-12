@@ -1643,7 +1643,7 @@ if [ "$B4M_NAV_EXPLORE_MODE" = true ]; then
     # Launch B4M exploration
     echo "🧠 Step 7: Starting B4M Exploration Spatial Analysis"
     echo "   This will analyze surroundings every 30 seconds and suggest navigation goals"
-    python3 scripts/b4m_explore_spatial.py &
+    B4M_LOG_FILE="$LOGS_DIR/b4m_spatial_$TIMESTAMP.log" python3 scripts/b4m_explore_spatial.py &
     B4M_PID=$!
     track_process $B4M_PID "b4m"
     echo "   ✅ B4M spatial analysis started (PID: $B4M_PID)"
