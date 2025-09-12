@@ -229,7 +229,7 @@ class B4MExploreController(Node):
         )
         
         self.logger = logging.getLogger(__name__)
-        self.logger.info("🔍 B4M Exploration logging initialized")
+        self.logger.info("B4M Exploration logging initialized")
         self.logger.info(f"Log file: {log_file}")
         
     def check_system_ready(self):
@@ -464,7 +464,7 @@ class B4MExploreController(Node):
                         elif param.type == ParameterType.PARAMETER_INTEGER:
                             self.original_velocities[param_name] = float(param.integer_value)
                 
-                self.logger.info(f"✅ Saved original velocity parameters: {self.original_velocities}")
+                self.logger.info(f"Saved original velocity parameters: {self.original_velocities}")
                 return True
             else:
                 self.logger.warning("Failed to get current velocity parameters")
@@ -496,7 +496,7 @@ class B4MExploreController(Node):
             if future.result():
                 response = future.result()
                 success_count = sum(1 for result in response.results if result.successful)
-                self.logger.info(f"🐌 Set slow mapping velocities ({success_count}/{len(parameters)} parameters)")
+                self.logger.info(f"Set slow mapping velocities ({success_count}/{len(parameters)} parameters)")
                 return success_count == len(parameters)
             else:
                 self.logger.warning("Failed to set slow mapping velocities")
@@ -532,7 +532,7 @@ class B4MExploreController(Node):
             if future.result():
                 response = future.result()
                 success_count = sum(1 for result in response.results if result.successful)
-                self.logger.info(f"🚀 Restored original velocities ({success_count}/{len(parameters)} parameters)")
+                self.logger.info(f"Restored original velocities ({success_count}/{len(parameters)} parameters)")
                 return success_count == len(parameters)
             else:
                 self.logger.warning("Failed to restore original velocities")
@@ -1162,7 +1162,7 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
                         return goal
                     else:
                         # Don't generate fallback, return None to trigger proper error handling
-                        self.logger.warning("⚠️ Goal rejected: Missing 'selected_destination' field")
+                        self.logger.warning("Goal rejected: Missing 'selected_destination' field")
                         print("⚠️ Goal rejected: Invalid response format")
                         # Set flag for retry with modified prompt
                         self._goal_rejected_once = True
@@ -1177,7 +1177,7 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
                 self.logger.error(f"B4M HTTP error {response.status_code}: {response.text}")
                 
         except requests.Timeout:
-            self.logger.error("❌ B4M SERVICE UNAVAILABLE")
+            self.logger.error("B4M SERVICE UNAVAILABLE")
             print("❌ B4M SERVICE UNAVAILABLE")
             print("=" * 50)
             print("B4M LLM service is not responding")
@@ -1325,7 +1325,7 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
         print("🔄 Generating rotation goal as fallback")
         print("🎯 Fallback goal: Rotate to 90° at current position")
         
-        self.logger.info("🔄 Generating rotation goal as fallback")
+        self.logger.info("Generating rotation goal as fallback")
         
         # Simple rotation fallback
         return NavigationGoal(
@@ -1657,7 +1657,7 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
                 else:
                     # Invalid goal pose - mark rejection flag and try again
                     print("⚠️ Goal rejected: Goal coordinates not in safe territory")
-                    self.logger.warning("⚠️ Goal rejected: Goal coordinates not in safe territory") 
+                    self.logger.warning("Goal rejected: Goal coordinates not in safe territory") 
                     self._goal_rejected_once = True  # Set flag for retry prompt
                     self.state = ExploreState.ANALYZING  # Try again with modified prompt
                     self.consecutive_failures += 1
@@ -1665,7 +1665,7 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
             else:
                 # LLM response invalid - mark rejection flag and try again  
                 print("⚠️ Goal rejected: Invalid LLM response format")
-                self.logger.warning("⚠️ Goal rejected: Invalid LLM response format")
+                self.logger.warning("Goal rejected: Invalid LLM response format")
                 self._goal_rejected_once = True  # Set flag for retry prompt
                 self.state = ExploreState.ANALYZING  # Try again with modified prompt
                 self.consecutive_failures += 1
@@ -1746,7 +1746,7 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
         
         # Restore original velocities if they were modified during initial mapping
         if self.original_velocities is not None:
-            self.logger.info("🚀 Restoring original velocities before error state...")
+            self.logger.info("Restoring original velocities before error state...")
             self.restore_original_velocities()
         
         self.state = ExploreState.ERROR
@@ -1795,7 +1795,7 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
         
         # Restore original velocities if they were modified during initial mapping
         if self.original_velocities is not None:
-            self.logger.info("🚀 Restoring original velocities during shutdown...")
+            self.logger.info("Restoring original velocities during shutdown...")
             self.restore_original_velocities()
         
         # Stop robot (with error handling for shutdown race conditions)
@@ -1818,10 +1818,10 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
         # Record starting position on first call
         if self.initial_mapping_start_position is None:
             self.initial_mapping_start_position = self.get_current_position()
-            self.logger.info(f"🔄 Starting initial 0.5m square mapping from position {self.initial_mapping_start_position}")
+            self.logger.info(f"Starting initial 0.5m square mapping from position {self.initial_mapping_start_position}")
             
             # Save current velocity parameters and set slow mapping velocities
-            self.logger.info("🐌 Setting very slow velocities for precise initial mapping...")
+            self.logger.info("Setting very slow velocities for precise initial mapping...")
             if self.save_original_velocities():
                 if not self.set_slow_mapping_velocities():
                     self.logger.warning("Failed to set slow mapping velocities, proceeding with current velocities")
@@ -1878,11 +1878,11 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
                 return
         else:
             # Initial mapping complete - restore original velocities
-            self.logger.info("✅ Initial 0.5m square mapping complete - transitioning to normal exploration")
+            self.logger.info("Initial 0.5m square mapping complete - transitioning to normal exploration")
             
             # Restore original velocity parameters
             if self.original_velocities is not None:
-                self.logger.info("🚀 Restoring original velocities for normal exploration...")
+                self.logger.info("Restoring original velocities for normal exploration...")
                 self.restore_original_velocities()
             
             self.state = ExploreState.ANALYZING
@@ -1914,7 +1914,7 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
         try:
             result = future.result()
             if result.status == GoalStatus.STATUS_SUCCEEDED:
-                self.logger.info(f"✅ Initial mapping step {self.initial_mapping_step + 1}/4 completed successfully")
+                self.logger.info(f"Initial mapping step {self.initial_mapping_step + 1}/4 completed successfully")
                 
                 # Move to next step
                 self.initial_mapping_step += 1

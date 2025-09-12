@@ -1643,63 +1643,10 @@ if [ "$B4M_NAV_EXPLORE_MODE" = true ]; then
     # Launch B4M exploration
     echo "🧠 Step 7: Starting B4M Exploration Spatial Analysis"
     echo "   This will analyze surroundings every 30 seconds and suggest navigation goals"
-    B4M_LOG_FILE="$LOGS_DIR/b4m_spatial_$TIMESTAMP.log" python3 scripts/b4m_explore_spatial.py &
-    B4M_PID=$!
-    track_process $B4M_PID "b4m"
-    echo "   ✅ B4M spatial analysis started (PID: $B4M_PID)"
-    echo ""
-    echo "🤖 AUTONOMOUS NAVIGATION ACTIVE"
-    echo "======================================"
-    echo "   - Robot operates in closed-loop exploration mode (event-driven)"
-    echo "   - Environmental analysis triggers immediately after each navigation completion"
-    echo "   - B4M LLM selects goals based on updated map data and spatial context"
-    echo "   - Goals will appear as RViz markers and robot will navigate autonomously"
-    echo "   - Navigation progress shown below, technical logs: $LOGS_DIR/b4m_spatial_$TIMESTAMP.log"
-    echo ""
-    echo "📊 Closed-Loop Operation:"
-    echo "   1. System analyzes current environment with fresh SLAM map data"
-    echo "   2. B4M LLM selects next exploration goal in safe territory"  
-    echo "   3. Robot navigates to goal using Nav2 path planning"
-    echo "   4. Upon completion/abortion → immediately trigger new analysis cycle"
-    echo "   5. Process repeats continuously with improved map knowledge"
-    echo ""
-    
-    # CRITICAL: Set up local signal trap for clean GUI shutdown
-    cleanup_b4m_explore() {
-        echo "🛑 Stopping B4M exploration..."
-        
-        # Kill B4M exploration process
-        [ ! -z "$B4M_PID" ] && kill -TERM $B4M_PID 2>/dev/null && sleep 1 && kill -KILL $B4M_PID 2>/dev/null
-        
-        # Kill SLAM navigation process
-        [ ! -z "$SLAM_NAV_PID" ] && kill -TERM $SLAM_NAV_PID 2>/dev/null && sleep 1 && kill -KILL $SLAM_NAV_PID 2>/dev/null
-        
-        # Kill other processes
-        [ ! -z "$TF_BRIDGE_PID" ] && kill $TF_BRIDGE_PID 2>/dev/null
-        [ ! -z "$RVIZ_PID" ] && kill $RVIZ_PID 2>/dev/null
-        [ ! -z "$BRINGUP_PID" ] && kill $BRINGUP_PID 2>/dev/null
-        
-        # Kill Gazebo if in simulation mode
-        if [ "$SIMULATION_MODE" = true ]; then
-            [ ! -z "$GAZEBO_PID" ] && kill $GAZEBO_PID 2>/dev/null
-        fi
-        
-        # ALWAYS run shutdown script with --keep-agent
-        echo "Running cleanup script..."
-        ./b4m_shutdown.sh --keep-agent
-        
-        echo "✅ B4M exploration stopped"
-        exit 0
-    }
-    trap cleanup_b4m_explore INT TERM
-    
-    # Keep the script running and show periodic status
-    while true; do
-        sleep 30
-        echo "🧭 B4M Autonomous Exploration active... (Ctrl+C to stop)"
-        echo "   Event-driven closed-loop exploration using B4M LLM goal selection"
-        echo "   Check exploration progress: $LOGS_DIR/b4m_spatial_$TIMESTAMP.log"
-    done
+    echo "   🚀 Starting B4M spatial analysis in foreground..."
+    B4M_LOG_FILE="$LOGS_DIR/b4m_spatial_$TIMESTAMP.log" python3 scripts/b4m_explore_spatial.py
+    # B4M script will run in foreground and handle its own shutdown
+    # The script contains comprehensive console output per B4M_OUTPUT.md specification
 fi
 
 # Handle B4M API mode (same as explore mode but with spatial interpreter)
