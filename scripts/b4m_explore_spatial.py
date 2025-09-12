@@ -551,9 +551,9 @@ class B4MExploreController(Node):
         print("")
         print("Step 7: Starting B4M Exploration Spatial Analysis")
         print(f"✅ B4M spatial analysis started (PID: {os.getpid()})")
-        # Console output - initialization (per B4M_OUTPUT.md)
+        print("")
         print("🤖 Initializing autonomous navigation system...")
-        print(f"Model: gpt-4o-mini | API: B4M Service")
+        print("Model: gpt-4o-mini | API: B4M Service")
         print("")
         print("")
         
