@@ -1535,7 +1535,7 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
             
             # Log file output - technical warning (per B4M_OUTPUT.md)
             distance = self.calculate_distance_moved() if self.current_pose and self.last_position else 0.0
-            self.logger.warning(f"Navigation completed but distance moved only {distance:.3f}m (threshold: {self.config['movement']['min_distance_threshold']}m)")
+            self.logger.warning(f"Navigation completed but distance moved only {distance:.3f}m (threshold: 0.5m)")
             
             # Even minimal movement shows the system is working - reset consecutive failures
             # Only a complete navigation failure (timeout, rejection, etc.) should count as failure
