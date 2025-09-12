@@ -39,7 +39,7 @@ Model: gpt-4o-mini | API: B4M Service
 📊 Exploration: 61% complete
 🎯 Found 10 safe destinations
 
-📤 Sending prompt to AI...
+📤 Sending prompt to AI... [2025-09-12 07:38:38 UTC]
 ⏳ Waiting for LLM response... (18.9s)
 
 📥 LLM responded with decision
@@ -57,7 +57,7 @@ Model: gpt-4o-mini | API: B4M Service
 📊 Exploration: 67% complete
 🎯 Found 10 safe destinations
 
-📤 Sending prompt to AI...
+📤 Sending prompt to AI... [2025-09-12 07:39:04 UTC]
 ⏳ Waiting for LLM response... (10.4s)
 
 📥 LLM responded with decision
@@ -109,6 +109,7 @@ Model: gpt-4o-mini | API: B4M Service
 You are a robot explorer. Choose your next navigation destination from the PRE-VALIDATED safe options below.
 
 CURRENT SITUATION:
+• Time: 2025-09-12 07:38:38 UTC
 • Position: (-0.31, -0.13) facing -17°
 • Surroundings: 
 • FRONT: Clear path 3.1m
@@ -154,7 +155,7 @@ Select destination by number (1-10) in JSON format:
 For the console output, we show a condensed version to avoid cluttering the screen:
 
 ```
-📤 Sending prompt to AI...
+📤 Sending prompt to AI... [2025-09-12 07:38:38 UTC]
    Options: 10 safe destinations (3 explores new areas)
    Best direction: 155° | Exploration: 61% complete
 ⏳ Waiting for LLM response...
@@ -199,7 +200,7 @@ The log file contains the complete prompt for debugging:
 #### Major Events to Display on Console
 The console should clearly show these key workflow events:
 
-1. **📤 Sending prompt to AI...** - When LLM request is initiated
+1. **📤 Sending prompt to AI... [timestamp]** - When LLM request is initiated (with UTC timestamp)
 2. **⏳ Waiting for LLM response...** - During API call (with time elapsed)
 3. **📥 LLM responded with decision** - When valid response received
 4. **💭 Choice:** - Brief description of AI's decision and reasoning
@@ -210,6 +211,11 @@ The console should clearly show these key workflow events:
 9. **⚠️ Navigation completed with minimal movement** - Warning for validation issues
 
 This provides clear visibility into the complete workflow: Analysis → AI Decision → Nav2 Execution → Completion
+
+#### Timestamp Requirements
+- **LLM Prompt**: Include current UTC timestamp in the "CURRENT SITUATION" section of every prompt sent to the LLM
+- **Console Output**: Display the same timestamp immediately after "Sending prompt to AI..." message
+- **Format**: Use ISO format like "2025-09-12 07:38:38 UTC" for clarity and consistency
 
 ### For Log File Output (logger statements)
 - Include timestamps with millisecond precision
