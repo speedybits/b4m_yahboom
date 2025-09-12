@@ -39,7 +39,7 @@ Model: gpt-4o-mini | API: B4M Service
 📊 Exploration: 61% complete
 🎯 Found 10 safe destinations
 
-📤 Sending prompt to AI... [2025-09-12 07:38:38 UTC]
+📤 Sending prompt to AI... [2025-09-12 07:38:38 CDT]
 ⏳ Waiting for LLM response... (18.9s)
 
 📥 LLM responded with decision
@@ -109,7 +109,7 @@ Model: gpt-4o-mini | API: B4M Service
 You are a robot explorer. Choose your next navigation destination from the PRE-VALIDATED safe options below.
 
 CURRENT SITUATION:
-• Time: 2025-09-12 07:38:38 UTC
+• Time: 2025-09-12 07:38:38 CDT
 • Position: (-0.31, -0.13) facing -17°
 • Surroundings: 
 • FRONT: Clear path 3.1m
@@ -155,7 +155,7 @@ Select destination by number (1-10) in JSON format:
 For the console output, we show a condensed version to avoid cluttering the screen:
 
 ```
-📤 Sending prompt to AI... [2025-09-12 07:38:38 UTC]
+📤 Sending prompt to AI... [2025-09-12 07:38:38 CDT]
    Options: 10 safe destinations (3 explores new areas)
    Best direction: 155° | Exploration: 61% complete
 ⏳ Waiting for LLM response...
