@@ -1522,10 +1522,26 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
         
     def navigation_result_callback(self, future):
         """Handle Navigation 2 completion with immediate re-analysis trigger"""
-        result = future.result().result
+        result = future.result()
+        status = result.status
         
+        # Check if goal was aborted by Nav2
+        if status == GoalStatus.STATUS_ABORTED:
+            # Set flag to inform LLM about the abort
+            self._goal_rejected_once = True
+            
+            # Console output - abort message
+            print("⚠️  Navigation goal was aborted by Nav2")
+            print("")
+            print("---")
+            print("")
+            
+            # Log file output - technical details
+            self.logger.warning("Navigation goal aborted by Nav2 - will inform LLM to try different approach")
+            self.consecutive_failures += 1
+            
         # Validate actual movement occurred
-        if self.validate_movement():
+        elif self.validate_movement():
             # Console output - success message (per B4M_OUTPUT.md)
             print("✅ Navigation completed successfully")
             print("")

@@ -44,11 +44,12 @@ Successfully replaced Ollama API with B4M API:
 - ✅ Enhanced 8-sector spatial context building with distance measurements
 - ✅ Safe destination generation and validation
 - ✅ Nav2 goal sending and monitoring
-- ✅ Goal completion/abortion detection
+- ✅ Goal completion/abortion detection with LLM feedback
 - ✅ Map data integration and frontier detection
 - ✅ State management and error handling
 - ✅ Rich logging and console output
 - ✅ All navigation logic and safety checks
+- ✅ **Goal Abort Handling**: When Nav2 aborts goals, LLM is informed to try different approach
 
 ### B4M API Integration (Working):
 - ✅ B4M API connection and authentication
@@ -62,7 +63,8 @@ Successfully replaced Ollama API with B4M API:
 - ✅ **Enhanced Spatial Context**: Rich 8-sector analysis replaces simple boolean checks
 - ✅ **Distance Measurements**: Quantitative data ("Clear path 5.2m") vs basic ("Open space")
 - ✅ **Output Duplication Fix**: Separated console and log output per B4M_OUTPUT.md specification
-- ✅ **Timestamp Integration**: UTC timestamps in LLM prompts and console output for temporal context
+- ✅ **Timestamp Integration**: Local timestamps in LLM prompts and console output for temporal context
+- ✅ **Goal Abort Prevention**: When Nav2 aborts a goal, the next LLM prompt includes feedback to try a different approach
 
 ## System Requirements
 
@@ -253,6 +255,22 @@ All of these are **already solved** in `ollama_nav_explore.py`:
 - ✅ Real position tracking via TF
 - ✅ Error handling and recovery
 - ✅ Proper closed-loop behavior
+
+### Goal Abort Handling Mechanism
+When Nav2 aborts a navigation goal (status: 4), the system prevents infinite loops of failed goals:
+
+1. **Abort Detection**: The `navigation_result_callback` checks for `GoalStatus.STATUS_ABORTED`
+2. **Flag Setting**: Sets `self._goal_rejected_once = True` to trigger modified prompt
+3. **LLM Feedback**: Next prompt to LLM includes message:
+   ```
+   The previous goal was rejected, please try something else.
+   Use SMALL distances (1.0-2.0m) and valid bearings (-180 to 180 only).
+   Avoid 315°, 270°, 225° - use -45°, -90°, -135° instead!
+   ```
+4. **Strategy Change**: LLM receives context about failure and adjusts approach
+5. **Flag Reset**: After sending modified prompt, flag resets for next cycle
+
+This prevents the robot from repeatedly attempting similar failed navigation goals.
 
 ### B4M API Response Extraction
 The only new logic needed (copy from `b4m_ping.py`):
