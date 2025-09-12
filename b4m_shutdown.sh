@@ -200,6 +200,7 @@ shutdown_log "Step 5: Cleaning up remaining Python processes"
 # Kill Python scripts but avoid killing stop_motors.sh
 ps aux | grep "python.*yahboom" | grep -v "stop_motors" | awk '{print $2}' | xargs -r kill -9 2>/dev/null
 ps aux | grep "python.*b4m" | grep -v "stop_motors" | awk '{print $2}' | xargs -r kill -9 2>/dev/null
+ps aux | grep "python.*rqt" | grep -v "stop_motors" | awk '{print $2}' | xargs -r kill -9 2>/dev/null
 
 # Step 6: Stop RViz and GUI applications
 shutdown_log "Step 6: Stopping RViz and GUI applications"
@@ -207,6 +208,16 @@ shutdown_log "Step 6: Stopping RViz and GUI applications"
 pkill -f "rviz2" 2>/dev/null
 sleep 2
 pkill -9 -f "rviz2" 2>/dev/null
+
+# Stop RQT GUI processes
+shutdown_log "Stopping RQT GUI processes"
+pkill -f "rqt_gui_py_node" 2>/dev/null
+pkill -f "rqt_gui" 2>/dev/null
+pkill -f "rqt_" 2>/dev/null
+sleep 2
+pkill -9 -f "rqt_gui_py_node" 2>/dev/null
+pkill -9 -f "rqt_gui" 2>/dev/null
+pkill -9 -f "rqt_" 2>/dev/null
 
 # Clean up RViz Qt applications specifically (not all Qt apps)
 pkill -f "rviz.*qt" 2>/dev/null
