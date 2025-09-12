@@ -39,13 +39,15 @@ Model: gpt-4o-mini | API: B4M Service
 📊 Exploration: 61% complete
 🎯 Found 10 safe destinations
 
-📤 Requesting navigation decision from AI...
-⏳ Waiting for response... (18.9s)
+📤 Sending prompt to AI...
+⏳ Waiting for LLM response... (18.9s)
 
-📥 AI Decision: Move 2.0m forward
-💭 Reasoning: "Exploring new area while maintaining clear path ahead"
+📥 LLM responded with decision
+💭 Choice: Move 2.0m forward - "Exploring new area while maintaining clear path ahead"
 
-🚀 Executing navigation to (1.60, -0.71)...
+🚀 Sending goal to Nav2...
+✅ Nav2 accepted navigation goal
+⚙️ Navigation in progress...
 ✅ Navigation completed successfully
 
 ---
@@ -55,13 +57,15 @@ Model: gpt-4o-mini | API: B4M Service
 📊 Exploration: 67% complete
 🎯 Found 10 safe destinations
 
-📤 Requesting navigation decision from AI...
-⏳ Waiting for response... (10.4s)
+📤 Sending prompt to AI...
+⏳ Waiting for LLM response... (10.4s)
 
-📥 AI Decision: Move 2.0m forward-right
-💭 Reasoning: "Exploring new area aligned with clearest direction"
+📥 LLM responded with decision
+💭 Choice: Move 2.0m forward-right - "Exploring new area aligned with clearest direction"
 
-🚀 Executing navigation to (3.16, 0.18)...
+🚀 Sending goal to Nav2...
+✅ Nav2 accepted navigation goal
+⚙️ Navigation in progress...
 ⚠️  Navigation completed with minimal movement detected
 
 ---
@@ -150,10 +154,10 @@ Select destination by number (1-10) in JSON format:
 For the console output, we show a condensed version to avoid cluttering the screen:
 
 ```
-📤 Requesting navigation decision from AI...
+📤 Sending prompt to AI...
    Options: 10 safe destinations (3 explores new areas)
    Best direction: 155° | Exploration: 61% complete
-⏳ Waiting for response...
+⏳ Waiting for LLM response...
 ```
 
 ### Log File Display of Prompt (Full Detail)
@@ -191,6 +195,21 @@ The log file contains the complete prompt for debugging:
 - Show progress and status updates
 - Summarize AI decisions briefly
 - Use separators (---) between navigation cycles
+
+#### Major Events to Display on Console
+The console should clearly show these key workflow events:
+
+1. **📤 Sending prompt to AI...** - When LLM request is initiated
+2. **⏳ Waiting for LLM response...** - During API call (with time elapsed)
+3. **📥 LLM responded with decision** - When valid response received
+4. **💭 Choice:** - Brief description of AI's decision and reasoning
+5. **🚀 Sending goal to Nav2...** - When navigation goal is sent
+6. **✅ Nav2 accepted navigation goal** - Goal acceptance confirmation
+7. **⚙️ Navigation in progress...** - During robot movement
+8. **✅ Navigation completed successfully** - Successful completion
+9. **⚠️ Navigation completed with minimal movement** - Warning for validation issues
+
+This provides clear visibility into the complete workflow: Analysis → AI Decision → Nav2 Execution → Completion
 
 ### For Log File Output (logger statements)
 - Include timestamps with millisecond precision
