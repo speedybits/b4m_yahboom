@@ -935,9 +935,13 @@ class B4MExploreController(Node):
         if not safe_destinations:
             return "NO_SAFE_DESTINATIONS"
         
+        # Generate UTC timestamp for prompt
+        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+        
         prompt = f"""You are a robot explorer. Choose your next navigation destination from the PRE-VALIDATED safe options below.
 
 CURRENT SITUATION:
+• Time: {timestamp}
 • Position: ({robot_x:.2f}, {robot_y:.2f}) facing {robot_heading:.0f}°
 • Surroundings: """
         
@@ -1036,7 +1040,7 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
             prompt += retry_message
             self._goal_rejected_once = False  # Reset flag
         
-        print("📤 B4M PROMPT:")
+        print(f"📤 B4M PROMPT: [{timestamp}]")
         print("=" * 40)
         print(prompt)
         print("=" * 40)
