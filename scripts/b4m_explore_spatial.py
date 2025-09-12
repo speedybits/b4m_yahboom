@@ -1016,21 +1016,16 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
             self.state = ExploreState.ERROR
             return None
         
-        # Get current position for both console and log
+        # Display analysis in console (ORIGINAL LOGIC - just reformatted per B4M_OUTPUT.md)
         robot_x, robot_y = self.get_current_position()
         robot_heading = math.degrees(self.get_current_heading())
         
-        # Console output - user-friendly and concise (per B4M_OUTPUT.md)
-        print("\n🔍 Analyzing environment...")
-        print(f"📍 Position: ({robot_x:.2f}, {robot_y:.2f}) facing {robot_heading:.0f}°")
+        print("🔍 ENVIRONMENTAL ANALYSIS")
+        print(f"Current Position: ({robot_x:.2f}, {robot_y:.2f}) facing {robot_heading:.0f}°")
+        print(f"Found {len(safe_destinations)} safe navigation options")
+        print("")
         
-        # Use exploration percentage from spatial context
-        exploration_pct = context.exploration_percentage if hasattr(context, 'exploration_percentage') else 0
-        print(f"📊 Exploration: {exploration_pct:.0f}% complete")
-        
-        print(f"🎯 Found {len(safe_destinations)} safe destinations")
-        
-        # Build prompt
+        # Build and display prompt (ORIGINAL LOGIC)
         prompt = self.build_exploration_prompt(context, safe_destinations)
         
         # Add retry message if this is a second attempt after rejection
@@ -1041,24 +1036,18 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
             prompt += retry_message
             self._goal_rejected_once = False  # Reset flag
         
-        # Console output - abbreviated prompt info (per B4M_OUTPUT.md)
-        print("\n📤 Requesting navigation decision from AI...")
+        print("📤 B4M PROMPT:")
+        print("=" * 40)
+        print(prompt)
+        print("=" * 40)
+        print("")
         
-        # Count destinations that explore new areas
-        new_area_count = sum(1 for dest in safe_destinations if dest.leads_to_frontier)
-        if context.clearest_direction:
-            print(f"   Options: {len(safe_destinations)} safe destinations ({new_area_count} explores new areas)")
-            print(f"   Best direction: {context.clearest_direction:.0f}° | Exploration: {exploration_pct:.0f}% complete")
+        print("🧠 Waiting for B4M response... (timeout: 120s)")
         
-        print("⏳ Waiting for response...")
-        
-        # Log file output - detailed technical info (per B4M_OUTPUT.md)
+        # Log same information (ORIGINAL LOGIC - just no duplicate per B4M_OUTPUT.md)
         self.logger.info(f"Environmental analysis - position: ({robot_x:.6f}, {robot_y:.6f}), heading: {robot_heading:.2f}°")
-        self.logger.info(f"Spatial analysis - exploration: {context.exploration_percentage:.1f}%, "
-                        f"closest obstacle: {context.closest_obstacle_distance:.2f}m at {context.closest_obstacle_angle:.0f}°, "
-                        f"clearest direction: {context.clearest_direction:.0f}°")
-        self.logger.info(f"B4M API request - prompt length: {len(prompt)} chars")
-        self.logger.debug(f"Full prompt: {prompt[:500]}...")  # Log first 500 chars at DEBUG level
+        self.logger.info(f"B4M API request prepared - prompt length: {len(prompt)} chars")
+        self.logger.debug(f"Full prompt:\n=== PROMPT START ===\n{prompt}\n=== PROMPT END ===")
         
         # Prepare B4M API request
         headers = {
@@ -1117,9 +1106,12 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
                     self.logger.error("B4M polling timeout or failed")
                     return None
                 
-                # Log file output - technical details (per B4M_OUTPUT.md)
-                self.logger.info(f"B4M API response received - time: {response_time:.1f}s, status: 200")
-                self.logger.debug(f"Response JSON: {response_text[:500]}...")  # Log at DEBUG level
+                # Display and log response (ORIGINAL LOGIC - just no duplication per B4M_OUTPUT.md)
+                print(f"📥 B4M RESPONSE ({response_time:.1f}s):")
+                print(response_text)
+                print("")
+                
+                self.logger.info(f"B4M API response - time: {response_time:.1f}s, content: {response_text[:200]}...")
                 
                 # Parse JSON response
                 try:
@@ -1153,12 +1145,9 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
                             timestamp=datetime.now()
                         )
                         
-                        # Console output - user-friendly (per B4M_OUTPUT.md)
-                        print(f"\n📥 AI Decision: {selected_dest.description}")
-                        print(f"💭 Reasoning: \"{goal.reasoning}\"")
-                        
-                        # Log file output - technical details (per B4M_OUTPUT.md)
-                        self.logger.info(f"Goal validated - destination: {selection}, target: ({selected_dest.distance:.2f}m, {selected_dest.relative_bearing:.0f}°), heading: {math.degrees(target_heading):.0f}°")
+                        # ORIGINAL LOGIC - just no duplication per B4M_OUTPUT.md
+                        print(f"✅ Goal validated: Selected destination {selection} - {selected_dest.description}")
+                        self.logger.info(f"Goal validated: destination {selection}, description: {selected_dest.description}")
                         
                         return goal
                     else:
