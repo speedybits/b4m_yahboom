@@ -1024,13 +1024,9 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
         print("\n🔍 Analyzing environment...")
         print(f"📍 Position: ({robot_x:.2f}, {robot_y:.2f}) facing {robot_heading:.0f}°")
         
-        # Calculate exploration percentage
-        exploration_pct = 0
-        if hasattr(context, 'map_data') and context.map_data:
-            total_cells = context.map_data.info.width * context.map_data.info.height
-            explored_cells = sum(1 for cell in context.map_data.data if cell >= 0)
-            exploration_pct = (explored_cells / total_cells) * 100 if total_cells > 0 else 0
-            print(f"📊 Exploration: {exploration_pct:.0f}% complete")
+        # Use exploration percentage from spatial context
+        exploration_pct = context.exploration_percentage if hasattr(context, 'exploration_percentage') else 0
+        print(f"📊 Exploration: {exploration_pct:.0f}% complete")
         
         print(f"🎯 Found {len(safe_destinations)} safe destinations")
         
@@ -1058,9 +1054,9 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
         
         # Log file output - detailed technical info (per B4M_OUTPUT.md)
         self.logger.info(f"Environmental analysis - position: ({robot_x:.6f}, {robot_y:.6f}), heading: {robot_heading:.2f}°")
-        self.logger.info(f"Map statistics - free: {context.free_cells} ({context.free_percentage:.1f}%), "
-                        f"unknown: {context.unknown_cells} ({context.unknown_percentage:.1f}%), "
-                        f"obstacle: {context.obstacle_cells} ({context.obstacle_percentage:.1f}%)")
+        self.logger.info(f"Spatial analysis - exploration: {context.exploration_percentage:.1f}%, "
+                        f"closest obstacle: {context.closest_obstacle_distance:.2f}m at {context.closest_obstacle_angle:.0f}°, "
+                        f"clearest direction: {context.clearest_direction:.0f}°")
         self.logger.info(f"B4M API request - prompt length: {len(prompt)} chars")
         self.logger.debug(f"Full prompt: {prompt[:500]}...")  # Log first 500 chars at DEBUG level
         
