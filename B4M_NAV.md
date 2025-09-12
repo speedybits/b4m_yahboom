@@ -62,6 +62,7 @@ Successfully replaced Ollama API with B4M API:
 - ✅ **Enhanced Spatial Context**: Rich 8-sector analysis replaces simple boolean checks
 - ✅ **Distance Measurements**: Quantitative data ("Clear path 5.2m") vs basic ("Open space")
 - ✅ **Output Duplication Fix**: Separated console and log output per B4M_OUTPUT.md specification
+- ✅ **Timestamp Integration**: UTC timestamps in LLM prompts and console output for temporal context
 
 ## System Requirements
 
@@ -100,7 +101,16 @@ navigation_decision = json.loads(response['message']['content'])
 
 **B4M API Call (What We'll Replace It With):**
 ```python
-# From b4m_ping.py (working example)
+# From b4m_ping.py (working example) + timestamp integration
+from datetime import datetime
+
+# Add UTC timestamp to prompt
+timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+prompt_with_timestamp = f"""CURRENT SITUATION:
+• Time: {timestamp}
+• Position: (-0.31, -0.13) facing -17°
+[... rest of prompt ...]"""
+
 headers = {
     "X-API-Key": self.api_key,
     "Content-Type": "application/json"
@@ -108,7 +118,7 @@ headers = {
 
 payload = {
     "sessionId": self.session_id,
-    "message": prompt,
+    "message": prompt_with_timestamp,
     "historyCount": 10,
     "fabFileIds": [],
     "messageFileIds": [],
