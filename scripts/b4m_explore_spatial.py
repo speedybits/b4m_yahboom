@@ -1025,6 +1025,7 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
         print(f"📍 Position: ({robot_x:.2f}, {robot_y:.2f}) facing {robot_heading:.0f}°")
         
         # Calculate exploration percentage
+        exploration_pct = 0
         if hasattr(context, 'map_data') and context.map_data:
             total_cells = context.map_data.info.width * context.map_data.info.height
             explored_cells = sum(1 for cell in context.map_data.data if cell >= 0)
@@ -1048,7 +1049,7 @@ Select destination by number (1-{len(safe_destinations)}) in JSON format:
         print("\n📤 Requesting navigation decision from AI...")
         
         # Count destinations that explore new areas
-        new_area_count = sum(1 for dest in safe_destinations if dest.explores_new_area)
+        new_area_count = sum(1 for dest in safe_destinations if dest.leads_to_frontier)
         if context.clearest_direction:
             print(f"   Options: {len(safe_destinations)} safe destinations ({new_area_count} explores new areas)")
             print(f"   Best direction: {context.clearest_direction:.0f}° | Exploration: {exploration_pct:.0f}% complete")
