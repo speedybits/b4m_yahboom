@@ -406,7 +406,7 @@ mkdir -p ~/projects
 
 # Clone the B4M Yahboom repository
 cd ~/projects
-git clone https://github.com/mikebvansickle/b4m_yahboom.git
+git clone https://github.com/speedybits/b4m_yahboom.git
 
 # Navigate to the project directory
 cd b4m_yahboom
