@@ -1,45 +1,100 @@
 # ROS2 Humble Installation Guide - macOS
 
-This guide provides step-by-step instructions to install ROS2 Humble on macOS systems using UTM virtual machine to support the B4M Yahboom robot project.
+This guide provides step-by-step instructions to install ROS2 Humble on macOS systems using VirtualBox virtual machine to support the B4M Yahboom robot project.
 
 ## Prerequisites
 
 - macOS 10.15 (Catalina) or later
-- UTM virtual machine software
+- VirtualBox virtual machine software
 - Ubuntu 22.04 LTS (Jammy Jellyfish) virtual machine
 - Internet connection for downloading packages
 - At least 8GB RAM and 50GB storage allocated to VM
 
-## 1. UTM Virtual Machine Setup
+## 1. VirtualBox Virtual Machine Setup
 
-### Install UTM
+### Install VirtualBox
 
-Download and install UTM from:
-- Mac App Store (paid version with support)
-- GitHub releases (free version): https://github.com/utmapp/UTM/releases
+Download and install VirtualBox from:
+- Official website: https://www.virtualbox.org/wiki/Downloads
+- Select "macOS / Intel hosts" for Intel Macs
+- For Apple Silicon Macs (M1/M2/M3): Download the Developer Preview for macOS/ARM64 hosts from https://www.virtualbox.org/wiki/Download_Old_Builds_7_0
+
+**Important for Apple Silicon Users:**
+- VirtualBox for ARM64 is still in beta/preview
+- Performance may vary compared to Intel Macs
+- Alternative: Use UTM (https://mac.getutm.app/) which has better ARM64 support
 
 ### Create Ubuntu Virtual Machine
 
 1. **Download Ubuntu 22.04 LTS ISO**
-   - Download from: https://releases.ubuntu.com/22.04.5/ubuntu-22.04.5-desktop-amd64.iso.torrent
-   - Choose Ubuntu 22.04.3 LTS
+   
+   **For Intel Macs (x86_64/amd64):**
+   - Download Ubuntu Desktop: https://releases.ubuntu.com/22.04.5/ubuntu-22.04.5-desktop-amd64.iso
+   - File size: ~5GB
+   
+   **For Apple Silicon Macs (M1/M2/M3 - ARM64):**
+   - Download Ubuntu Server ARM64: https://cdimage.ubuntu.com/releases/22.04.5/release/ubuntu-22.04.5-live-server-arm64.iso
+   - File size: ~2GB
+   - Note: Desktop ARM64 is not available for 22.04 LTS; install server version and add desktop environment after installation
+   
+   **Important:** 
+   - Apple Silicon Macs MUST use the ARM64 version. The AMD64 version will not work natively and will run extremely slowly under emulation.
+   - After installing the server version on Apple Silicon, you can add a desktop environment with: `sudo apt install ubuntu-desktop`
 
-2. **Create new VM in UTM**
-   - Click "Create a New Virtual Machine"
-   - Choose "Virtualize" (not Emulate)
-   - Select "Linux"
-   - Load Ubuntu ISO file
-   - Allocate at least 8GB RAM and 50GB storage
+2. **Create new VM in VirtualBox**
+   - Open VirtualBox and click "New"
+   - Name: "Ubuntu 22.04 ROS2"
+   - Type: Linux
+   - Version: Ubuntu (64-bit)
+   - Memory: At least 8192 MB (8GB)
+   - Create a virtual hard disk: VDI, Dynamically allocated, 50GB minimum
 
 3. **Configure VM settings**
-   - Enable hardware acceleration
-   - Set network to "Shared Network" for internet access
-   - Enable USB passthrough for robot connection
+   - **System → Processor:** Allocate at least 2 CPUs
+   - **System → Acceleration:** Enable VT-x/AMD-V and Nested Paging
+   - **Display → Video Memory:** Set to 128MB
+   - **Display → Graphics Controller:** VMSVGA
+   - **Network → Adapter 1:** NAT or Bridged Adapter
+   - **USB:** Enable USB 2.0 or 3.0 Controller (requires Extension Pack)
 
 4. **Install Ubuntu**
    - Boot from ISO and follow Ubuntu installation
-   - Choose "Normal installation" with updates
+   - For Intel Macs: Choose "Normal installation" with updates
+   - For Apple Silicon Macs: Follow server installation prompts
    - Create user account with sudo privileges
+
+5. **Install Desktop Environment (Apple Silicon Only)**
+   
+   If you installed Ubuntu Server on Apple Silicon, you need to add the desktop environment:
+   
+   ```bash
+   # Update system packages first
+   sudo apt update && sudo apt upgrade -y
+   
+   # Install full Ubuntu Desktop environment (required for GUI applications)
+   sudo apt install ubuntu-desktop -y
+   
+   # Install additional GUI libraries needed for RViz and Gazebo
+   sudo apt install libgl1-mesa-glx libgl1-mesa-dri mesa-utils -y
+   sudo apt install libxcb-xinerama0 libxcb-cursor0 -y
+   
+   # Install X11 apps for testing GUI functionality
+   sudo apt install x11-apps -y
+   
+   # Reboot to start the desktop environment
+   sudo reboot
+   ```
+   
+   After reboot, you should see the Ubuntu desktop login screen. Log in with your user account.
+   
+   **Verify GUI is working:**
+   ```bash
+   # Test OpenGL support (required for RViz and Gazebo)
+   glxinfo | grep "OpenGL version"
+   
+   # Test X11 display
+   xclock  # Should show a clock window
+   ```
 
 ## 2. Set Language Environment
 
@@ -143,6 +198,11 @@ gazebo --version
 
 **Note:** Gazebo Classic 11.10.2 is the primary simulation platform used for development, testing, and regression validation. The simulation environment provides reliable sensor data for SLAM and integrated robot spawning capabilities.
 
+**Apple Silicon Performance Note:** 
+- Gazebo may run slower on Apple Silicon VMs due to GPU virtualization limitations
+- If experiencing poor performance, reduce simulation complexity or allocate more RAM to the VM
+- Consider using headless mode for better performance: `gazebo --verbose -s libgazebo_ros_factory.so`
+
 ## 5. Configure Environment
 
 ### Manual Sourcing
@@ -230,26 +290,33 @@ sudo apt install nmap netstat-nat tcpdump wireshark
 sudo apt install htop
 ```
 
-## 8. Serial Device Access (UTM-Specific)
+## 8. Serial Device Access (VirtualBox-Specific)
 
-### Enable USB Passthrough in UTM
+### Install VirtualBox Extension Pack
 
-1. **Power off the VM**
-2. **Edit VM settings in UTM**
-   - Go to "Devices" tab
-   - Add "USB" device
-   - Choose "USB 3.0"
-3. **Connect robot via USB to Mac**
-4. **Start VM and connect USB device**
-   - In UTM, go to "Devices" menu
-   - Select your robot device to connect it to VM
+For USB 2.0/3.0 support, you need the Extension Pack:
+
+1. **Download Extension Pack**
+   - Go to: https://www.virtualbox.org/wiki/Downloads
+   - Download "Oracle VM VirtualBox Extension Pack"
+   - Double-click to install
+
+2. **Enable USB in VM Settings**
+   - Power off the VM
+   - In VirtualBox, select VM → Settings → USB
+   - Enable USB 2.0 (EHCI) or USB 3.0 (xHCI) Controller
+   - Click "+" to add USB device filter for your robot
+
+3. **Connect Robot to VM**
+   - Connect robot via USB to Mac
+   - Start the VM
+   - In VirtualBox menu: Devices → USB → Select your robot device
 
 ### Verify USB Access
 
-USB passthrough should work automatically. Devices typically appear as:
-- `/dev/cu.usbserial-*`
-- `/dev/cu.wch*` (CH340/CH341 chips)
-- `/dev/tty.usb*`
+Once connected, the device should appear in Ubuntu as:
+- `/dev/ttyUSB0` or `/dev/ttyUSB1`
+- `/dev/ttyACM0` for some Arduino-based boards
 
 ```bash
 # List available serial devices
@@ -264,22 +331,23 @@ sudo usermod -a -G dialout $USER
 
 **Note:** Log out and log back in for group changes to take effect.
 
-## 9. Network Configuration (UTM-Specific)
+## 9. Network Configuration (VirtualBox-Specific)
 
 ### Network Setup for Robot Communication
 
 The WiFi setup wizard (recommended) handles network configuration automatically using mDNS hostname resolution, eliminating the need for manual IP configuration.
 
-**Step 1: Configure UTM for Bridged Networking**
+**Step 1: Configure VirtualBox for Bridged Networking**
 
-Configure UTM so the VM shares the same network as your Mac, allowing the robot to connect directly.
+Configure VirtualBox so the VM shares the same network as your Mac, allowing the robot to connect directly.
 
-1. **Configure UTM for bridged networking:**
+1. **Configure VirtualBox for bridged networking:**
    - Power off your Ubuntu VM
-   - In UTM, edit VM settings → Network
-   - Change from "Shared Network" to "Bridged Network"
-   - Select your Mac's active network interface (usually en0 for WiFi)
-   - Start the VM
+   - In VirtualBox, select VM → Settings → Network
+   - Adapter 1: Change "Attached to" from "NAT" to "Bridged Adapter"
+   - Name: Select your Mac's active network interface (usually "en0: Wi-Fi" or similar)
+   - Advanced: Promiscuous Mode: "Allow All" (optional, for better connectivity)
+   - Click OK and start the VM
 
 2. **Verify VM gets IP on same network as Mac:**
    ```bash
@@ -434,28 +502,35 @@ The wizard will guide you through:
 
 ## 12. Troubleshooting
 
-### Common UTM Issues
+### Common VirtualBox Issues
 
 **Issue: VM is slow or laggy**
-- Solution: Increase allocated RAM and enable hardware acceleration
-- Check: UTM VM settings → System → Hardware acceleration enabled
+- Solution: Increase allocated RAM and CPU cores
+- Check: VirtualBox VM settings → System → Processor (allocate more cores)
+- Enable: System → Acceleration → VT-x/AMD-V and Nested Paging
 
 **Issue: USB device not appearing in VM**
-- Solution: Connect USB device through UTM Devices menu
+- Solution: Install VirtualBox Extension Pack for USB 2.0/3.0 support
 - Check: Device is powered on and recognized by macOS first
+- Verify: VM Settings → USB → USB Controller enabled
 
 **Issue: Robot can't connect to Micro-ROS agent**
-- **Cause:** UTM bridged networking not set up or robot network configuration issues
+- **Cause:** VirtualBox bridged networking not set up or robot network configuration issues
 - **Solution:** Follow section 9 Network Configuration steps in order:
-  1. Set up UTM bridged networking
+  1. Set up VirtualBox bridged networking
   2. Use WiFi setup wizard to configure robot network settings
   3. Verify VM and Mac are on same network
-- **Check:** Verify UTM is using bridged networking and VM gets IP in same range as Mac
+- **Check:** Verify VirtualBox is using bridged networking and VM gets IP in same range as Mac
 - **Verify:** Use WiFi setup wizard which handles mDNS hostname resolution automatically
 
 **Issue: GUI applications don't work properly**
-- Solution: Install additional graphics drivers in Ubuntu VM
-- Command: `sudo apt install ubuntu-desktop-minimal`
+- Solution: Increase video memory in Display settings
+- Check: VirtualBox VM settings → Display → Video Memory (128MB minimum)
+- Graphics Controller: Use VMSVGA for best compatibility
+
+**Issue: "Kernel driver not installed" error on macOS**
+- Solution: Allow VirtualBox kernel extension in System Preferences → Security & Privacy
+- For macOS Big Sur and later: Restart in Recovery Mode and reduce security settings
 
 ### Advanced Troubleshooting: Network Traffic Analysis
 
@@ -499,19 +574,33 @@ ping $(route -n get default | grep interface | awk '{print $2}' | xargs ifconfig
 sudo tcpdump -i any -n port 8090
 ```
 
-### UTM Performance Optimization
+### VirtualBox Performance Optimization
 
 1. **Allocate more resources**
-   - Increase RAM to 8GB or more
-   - Enable multiple CPU cores
-   - Allocate sufficient disk space
+   - RAM: 8GB minimum, 12GB recommended
+   - CPUs: At least 2-4 cores
+   - Video Memory: 128MB
+   - Disk: Use fixed size instead of dynamically allocated for better performance
 
 2. **Enable hardware acceleration**
-   - In UTM VM settings → System
-   - Enable "Hardware acceleration"
-   - Use "Virtualize" instead of "Emulate"
+   - System → Acceleration → Enable VT-x/AMD-V
+   - System → Acceleration → Enable Nested Paging
+   - System → Acceleration → Paravirtualization Interface: Default or KVM
 
-3. **Optimize Ubuntu for VM**
+3. **Install Guest Additions for better performance**
+   ```bash
+   # In the VM, install Guest Additions
+   sudo apt update
+   sudo apt install virtualbox-guest-additions-iso virtualbox-guest-utils
+   
+   # Or from VirtualBox menu: Devices → Insert Guest Additions CD image
+   # Then mount and run:
+   sudo mount /dev/cdrom /mnt
+   sudo /mnt/VBoxLinuxAdditions.run
+   sudo reboot
+   ```
+
+4. **Optimize Ubuntu for VM**
    ```bash
    # Disable unnecessary services
    sudo systemctl disable bluetooth
@@ -625,32 +714,46 @@ For project-specific setup and usage instructions, refer to the other documentat
 
 To share files between macOS and the Ubuntu VM:
 
-1. **Enable UTM file sharing**
-   - In UTM VM settings → Sharing
-   - Enable "Directory Share"
-   - Choose a folder on macOS to share
+1. **Enable VirtualBox shared folders**
+   - Power off the VM
+   - In VirtualBox, select VM → Settings → Shared Folders
+   - Click "+" to add a new shared folder
+   - Folder Path: Choose a folder on macOS
+   - Folder Name: e.g., "shared"
+   - Check "Auto-mount" and "Make Permanent"
 
-2. **Mount shared folder in Ubuntu**
+2. **Access shared folder in Ubuntu**
    ```bash
-   # Create mount point
-   sudo mkdir /mnt/shared
+   # Install Guest Additions first (if not already done)
+   sudo apt install virtualbox-guest-utils
    
-   # Mount the shared folder
-   sudo mount -t virtiofs share /mnt/shared
+   # The folder will auto-mount at /media/sf_shared
+   # Add your user to vboxsf group to access it
+   sudo usermod -aG vboxsf $USER
    
-   # Auto-mount on boot (optional)
-   echo "share /mnt/shared virtiofs defaults 0 0" | sudo tee -a /etc/fstab
+   # Log out and back in, then access:
+   ls /media/sf_shared
+   
+   # Optional: Create a symbolic link for easier access
+   ln -s /media/sf_shared ~/shared
    ```
 
 ### Backup and Snapshots
 
-UTM supports VM snapshots for easy backup:
+VirtualBox supports VM snapshots for easy backup:
 
 1. **Create snapshot before major changes**
-   - In UTM, select your VM
-   - Click "Save" to create snapshot
+   - In VirtualBox, select your VM
+   - Click "Snapshots" in the right panel
+   - Click "Take" to create a snapshot
    - Name it appropriately (e.g., "ROS2_Installed")
 
 2. **Restore from snapshot if needed**
-   - Select snapshot from UTM interface
+   - Select the snapshot
    - Click "Restore"
+   - Choose whether to create a snapshot of current state
+
+3. **Clone VM for backup**
+   - Right-click VM → Clone
+   - Choose "Full clone" for independent copy
+   - Useful for testing changes without affecting original
