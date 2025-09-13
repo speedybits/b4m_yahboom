@@ -248,125 +248,30 @@ After installing ROS2 Humble, you'll need additional packages for the Yahboom ro
 
 ## 8. Network Configuration
 
-### Fixed IP Address Configuration (REQUIRED)
+### Network Setup for Robot Communication
 
-**CRITICAL:** DHCP networks assign different IP addresses after restart/hibernation, breaking robot connectivity. A fixed IP address is REQUIRED for reliable operation.
+The WiFi setup wizard (recommended) handles network configuration automatically using mDNS hostname resolution, eliminating the need for manual IP configuration.
 
-**Solution:** Configure your router to assign a fixed IP address to your Linux machine using DHCP reservation (recommended) or use NetworkManager to request a specific IP.
+#### Use WiFi Setup Wizard (Recommended)
 
-#### Step 1: Get your network information and choose a fixed IP
-
-- [ ] Get your current network information:
+- [ ] The WiFi setup wizard automatically handles network configuration:
   ```bash
-  # Find current IP and network info
-  ip route get 1.1.1.1 | grep -oP 'src \K\S+'  # Current IP
-  ip route | grep default | awk '{print $3}'    # Gateway
+  # Navigate to project directory
+  cd ~/projects/b4m_yahboom
   
-  # Get your MAC address for DHCP reservation
-  ip link show $(ip route get 1.1.1.1 | grep -oP 'dev \K\S+') | grep ether
+  # Run the interactive WiFi setup wizard
+  ./b4m_launch.sh --setup-wifi
   ```
 
-- [ ] Note down these values:
-  - Current IP address (e.g., `192.168.68.105`)
-  - Gateway/Router (e.g., `192.168.68.1`)
-  - MAC address (e.g., `28:d0:43:f7:74:ac`)
-  - Network interface name (e.g., `wlo1` for WiFi)
+The wizard will:
+- Auto-detect your hostname and IP address
+- Configure the robot to use mDNS hostname resolution (e.g., `hostname.local`)
+- Eliminate the need for fixed IP addresses
+- Handle network changes automatically
 
-- [ ] Choose your fixed IP address (this is the IP you'll use everywhere):
-  - Pick an address in the same network range as your current IP
-  - Choose something easy to remember and unlikely to be used by other devices
-  - **Example:** If your current IP is `192.168.68.105`, choose `192.168.68.100`
-  - **Your chosen fixed IP will be used for:**
-    - Router DHCP reservation
-    - Robot configuration in `config_robot.py`
-    - All future connections
+#### Verify Network Configuration
 
-- [ ] **📝 Write down your chosen fixed IP:** `192.168.68.100` (example - use your chosen IP in YOUR network range)
-
-#### Step 2: Configure fixed IP address
-
-**Method A: DHCP Reservation (Recommended - Router Configuration):**
-
-- [ ] Access your router's admin interface:
-  - Open web browser and go to your gateway IP (e.g., `http://192.168.68.1`)
-  - Login with admin credentials (often on router label)
-
-- [ ] Find DHCP Reservation settings:
-  - Look for "DHCP Reservations", "Static DHCP", "Address Reservation", or "Reserved IPs"
-  - Usually under "Network", "LAN", or "DHCP" sections
-
-- [ ] Add DHCP reservation:
-  - **MAC Address:** Your MAC address from Step 1 (e.g., `28:d0:43:f7:74:ac`)
-  - **IP Address:** Your chosen fixed IP (e.g., `192.168.68.100`)
-  - **Device Name:** "Linux-Robot-PC" (optional description)
-  - Save/Apply settings
-
-- [ ] Restart router's DHCP service (or reboot router if needed)
-
-- [ ] Restart your network connection:
-  ```bash
-  sudo nmcli con down $(nmcli -t -f NAME,DEVICE con show --active | grep $(ip route get 1.1.1.1 | grep -oP 'dev \K\S+') | cut -d: -f1)
-  sudo nmcli con up $(nmcli -t -f NAME,DEVICE con show --active | grep $(ip route get 1.1.1.1 | grep -oP 'dev \K\S+') | cut -d: -f1)
-  ```
-
-**Method B: NetworkManager DHCP with Preferred IP (Fallback):**
-
-If router configuration isn't possible, request specific IP through DHCP:
-
-- [ ] Configure NetworkManager to request your chosen IP:
-  ```bash
-  # Replace 'connection_name' with your actual connection name
-  CONNECTION_NAME=$(nmcli -t -f NAME,DEVICE con show --active | grep $(ip route get 1.1.1.1 | grep -oP 'dev \K\S+') | cut -d: -f1)
-  
-  # Request specific IP via DHCP
-  sudo nmcli con modify "$CONNECTION_NAME" ipv4.dhcp-client-id "192.168.68.100"
-  sudo nmcli con down "$CONNECTION_NAME" && sudo nmcli con up "$CONNECTION_NAME"
-  ```
-
-**Note:** Method B requests the IP but doesn't guarantee it. Method A (router configuration) is more reliable.
-
-#### Step 3: Verify your fixed IP is working
-
-- [ ] Verify your new fixed IP is active:
-  ```bash
-  ip addr show $(ip route get 1.1.1.1 | grep -oP 'dev \K\S+') | grep 'inet '
-  # Should show your chosen fixed IP (e.g., 192.168.68.100)
-  ```
-
-- [ ] Test internet connectivity:
-  ```bash
-  ping -c 3 google.com
-  ```
-
-- [ ] Verify gateway connectivity:
-  ```bash
-  ping -c 3 $(ip route | grep default | awk '{print $3}')  # Your gateway IP
-  ```
-
-- [ ] Check DNS is working automatically:
-  ```bash
-  nslookup google.com
-  ```
-
-**✅ Fixed IP Configuration Complete!**
-
-Your Linux machine now has a fixed IP address with automatic DNS and network settings.
-
-#### Step 4: Configure Robot with Your Fixed IP
-
-- [ ] Edit the `config_robot.py` file with your network settings:
-  ```python
-  # Use YOUR chosen fixed IP from Step 1
-  robot.set_wifi_config("your_wifi_name", "your_wifi_password")  
-  robot.set_udp_config([192, 168, 68, 100], 8090)  # YOUR fixed IP here (match your network)
-  robot.set_car_type(robot.CAR_TYPE_COMPUTER)
-  ```
-
-**⚠️ IMPORTANT:** Use the exact same fixed IP you configured via DHCP reservation (from Step 1).
-
-#### Step 5: Verify Everything Works
-
-- [ ] Start the Micro-ROS agent (it will be accessible on your fixed IP):
+- [ ] Start the Micro-ROS agent:
   ```bash
   docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host microros/micro-ros-agent:humble udp4 --port 8090
   ```
@@ -376,20 +281,76 @@ Your Linux machine now has a fixed IP address with automatic DNS and network set
   ss -tulpn | grep 8090
   ```
 
-- [ ] Check network connectivity:
+- [ ] Test network connectivity:
   ```bash
-  ping -c 3 192.168.68.100  # Your fixed IP (use YOUR chosen IP)
+  ping -c 3 google.com
   ```
 
 **✅ Network Configuration Complete!**
 
 Your setup now has:
-- Linux with fixed IP address via DHCP reservation
-- Automatic DNS and network configuration
-- Robot configured to connect to your fixed IP
-- Micro-ROS agent accessible on your fixed IP
+- Automatic network configuration via mDNS hostname resolution
+- Robot configured to connect using hostname instead of fixed IP
+- Automatic handling of network changes without manual configuration
 
-## 9. microROS Control Board Configuration
+## 9. Repository Setup and Workspace Build
+
+Before configuring the robot, you need to clone the B4M Yahboom repository and build the workspace.
+
+### Clone the Repository
+
+- [ ] Create projects directory and clone the repository:
+  ```bash
+  # Create projects directory
+  mkdir -p ~/projects
+  
+  # Clone the B4M Yahboom repository
+  cd ~/projects
+  git clone https://github.com/mikebvansickle/b4m_yahboom.git
+  
+  # Navigate to the project directory
+  cd b4m_yahboom
+  ```
+
+### Build the Workspace
+
+**IMPORTANT:** The workspace must be built before using any of the launch scripts or WiFi setup wizard.
+
+- [ ] Build the workspace (required before first use):
+  ```bash
+  colcon build --symlink-install
+  ```
+
+### Configure Environment Sourcing
+
+- [ ] Add workspace sourcing to .bashrc for automatic setup:
+  ```bash
+  echo "source ~/projects/b4m_yahboom/source_workspaces.sh" >> ~/.bashrc
+  ```
+
+- [ ] Apply to current terminal (or open a new terminal):
+  ```bash
+  source ~/.bashrc
+  ```
+
+**Automatic Sourcing:** This eliminates the need to manually source workspaces in every new terminal session.
+
+### Verify Setup
+
+- [ ] Verify the workspace was built successfully:
+  ```bash
+  ls install/
+  ```
+
+- [ ] Test that ROS2 packages are available:
+  ```bash
+  source install/setup.bash
+  ros2 pkg list | grep yahboomcar_bringup
+  ```
+
+- [ ] If the last command returns `yahboomcar_bringup`, your workspace is properly set up.
+
+## 10. microROS Control Board Configuration
 
 The config_robot.py script supports cross-platform serial port detection:
 
@@ -410,6 +371,27 @@ The config_robot.py script supports cross-platform serial port detection:
   ```
 
 ### Configuration Steps
+
+**Option 1: Interactive WiFi Setup Wizard (Recommended)**
+
+- [ ] Use the new interactive WiFi setup wizard for guided configuration:
+  ```bash
+  # Navigate to project directory
+  cd ~/projects/b4m_yahboom
+  
+  # Run the interactive WiFi setup wizard
+  ./b4m_launch.sh --setup-wifi
+  ```
+
+The wizard will guide you through:
+1. Prerequisites checking (Python, serial permissions, files)
+2. USB connection detection and selection
+3. WiFi network configuration (SSID and password)
+4. Agent connection method selection (mDNS hostname vs fixed IP)
+5. Configuration summary and confirmation
+6. Automatic robot configuration
+
+**Option 2: Manual Configuration**
 
 - [ ] Connect the robot via USB
 - [ ] Briefly press the reset button on the microROS control board
@@ -439,7 +421,7 @@ If you experience connection issues, verify the robot's stored configuration:
 
 - [ ] If settings are incorrect, the script will have updated them - power cycle the robot to apply changes
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 ### Common Issues
 
@@ -471,29 +453,12 @@ If you experience connection issues, verify the robot's stored configuration:
   ```
 
 **Issue: Robot not connecting to Micro-ROS agent**
-- **Cause:** Either fixed IP not configured or robot configured with wrong IP
-- **Solution:** Follow section 8 Network Configuration steps in order:
-  - [ ] Configure DHCP reservation on router OR use NetworkManager to request specific IP
-  - [ ] Configure robot with the same fixed IP
-- [ ] **Check:** Verify robot IP matches Linux fixed IP exactly
-- [ ] **Verify:** Confirm fixed IP is active with `ip addr show`
-
-**Issue: DHCP reservation not working**
-- **Cause:** Router not assigning reserved IP or DHCP cache issues
-- **Solution:** Troubleshoot DHCP reservation:
-  - [ ] Verify reservation is saved in router: Check router admin interface
-  - [ ] Clear DHCP lease: `sudo nmcli con down <connection> && sudo nmcli con up <connection>`
-  - [ ] Restart router if needed to clear DHCP lease table
-  - [ ] Verify MAC address matches exactly in router settings
-- [ ] **Fallback:** Use NetworkManager method from section 8 if router method fails
-
-**Issue: Intermittent internet connectivity (less common with DHCP reservation)**
-- **Cause:** DHCP providing different DNS servers or network configuration issues  
-- **Solution:** DHCP reservation should automatically provide correct DNS:
-  - [ ] Check current DNS: `nslookup google.com`
-  - [ ] If DNS fails, verify router's DNS settings
-  - [ ] Router should automatically provide correct gateway IP as DNS
-- [ ] **Test:** Verify connectivity: `ping -c 3 google.com`
+- **Cause:** Network configuration issues or robot WiFi settings
+- **Solution:** Use the WiFi setup wizard to configure robot network settings:
+  - [ ] Run `./b4m_launch.sh --setup-wifi` to configure robot with mDNS hostname resolution
+  - [ ] Verify robot and computer are on the same network
+- [ ] **Check:** Verify WiFi setup wizard completed successfully
+- [ ] **Verify:** Confirm robot is connecting to correct WiFi network
 
 ### Advanced Troubleshooting: Network Traffic Analysis
 
@@ -505,8 +470,8 @@ If the robot still doesn't connect, check if it's actually sending connection at
   ```
 
 - [ ] Power cycle the robot while monitoring. You should see:
-  - **Connection attempts**: `IP <robot_ip>.8090 > <your_ip>.8090: UDP, length 24`
-  - **If no packets appear**: Robot isn't connecting to WiFi or has wrong IP
+  - **Connection attempts**: `IP <robot_ip>.8090 > <your_hostname_ip>.8090: UDP, length 24`
+  - **If no packets appear**: Robot isn't connecting to WiFi or network configuration issue
   - **If packets appear**: Robot is connecting but agent might not be running
 
 - [ ] If you see connection packets, ensure micro-ros agent is running:
@@ -540,59 +505,6 @@ If the robot still doesn't connect, check if it's actually sending connection at
   ```bash
   sudo tcpdump -i any -n port 8090
   ```
-
-## 11. Workspace Setup
-
-After completing the installation, you'll need to build the workspaces and configure environment sourcing.
-
-### Critical Workspace Requirements
-
-**IMPORTANT:** After cloning the B4M Yahboom repository, you MUST build the workspace and configure automatic sourcing:
-
-- [ ] Navigate to the project directory:
-  ```bash
-  cd ~/projects/b4m_yahboom
-  ```
-
-- [ ] Build the workspace (required before first use):
-  ```bash
-  colcon build --symlink-install
-  ```
-
-- [ ] Add workspace sourcing to .bashrc for automatic setup:
-  ```bash
-  echo "source ~/projects/b4m_yahboom/source_workspaces.sh" >> ~/.bashrc
-  ```
-
-- [ ] Apply to current terminal (or open a new terminal):
-  ```bash
-  source ~/.bashrc
-  ```
-
-**Automatic Sourcing:** This eliminates the need to manually source workspaces in every new terminal session.
-
-**Common Error:** If you see `Package 'yahboomcar_bringup' not found`, it means the workspace isn't sourced. Check that the sourcing command is in your .bashrc:
-
-- [ ] Verify workspace sourcing is in .bashrc:
-  ```bash
-  grep "source_workspaces.sh" ~/.bashrc
-  ```
-
-- [ ] If missing, add it manually:
-  ```bash
-  echo "source ~/projects/b4m_yahboom/source_workspaces.sh" >> ~/.bashrc
-  ```
-
-**After Code Changes:** When you modify ROS2 package code, rebuild and restart nodes:
-
-- [ ] Rebuild after code changes:
-  ```bash
-  colcon build --symlink-install
-  ```
-
-- [ ] Restart any running ROS2 nodes/processes to load new code
-
-See the `WORKSPACE_README.md` for detailed instructions on workspace management.
 
 ## 12. Troubleshooting Launch Issues
 
@@ -692,9 +604,12 @@ If you need to uninstall ROS2 Humble:
 
 ## Next Steps
 
-- [ ] Clone the B4M Yahboom repository
-- [ ] Follow the `WORKSPACE_README.md` for workspace setup
+- [ ] ✅ **Repository Setup Complete** - You've already cloned and built the B4M Yahboom repository in section 9
+- [ ] Review the `WORKSPACE_README.md` for advanced workspace management
 - [ ] Review the `CLAUDE.md` for development guidelines
+- [ ] **Configure robot WiFi using `./b4m_launch.sh --setup-wifi`** (recommended for first-time setup)
 - [ ] Execute the launch sequence as described in the project documentation
 
 For project-specific setup and usage instructions, refer to the other documentation files in this repository.
+
+**Quick Start Tip:** Now that everything is installed and built, the easiest way to configure your robot for the first time is to run `./b4m_launch.sh --setup-wifi` which provides an interactive wizard to guide you through WiFi and network configuration.

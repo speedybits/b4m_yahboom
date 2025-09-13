@@ -266,82 +266,11 @@ sudo usermod -a -G dialout $USER
 
 ## 9. Network Configuration (UTM-Specific)
 
-### Static IP Configuration (REQUIRED)
+### Network Setup for Robot Communication
 
-**CRITICAL:** DHCP networks assign different IP addresses after sleep/restart, breaking robot connectivity. Static IP configuration is REQUIRED for reliable operation.
+The WiFi setup wizard (recommended) handles network configuration automatically using mDNS hostname resolution, eliminating the need for manual IP configuration.
 
-**Solution:** Configure macOS to use a static IP address within your network range.
-
-**Step 1: Determine your network range and choose a static IP**
-
-1. **Get your current network information:**
-   ```bash
-   # Get current IP, gateway, and subnet
-   route -n get default
-   
-   # Get DNS servers
-   scutil --dns | grep nameserver
-   
-   # Get current WiFi IP
-   ifconfig en0 | grep 'inet ' | awk '{print $2}'
-   ```
-
-2. **Note down these values:**
-   - Current IP address (e.g., `192.168.1.105`)
-   - Router/Gateway (e.g., `192.168.1.1`)
-   - Subnet mask (usually `255.255.255.0`)
-   - DNS servers (e.g., `192.168.1.1` or `8.8.8.8`)
-
-3. **Choose your static IP address** (this is the IP you'll use everywhere):
-   - Pick an address in the same network range as your current IP
-   - Choose something easy to remember and unlikely to be used by other devices
-   - **Example:** If your current IP is `192.168.1.105`, choose `192.168.1.100`
-   - **Your chosen static IP will be used for:**
-     - macOS network configuration
-     - UTM VM (via bridged networking)
-     - Robot configuration in `config_robot.py`
-     - All future connections
-
-**📝 Write down your chosen static IP:** `192.168.1.100` (example - use your chosen IP)
-
-**Step 2: Configure macOS with your chosen static IP**
-
-1. **Open Network Preferences:**
-   - Apple Menu → System Preferences → Network
-   - Or System Settings → Network (macOS Ventura+)
-
-2. **Select WiFi and configure:**
-   - Select "Wi-Fi" from the left sidebar
-   - Click "Advanced..." button
-   - Go to "TCP/IP" tab
-
-3. **Set your chosen static IP:**
-   - Change "Configure IPv4" from "Using DHCP" to "Manually"
-   - **IPv4 Address:** `192.168.1.100` (use YOUR chosen static IP)
-   - **Subnet Mask:** `255.255.255.0` (from step 1)
-   - **Router:** `192.168.1.1` (from step 1)
-
-4. **Configure DNS:**
-   - Go to "DNS" tab
-   - Add DNS servers: `192.168.1.1`, `8.8.8.8`
-   - Click "OK" and "Apply"
-
-**Step 3: Verify your static IP is working**
-
-```bash
-# Verify your new static IP is active
-ifconfig en0 | grep 'inet ' | awk '{print $2}'
-# Should show your chosen static IP (e.g., 192.168.1.100)
-
-# Test internet connectivity
-ping -c 3 google.com
-```
-
-**✅ Static IP Configuration Complete!**
-
-Your Mac now has a fixed IP address that will never change after sleep/restart.
-
-**Step 4: Configure UTM for Bridged Networking**
+**Step 1: Configure UTM for Bridged Networking**
 
 Configure UTM so the VM shares the same network as your Mac, allowing the robot to connect directly.
 
@@ -359,48 +288,97 @@ Configure UTM so the VM shares the same network as your Mac, allowing the robot 
    # Should show an IP like 192.168.1.x (same range as your Mac)
    ```
 
-**Step 5: Configure Robot with Your Static IP**
+**Step 2: Use WiFi Setup Wizard (Recommended)**
 
-Now configure the robot to connect to your chosen static IP address.
+The WiFi setup wizard automatically handles network configuration:
 
-Edit the `config_robot.py` file with your network settings:
+```bash
+# Navigate to project directory
+cd ~/projects/b4m_yahboom
 
-```python
-# Use YOUR chosen static IP from Step 1
-robot.set_wifi_config("your_wifi_name", "your_wifi_password")  
-robot.set_udp_config([192, 168, 1, 100], 8090)  # YOUR static IP here
-robot.set_car_type(robot.CAR_TYPE_COMPUTER)
+# Run the interactive WiFi setup wizard
+./b4m_launch.sh --setup-wifi
 ```
 
-**⚠️ IMPORTANT:** Use the exact same static IP you configured in macOS (from Step 1).
+The wizard will:
+- Auto-detect your hostname and IP address
+- Configure the robot to use mDNS hostname resolution (e.g., `hostname.local`)
+- Eliminate the need for fixed IP addresses
+- Handle network changes automatically
 
-**Step 6: Verify Everything Works**
-
-After configuring UTM bridged networking:
+**Step 3: Verify Network Configuration**
 
 ```bash
 # In UTM VM, verify network configuration
 ip addr show | grep 'inet ' | grep -v 127.0.0.1
 
-# Start the Micro-ROS agent (it will be accessible on your static IP via bridged network)
+# Start the Micro-ROS agent
 docker run -it --rm -v /dev:/dev -v /dev/shm:/dev/shm --privileged --net=host microros/micro-ros-agent:humble udp4 --port 8090
 
 # In another VM terminal, verify agent is listening
 netstat -tulpn | grep 8090
-
-# Test connectivity between VM and Mac
-ping 192.168.1.100  # Your Mac's static IP
 ```
 
 **✅ Network Configuration Complete!**
 
 Your setup now has:
-- Mac with fixed static IP address
-- UTM VM using bridged networking (same network as Mac)
-- Robot configured to connect to your static IP
-- Micro-ROS agent accessible on your static IP via bridged network
+- Mac and UTM VM on the same network via bridged networking
+- Robot configured to connect using mDNS hostname resolution
+- Automatic handling of network changes without manual IP configuration
 
-## 10. microROS Control Board Configuration
+## 10. Repository Setup and Workspace Build
+
+Before configuring the robot, you need to clone the B4M Yahboom repository and build the workspace.
+
+### Clone the Repository
+
+```bash
+# Create projects directory
+mkdir -p ~/projects
+
+# Clone the B4M Yahboom repository
+cd ~/projects
+git clone https://github.com/mikebvansickle/b4m_yahboom.git
+
+# Navigate to the project directory
+cd b4m_yahboom
+```
+
+### Build the Workspace
+
+**IMPORTANT:** The workspace must be built before using any of the launch scripts or WiFi setup wizard.
+
+```bash
+# Build the workspace (required before first use)
+colcon build --symlink-install
+```
+
+### Configure Environment Sourcing
+
+```bash
+# Add workspace sourcing to .bashrc for automatic setup
+echo "source ~/projects/b4m_yahboom/source_workspaces.sh" >> ~/.bashrc
+
+# Apply to current terminal (or open a new terminal)
+source ~/.bashrc
+```
+
+**Automatic Sourcing:** This eliminates the need to manually source workspaces in every new terminal session.
+
+### Verify Setup
+
+```bash
+# Verify the workspace was built successfully
+ls install/
+
+# Test that ROS2 packages are available
+source install/setup.bash
+ros2 pkg list | grep yahboomcar_bringup
+```
+
+If the last command returns `yahboomcar_bringup`, your workspace is properly set up.
+
+## 11. microROS Control Board Configuration
 
 The config_robot.py script supports cross-platform serial port detection:
 
@@ -422,6 +400,28 @@ python3 config_robot.py
 
 ### Configuration Steps
 
+**Option 1: Interactive WiFi Setup Wizard (Recommended)**
+
+Use the new interactive WiFi setup wizard for guided configuration:
+
+```bash
+# Navigate to project directory
+cd ~/projects/b4m_yahboom
+
+# Run the interactive WiFi setup wizard
+./b4m_launch.sh --setup-wifi
+```
+
+The wizard will guide you through:
+1. Prerequisites checking (Python, serial permissions, files)
+2. USB connection detection and selection
+3. WiFi network configuration (SSID and password)
+4. Agent connection method selection (mDNS hostname vs fixed IP)
+5. Configuration summary and confirmation
+6. Automatic robot configuration
+
+**Option 2: Manual Configuration**
+
 1. Connect the robot via USB to your Mac
 2. Connect the USB device to the VM through UTM
 3. Briefly press the reset button on the microROS control board
@@ -432,7 +432,7 @@ python3 config_robot.py
    ```
 6. Verify the returned data matches your settings
 
-## 11. Troubleshooting
+## 12. Troubleshooting
 
 ### Common UTM Issues
 
@@ -445,13 +445,13 @@ python3 config_robot.py
 - Check: Device is powered on and recognized by macOS first
 
 **Issue: Robot can't connect to Micro-ROS agent**
-- **Cause:** Either static IP not configured, UTM bridged networking not set up, or robot configured with wrong IP
+- **Cause:** UTM bridged networking not set up or robot network configuration issues
 - **Solution:** Follow section 9 Network Configuration steps in order:
-  1. Configure Mac with static IP
-  2. Set up UTM bridged networking
-  3. Configure robot with the same static IP
-- **Check:** Verify robot IP matches Mac static IP exactly
-- **Verify:** Confirm UTM is using bridged networking and VM gets IP in same range as Mac
+  1. Set up UTM bridged networking
+  2. Use WiFi setup wizard to configure robot network settings
+  3. Verify VM and Mac are on same network
+- **Check:** Verify UTM is using bridged networking and VM gets IP in same range as Mac
+- **Verify:** Use WiFi setup wizard which handles mDNS hostname resolution automatically
 
 **Issue: GUI applications don't work properly**
 - Solution: Install additional graphics drivers in Ubuntu VM
@@ -492,8 +492,8 @@ ping -c 3 $(ip route | grep default | awk '{print $3}')
 # Check network configuration
 ip addr show
 
-# Test Mac connectivity
-ping <mac_ip_address>
+# Test Mac connectivity (use your Mac's current IP)
+ping $(route -n get default | grep interface | awk '{print $2}' | xargs ifconfig | grep 'inet ' | awk '{print $2}')
 
 # Monitor network traffic (if needed)
 sudo tcpdump -i any -n port 8090
@@ -520,51 +520,6 @@ sudo tcpdump -i any -n port 8090
    # Install lightweight desktop (optional)
    sudo apt install xubuntu-desktop
    ```
-
-## 12. Workspace Setup
-
-After completing the installation, you'll need to build the workspaces and configure environment sourcing.
-
-### Critical Workspace Requirements
-
-**IMPORTANT:** After cloning the B4M Yahboom repository, you MUST build the workspace and configure automatic sourcing:
-
-```bash
-# Navigate to the project directory
-cd ~/projects/b4m_yahboom
-
-# Build the workspace (required before first use)
-colcon build --symlink-install
-
-# Add workspace sourcing to .bashrc for automatic setup
-echo "source ~/projects/b4m_yahboom/source_workspaces.sh" >> ~/.bashrc
-
-# Apply to current terminal (or open a new terminal)
-source ~/.bashrc
-```
-
-**Automatic Sourcing:** This eliminates the need to manually source workspaces in every new terminal session.
-
-**Common Error:** If you see `Package 'yahboomcar_bringup' not found`, it means the workspace isn't sourced. Check that the sourcing command is in your .bashrc:
-
-```bash
-# Verify workspace sourcing is in .bashrc
-grep "source_workspaces.sh" ~/.bashrc
-
-# If missing, add it manually
-echo "source ~/projects/b4m_yahboom/source_workspaces.sh" >> ~/.bashrc
-```
-
-**After Code Changes:** When you modify ROS2 package code, rebuild and restart nodes:
-
-```bash
-# Rebuild after code changes
-colcon build --symlink-install
-
-# Restart any running ROS2 nodes/processes to load new code
-```
-
-See the `WORKSPACE_README.md` for detailed instructions on workspace management.
 
 ## 13. Troubleshooting Launch Issues
 
@@ -654,12 +609,15 @@ sudo apt upgrade
 
 ## Next Steps
 
-1. Clone the B4M Yahboom repository
-2. Follow the `WORKSPACE_README.md` for workspace setup
-3. Review the `CLAUDE.md` for development guidelines
-4. Execute the launch sequence as described in the project documentation
+1. ✅ **Repository Setup Complete** - You've already cloned and built the B4M Yahboom repository in section 10
+2. Review the `WORKSPACE_README.md` for advanced workspace management
+3. Review the `CLAUDE.md` for development guidelines  
+4. **Configure robot WiFi using `./b4m_launch.sh --setup-wifi`** (recommended for first-time setup)
+5. Execute the launch sequence as described in the project documentation
 
 For project-specific setup and usage instructions, refer to the other documentation files in this repository.
+
+**Quick Start Tip:** Now that everything is installed and built, the easiest way to configure your robot for the first time is to run `./b4m_launch.sh --setup-wifi` which provides an interactive wizard to guide you through WiFi and network configuration.
 
 ## Additional macOS Considerations
 
