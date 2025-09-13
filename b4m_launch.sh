@@ -112,7 +112,7 @@ ensure_display() {
 #   --ollama-nav:                   Enable Ollama Navigation mode (LLM-guided Nav2 goal selection)
 #   --ollama-nav-explore:           Enable Ollama exploration mode (autonomous exploration with LLM)
 #   --b4m-HA:                       (Experimental) Enable Home Assistant MQTT integration features
-#   --b4m-ping:                     Test bike4mind API with random obstacle detection messages
+#   --b4m-ping:                     Test B4M API with robot navigation messages
 #   --navigation-performance-test:  (Untested) Execute 1x1m square navigation circuit testing
 #   --setup-wifi:                   Interactive WiFi setup wizard for robot configuration
 
@@ -184,6 +184,10 @@ for arg in "$@"; do
             OLLAMA_NAV_EXPLORE_MODE=true
             shift
             ;;
+        --b4m-nav-explore)
+            B4M_NAV_EXPLORE_MODE=true
+            shift
+            ;;
         --b4m-ping)
             B4M_PING=true
             shift
@@ -205,7 +209,7 @@ for arg in "$@"; do
             shift
             ;;
         -h|--help)
-            echo "Usage: $0 [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--nav] [--b4m-api] [--ollama] [--ollama-advanced] [--ollama-nav] [--ollama-nav-explore] [--b4m-HA] [--b4m-ping] [--navigation-performance-test] [--setup-wifi] [--skip-rebuild]"
+            echo "Usage: $0 [--skip-agent] [--only-agent] [--debug] [--simulation] [--regression] [--explore] [--nav] [--b4m-api] [--ollama] [--ollama-advanced] [--ollama-nav] [--ollama-nav-explore] [--b4m-nav-explore] [--b4m-HA] [--b4m-ping] [--navigation-performance-test] [--setup-wifi] [--skip-rebuild]"
             echo "  --skip-agent:                   Skip the Micro-ROS agent launch (Step 1)"
             echo "  --only-agent:                   Launch ONLY the Micro-ROS agent (Step 1) and exit"
             echo "  --debug:                        Enable verbose debug logging"
@@ -218,8 +222,9 @@ for arg in "$@"; do
             echo "  --ollama-advanced:              Enable Ollama Advanced mode (360° spatial context)"
             echo "  --ollama-nav:                   Enable Ollama Navigation mode (LLM-guided Nav2 goal selection)"
             echo "  --ollama-nav-explore:           Enable Ollama exploration mode (autonomous exploration with LLM)"
+            echo "  --b4m-nav-explore:              Enable B4M exploration mode (autonomous exploration with B4M API)"
 	    echo "  --b4m-HA:                       (Experimental) Enable Home Assistant MQTT integration features"
-            echo "  --b4m-ping:                     Test bike4mind API with random obstacle detection messages"
+            echo "  --b4m-ping:                     Test B4M API with robot navigation messages"
 	    echo "  --navigation-performance-test:  (Untested) Execute 1x1m square navigation circuit testing"
 	    echo "  --setup-wifi:                   Interactive WiFi setup wizard for robot configuration"
             exit 0
@@ -424,9 +429,56 @@ if [ "$OLLAMA_NAV_EXPLORE_MODE" = true ] && [ "$NAVIGATION_PERFORMANCE_TEST" = t
     exit 1
 fi
 
+# B4M Nav Explore mode incompatibility checks  
+if [ "$B4M_NAV_EXPLORE_MODE" = true ] && [ "$EXPLORE_MODE" = true ]; then
+    echo "ERROR: --b4m-nav-explore mode is incompatible with --explore mode"
+    echo "Both modes provide different navigation approaches"
+    exit 1
+fi
+if [ "$B4M_NAV_EXPLORE_MODE" = true ] && [ "$NAV_MODE" = true ]; then
+    echo "ERROR: --b4m-nav-explore mode is incompatible with --nav mode"
+    echo "B4M-nav-explore provides autonomous exploration functionality"
+    exit 1
+fi
+if [ "$B4M_NAV_EXPLORE_MODE" = true ] && [ "$B4M_API" = true ]; then
+    echo "ERROR: --b4m-nav-explore mode is incompatible with --b4m-api mode"
+    echo "Both modes provide different navigation approaches"
+    exit 1
+fi
+if [ "$B4M_NAV_EXPLORE_MODE" = true ] && [ "$OLLAMA_MODE" = true ]; then
+    echo "ERROR: --b4m-nav-explore mode is incompatible with --ollama mode"
+    echo "Both modes provide different navigation approaches"
+    exit 1
+fi
+if [ "$B4M_NAV_EXPLORE_MODE" = true ] && [ "$OLLAMA_ADVANCED_MODE" = true ]; then
+    echo "ERROR: --b4m-nav-explore mode is incompatible with --ollama-advanced mode"
+    echo "Both modes provide different navigation approaches"
+    exit 1
+fi
+if [ "$B4M_NAV_EXPLORE_MODE" = true ] && [ "$OLLAMA_NAV_MODE" = true ]; then
+    echo "ERROR: --b4m-nav-explore mode is incompatible with --ollama-nav mode"
+    echo "Both modes provide different LLM navigation approaches"
+    exit 1
+fi
+if [ "$B4M_NAV_EXPLORE_MODE" = true ] && [ "$OLLAMA_NAV_EXPLORE_MODE" = true ]; then
+    echo "ERROR: --b4m-nav-explore mode is incompatible with --ollama-nav-explore mode"
+    echo "Both modes provide similar functionality with different LLM backends"
+    exit 1
+fi
+if [ "$B4M_NAV_EXPLORE_MODE" = true ] && [ "$REGRESSION_MODE" = true ]; then
+    echo "ERROR: --b4m-nav-explore mode is incompatible with --regression mode"  
+    echo "B4M navigation explore requires manual control while regression runs automated tests"
+    exit 1
+fi
+if [ "$B4M_NAV_EXPLORE_MODE" = true ] && [ "$NAVIGATION_PERFORMANCE_TEST" = true ]; then
+    echo "ERROR: --b4m-nav-explore mode is incompatible with --navigation-performance-test mode"
+    echo "Both modes require different robot control patterns"
+    exit 1
+fi
+
 # B4M Ping mode incompatibility checks
 if [ "$B4M_PING" = true ]; then
-    if [ "$EXPLORE_MODE" = true ] || [ "$NAV_MODE" = true ] || [ "$B4M_API" = true ] || [ "$OLLAMA_MODE" = true ] || [ "$OLLAMA_ADVANCED_MODE" = true ] || [ "$OLLAMA_NAV_MODE" = true ] || [ "$OLLAMA_NAV_EXPLORE_MODE" = true ] || [ "$REGRESSION_MODE" = true ] || [ "$NAVIGATION_PERFORMANCE_TEST" = true ]; then
+    if [ "$EXPLORE_MODE" = true ] || [ "$NAV_MODE" = true ] || [ "$B4M_API" = true ] || [ "$OLLAMA_MODE" = true ] || [ "$OLLAMA_ADVANCED_MODE" = true ] || [ "$OLLAMA_NAV_MODE" = true ] || [ "$OLLAMA_NAV_EXPLORE_MODE" = true ] || [ "$B4M_NAV_EXPLORE_MODE" = true ] || [ "$REGRESSION_MODE" = true ] || [ "$NAVIGATION_PERFORMANCE_TEST" = true ]; then
         echo "ERROR: --b4m-ping is incompatible with other modes"
         echo "B4M Ping is a standalone API testing tool"
         exit 1
@@ -1377,6 +1429,226 @@ if [ "$OLLAMA_NAV_EXPLORE_MODE" = true ]; then
     done
 fi
 
+# Handle B4M Navigation Explore mode 
+if [ "$B4M_NAV_EXPLORE_MODE" = true ]; then
+    echo "🧭 B4M NAVIGATION EXPLORE MODE"
+    echo "======================================"
+    echo "Launching Navigation 2 with Cartographer SLAM for B4M LLM-guided exploration"
+    
+    if [ "$SIMULATION_MODE" = true ]; then
+        echo "Mode: Gazebo Classic Simulation with Navigation World"
+        WORLD_NAME="exploration_test_classic"  # Use exploration world for navigation
+    else  
+        echo "Mode: Real Robot Navigation with SLAM"
+    fi
+    
+    # Ensure display is ready for GUI applications
+    ensure_display
+    
+    echo ""
+    echo "This mode will:"
+    echo "- Launch Cartographer for real-time SLAM mapping"
+    echo "- Start Navigation 2 stack for path planning and obstacle avoidance"
+    echo "- Allow goal setting via RViz 2D Nav Goal tool"
+    echo "- Build and use map simultaneously for navigation"
+    echo "- Use B4M API for LLM-guided autonomous exploration"
+    echo ""
+    
+    # Check B4M API requirements
+    if [ -z "$B4M_API_KEY" ]; then
+        echo "⚠️ WARNING: B4M_API_KEY environment variable not set"
+        echo "Please set your B4M API key:"
+        echo "export B4M_API_KEY='your_key_here'"
+        echo ""
+        echo "Continuing in 5 seconds... (the script will fail later without API key)"
+        sleep 5
+    else
+        echo "✅ B4M API key configured"
+    fi
+    
+    # Launch navigation sequence
+    echo "🚀 NAVIGATION 2 LAUNCH SEQUENCE"
+    echo "======================================"
+    
+    if [ "$SIMULATION_MODE" = true ]; then
+        # Step 1: Launch Gazebo Classic simulation
+        echo "🎮 Step 1: Starting Gazebo Classic simulation with navigation world"
+        ros2 launch yahboomcar_nav gazebo_classic_nav_launch.py world_name:=$WORLD_NAME > "$LOGS_DIR/nav_gazebo_$TIMESTAMP.log" 2>&1 &
+        GAZEBO_PID=$!
+        track_process $GAZEBO_PID "gazebo"
+        echo "   Waiting for simulation initialization..."
+        sleep 10
+        
+        # Verify laser scan is being published
+        echo "   Verifying laser scan topic..."
+        if timeout 5 ros2 topic echo /scan --once > /dev/null 2>&1; then
+            echo "   ✅ Laser scan topic active"
+        else
+            echo "   ⚠️  Warning: Laser scan topic not detected"
+        fi
+        
+        # Step 2: Launch robot bringup for EKF and sensor processing
+        echo "🤖 Step 2: Starting robot sensor and control systems (EKF, IMU, etc.)"
+        echo "   This is required even in simulation to get filtered /odom from EKF"
+        cd "$WORKSPACE_ROOT" && . source_workspaces.sh && ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py use_sim_time:=true > "$LOGS_DIR/nav_bringup_$TIMESTAMP.log" 2>&1 &
+        BRINGUP_PID=$!
+        echo "   Waiting for sensor initialization and EKF startup..."
+        sleep 12
+        
+        # Verify odometry topic
+        echo "   Verifying odometry is available..."
+        timeout 10 ros2 topic echo /odom --once > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            echo "   ✅ Odometry topic verified"
+        else
+            echo "   ⚠️  Warning: /odom topic not ready, continuing anyway..."
+        fi
+        
+        # Step 3: Launch RViz for visualization
+        echo "📊 Step 3: Starting RViz for map visualization and navigation"
+        ros2 launch yahboomcar_nav display_launch.py use_sim_time:=true > "$LOGS_DIR/nav_rviz_$TIMESTAMP.log" 2>&1 &
+        RVIZ_PID=$!
+        track_process $RVIZ_PID "rviz"
+        sleep 5
+        
+    else
+        echo "   ⚠️  Make sure physical robot is powered on and ready"
+        echo "   ⚠️  Ensure navigation area is safe"
+        echo "   ⚡ Continuing automatically in 3 seconds..."
+        sleep 3
+        
+        # Step 1: Launch robot bringup 
+        echo "🤖 Step 1: Starting robot sensor and control systems"
+        cd "$WORKSPACE_ROOT" && . source_workspaces.sh && ros2 launch yahboomcar_bringup yahboomcar_bringup_launch.py > "$LOGS_DIR/nav_bringup_$TIMESTAMP.log" 2>&1 &
+        BRINGUP_PID=$!
+        echo "   Waiting for sensor initialization and EKF startup..."
+        sleep 12
+        
+        # Verify odometry topic
+        echo "   Verifying odometry is available..."
+        timeout 10 ros2 topic echo /odom --once > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            echo "   ✅ Odometry topic verified"
+        else
+            echo "   ⚠️  Warning: /odom topic not ready, continuing anyway..."
+        fi
+        
+        # Step 2: Launch RViz for visualization
+        echo "📊 Step 2: Starting RViz for map visualization and navigation"  
+        ros2 launch yahboomcar_nav display_launch.py use_sim_time:=false > "$LOGS_DIR/nav_rviz_$TIMESTAMP.log" 2>&1 &
+        RVIZ_PID=$!
+        sleep 3
+    fi
+    
+    # Step 4: Launch TF bridge to connect odom_frame to odom
+    echo "🔗 Step 4: Creating TF bridge between odom_frame and odom"
+    ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 odom_frame odom > "$LOGS_DIR/nav_tf_bridge_$TIMESTAMP.log" 2>&1 &
+    TF_BRIDGE_PID=$!
+    echo "   Bridge created: odom_frame → odom (connects Cartographer to robot)"
+    
+    # Step 5: Launch SLAM Navigation (Cartographer + Nav2)
+    echo "🗺️  Step 5: Starting SLAM Navigation with Cartographer and Nav2"
+    if [ "$SIMULATION_MODE" = true ]; then
+        # Launch combined Cartographer SLAM and Navigation 2 stack
+        ros2 launch yahboomcar_nav cartographer_nav2_launch.py use_sim_time:=true > "$LOGS_DIR/nav_slam_navigation_$TIMESTAMP.log" 2>&1 &
+    else
+        ros2 launch yahboomcar_nav cartographer_nav2_launch.py use_sim_time:=false > "$LOGS_DIR/nav_slam_navigation_$TIMESTAMP.log" 2>&1 &
+    fi
+    SLAM_NAV_PID=$!
+    echo "   Waiting for SLAM and Navigation stack initialization..."
+    sleep 15  # Give more time for the full nav stack to initialize
+    
+    # Verify map topic is being published
+    echo "   Verifying map topic..."
+    if timeout 10 ros2 topic echo /map --once > /dev/null 2>&1; then
+        echo "   ✅ Map topic active"
+    else
+        echo "   ⚠️  Warning: Map topic not detected yet (may appear shortly)"
+    fi
+    
+    # Verify TF tree is complete
+    echo "   Verifying TF tree integrity..."
+    timeout 10 ros2 run tf2_ros tf2_echo map base_link > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        echo "   ✅ TF tree verified (map → base_link transform available)"
+    else
+        echo "   ⚠️  TF tree not complete yet, waiting additional time..."
+        sleep 5
+        timeout 5 ros2 run tf2_ros tf2_echo map base_link > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            echo "   ✅ TF tree now ready"
+        else
+            echo "   ⚠️  Warning: TF tree may be incomplete, but continuing..."
+        fi
+    fi
+    
+    # Verify Nav2 services are available
+    echo "   Verifying Navigation 2 services..."
+    timeout 5 ros2 service list | grep -q "navigate_to_pose"
+    if [ $? -eq 0 ]; then
+        echo "   ✅ Nav2 navigate_to_pose service available"
+    else
+        echo "   ⚠️  Warning: Nav2 services not detected yet"
+    fi
+    
+    # Step 6: Set automatic initial pose (replaces manual 2D pose estimation)
+    echo "🎯 Step 6: Setting automatic initial pose at map center"
+    echo "   This replaces manual 2D pose estimation in RViz"
+    python3 scripts/set_initial_pose.py > "$LOGS_DIR/nav_initial_pose_$TIMESTAMP.log" 2>&1
+    if [ $? -eq 0 ]; then
+        echo "   ✅ Automatic initial pose set at (0.0, 0.0)"
+    else
+        echo "   ⚠️  Warning: Initial pose setting failed, check logs"
+    fi
+    
+    echo ""
+    echo "✅ B4M NAVIGATION BASIC ACTIVE (Nav2 Copy)"
+    echo "======================================"
+    echo "🧭 Robot is ready for goal-based navigation with SLAM"
+    echo "📊 Use RViz to:"
+    echo "   1. Monitor real-time map building: /map topic"
+    echo "   2. Set navigation goals: Use '2D Nav Goal' tool in RViz toolbar"  
+    echo "   3. Watch path planning: Global and local costmaps"
+    echo "   4. Track robot position: /tf displays robot location"
+    echo "   5. Note: Initial pose is set automatically - no manual '2D Pose Estimate' needed"
+    echo ""
+    echo "🎯 To navigate:"
+    echo "   - Click '2D Nav Goal' button in RViz toolbar"
+    echo "   - Click and drag on map to set goal position and orientation"
+    echo "   - Robot will plan path and navigate while avoiding obstacles"
+    echo ""
+    echo "🛑 To stop navigation:"
+    echo "   - Press Ctrl+C in this terminal, OR"
+    echo "   - Run: ./b4m_shutdown.sh --keep-agent"
+    echo ""
+    echo "💡 Tips:"
+    echo "   - The map builds as the robot moves and explores"
+    echo "   - Set goals in already-mapped areas for best results"
+    echo "   - Robot will re-plan if obstacles block the path"
+    echo ""
+    echo "🔬 Testing Status:"
+    echo "   - ✅ Basic Nav2 functionality (copied from --nav)"
+    echo "   - ✅ Automatic 2D pose setting (implemented and active)"
+    echo "   - ✅ B4M spatial analysis (direct adaptation from Ollama version)"
+    echo "   - 🚧 LLM goal selection (B4M API integration ready)"
+    echo ""
+    
+    # Automatically enable B4M spatial analysis
+    echo "🤖 B4M INTEGRATION READY"
+    echo "======================================"
+    echo "Basic Nav2 navigation is ready. Now starting B4M autonomous exploration..."
+    echo ""
+    echo "⚡ Automatically enabling B4M spatial analysis..."
+    
+    # Launch B4M exploration
+    echo "🧠 Step 7: Starting B4M Exploration Spatial Analysis"
+    echo "   This will analyze surroundings every 30 seconds and suggest navigation goals"
+    echo "   🚀 Starting B4M spatial analysis in foreground..."
+    B4M_LOG_FILE="$LOGS_DIR/b4m_spatial_$TIMESTAMP.log" python3 scripts/b4m_explore_spatial.py
+    # B4M script will run in foreground and handle its own shutdown
+    # The script contains comprehensive console output per B4M_OUTPUT.md specification
+fi
+
 # Handle B4M API mode (same as explore mode but with spatial interpreter)
 if [ "$B4M_API" = true ]; then
     echo "🔌 B4M API MODE"
@@ -2040,16 +2312,16 @@ fi
 if [ "$B4M_PING" = true ]; then
     echo "📡 B4M PING API TEST MODE"
     echo "================================="
-    echo "Testing bike4mind API with random obstacle detection messages"
+    echo "Testing B4M API with robot navigation messages"
     echo ""
     echo "This test will:"
-    echo "- Generate random obstacle reports (left/front/right directions)"
-    echo "- Send messages to bike4mind API endpoint"
-    echo "- Display API responses in real-time"
-    echo "- Wait for keypress between messages"
-    echo "- Exit on CTRL+C"
+    echo "- Generate random obstacle scenarios for robot navigation"
+    echo "- Send navigation requests to B4M API endpoint"
+    echo "- Display navigation decisions and API responses"
+    echo "- Maintain session context across requests"
+    echo "- Press ENTER between tests, CTRL+C to exit"
     echo ""
-    echo "API endpoint: https://app.bike4mind.com/api/chat"
+    echo "API endpoint: https://app.bike4mind.com/api/ai/llm"
     
     # Check for API key in environment
     if [ -z "$B4M_API_KEY" ]; then
@@ -2059,6 +2331,15 @@ if [ "$B4M_PING" = true ]; then
         exit 1
     fi
     echo "API key: [CONFIGURED VIA ENVIRONMENT]"
+    
+    # Check for valid session ID
+    if [ -z "$B4M_SESSION_ID" ]; then
+        echo "Using default session ID from documentation: 68b1e0fcac3f77504fce09b5"
+        echo "   (This may fail if you don't have access to this session)"
+        echo "   To use your own session: export B4M_SESSION_ID='your_session_id'"
+    else
+        echo "Using custom session ID: $B4M_SESSION_ID"
+    fi
     echo ""
     
     # Make script executable if needed

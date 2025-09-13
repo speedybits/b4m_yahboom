@@ -57,18 +57,18 @@ timeout 3 ros2 topic pub /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.0, y: 
 
 # Method 2: Cancel any active navigation goals
 shutdown_log "Canceling any active navigation goals"
-ros2 action send_goal /cancel_navigation nav2_msgs/action/NavigateToPose '{}' 2>/dev/null &
-ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose '{}' 2>/dev/null &
+timeout 5 ros2 action send_goal /cancel_navigation nav2_msgs/action/NavigateToPose '{}' 2>/dev/null &
+timeout 5 ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose '{}' 2>/dev/null &
 
 # Method 3: Send emergency stop if available
-ros2 topic pub --once /emergency_stop std_msgs/msg/Bool '{data: true}' 2>/dev/null &
+timeout 5 ros2 topic pub --once /emergency_stop std_msgs/msg/Bool '{data: true}' 2>/dev/null &
 
 # Wait for commands to take effect
 sleep 2
 
 # Method 4: Final single zero velocity command
 shutdown_log "Sending final stop command"
-ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}' 2>&1 | tee -a "$SHUTDOWN_LOG" || true
+timeout 5 ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}' 2>&1 | tee -a "$SHUTDOWN_LOG" || true
 
 # Kill any remaining velocity pub processes
 pkill -f "ros2 topic pub /cmd_vel" 2>/dev/null || true
@@ -200,6 +200,7 @@ shutdown_log "Step 5: Cleaning up remaining Python processes"
 # Kill Python scripts but avoid killing stop_motors.sh
 ps aux | grep "python.*yahboom" | grep -v "stop_motors" | awk '{print $2}' | xargs -r kill -9 2>/dev/null
 ps aux | grep "python.*b4m" | grep -v "stop_motors" | awk '{print $2}' | xargs -r kill -9 2>/dev/null
+ps aux | grep "python.*rqt" | grep -v "stop_motors" | awk '{print $2}' | xargs -r kill -9 2>/dev/null
 
 # Step 6: Stop RViz and GUI applications
 shutdown_log "Step 6: Stopping RViz and GUI applications"
@@ -207,6 +208,16 @@ shutdown_log "Step 6: Stopping RViz and GUI applications"
 pkill -f "rviz2" 2>/dev/null
 sleep 2
 pkill -9 -f "rviz2" 2>/dev/null
+
+# Stop RQT GUI processes
+shutdown_log "Stopping RQT GUI processes"
+pkill -f "rqt_gui_py_node" 2>/dev/null
+pkill -f "rqt_gui" 2>/dev/null
+pkill -f "rqt_" 2>/dev/null
+sleep 2
+pkill -9 -f "rqt_gui_py_node" 2>/dev/null
+pkill -9 -f "rqt_gui" 2>/dev/null
+pkill -9 -f "rqt_" 2>/dev/null
 
 # Clean up RViz Qt applications specifically (not all Qt apps)
 pkill -f "rviz.*qt" 2>/dev/null
