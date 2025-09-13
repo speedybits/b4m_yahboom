@@ -59,10 +59,14 @@ Runs comprehensive regression test suite with automated validation.
 | `--simulation` | Launch in Gazebo Classic simulation mode |
 | `--regression` | Run comprehensive regression test suite (navigation + laser stability) |
 | `--explore` | Enable autonomous exploration mode with obstacle avoidance |
-| `--b4m-api` | Enable B4M API mode with interactive spatial interpreter |
-| `--ollama` | Enable Ollama LLM mode for AI-powered autonomous navigation |
+| `--b4m-api` | Enable B4M API mode (duplicate of --explore for API integration) |
+| `--ollama` | Enable Ollama mode (basic cardinal directions) |
+| `--ollama-advanced` | Enable Ollama Advanced mode (360° spatial context) |
+| `--ollama-nav` | Enable Ollama Navigation mode (LLM-guided Nav2 goal selection) |
+| `--ollama-nav-explore` | Enable Ollama exploration mode (autonomous exploration with LLM) |
+| `--b4m-nav-explore` | Enable B4M exploration mode (autonomous exploration with B4M API) |
 | `--b4m-HA` | Enable Home Assistant MQTT integration features |
-| `--b4m-ping` | Test bike4mind API with random obstacle detection messages |
+| `--b4m-ping` | Test B4M API with robot navigation messages |
 | `-h, --help` | Show help information |
 
 ## Home Assistant Integration (--b4m-HA)
@@ -85,169 +89,95 @@ The `--b4m-HA` flag controls whether MQTT and Home Assistant features are enable
 - Suitable for standalone operation or development
 - Reduces system complexity and dependencies
 
-### Example Commands:
-```bash
-# Basic operation without Home Assistant
-./b4m_launch.sh --simulation
-
-# Full Home Assistant integration
-./b4m_launch.sh --simulation --b4m-HA
-
-# Regression testing (doesn't need MQTT)
-./b4m_launch.sh --simulation --regression
-
-# Exploration with Home Assistant monitoring
-./b4m_launch.sh --explore --b4m-HA
-```
 
 ## Usage Scenarios
 
-### 📋 Quick Reference: Real Robot vs Simulation
-| Use Case | Command | What Happens |
-|----------|---------|--------------|
-| **Explore with REAL robot** | `./b4m_launch.sh --explore` | Physical robot explores real environment |
-| **Explore in simulation** | `./b4m_launch.sh --simulation --explore` | Simulated robot explores in Gazebo Classic |
-| **Ollama AI navigation - real robot** | `./b4m_launch.sh --ollama` | Physical robot with LLM-powered autonomous navigation |
-| **Ollama AI navigation - simulation** | `./b4m_launch.sh --simulation --ollama` | Simulated robot with LLM decision-making |
-| **Regular real robot launch** | `./b4m_launch.sh` | Basic robot setup without MQTT |
-| **Real robot with Home Assistant** | `./b4m_launch.sh --b4m-HA` | Full system with MQTT/HA integration |
-| **Regular simulation launch** | `./b4m_launch.sh --simulation` | Basic simulation without MQTT |
-| **Simulation with Home Assistant** | `./b4m_launch.sh --simulation --b4m-HA` | Full simulation with MQTT/HA |
+### 📋 Quick Reference
+| Mode | Real Robot | Simulation |
+|------|------------|------------|
+| **Basic Launch** | `./b4m_launch.sh` | `./b4m_launch.sh --simulation` |
+| **With Home Assistant** | `./b4m_launch.sh --b4m-HA` | `./b4m_launch.sh --simulation --b4m-HA` |
+| **Exploration** | `./b4m_launch.sh --explore` | `./b4m_launch.sh --simulation --explore` |
+| **Navigation 2** | `./b4m_launch.sh --nav` | `./b4m_launch.sh --simulation --nav` |
+| **Ollama Basic** | `./b4m_launch.sh --ollama` | `./b4m_launch.sh --simulation --ollama` |
+| **Ollama Advanced** | `./b4m_launch.sh --ollama-advanced` | `./b4m_launch.sh --simulation --ollama-advanced` |
+| **Ollama Nav2** | `./b4m_launch.sh --ollama-nav` | `./b4m_launch.sh --simulation --ollama-nav` |
+| **Ollama Explore** | `./b4m_launch.sh --ollama-nav-explore` | `./b4m_launch.sh --simulation --ollama-nav-explore` |
+| **B4M Explore** | `./b4m_launch.sh --b4m-nav-explore` | `./b4m_launch.sh --simulation --b4m-nav-explore` |
+| **Regression Test** | `./b4m_launch.sh --regression` | `./b4m_launch.sh --simulation --regression` |
 
-### 1. Interactive SLAM Mapping in Simulation
+### Common Usage Examples
+
+#### Interactive SLAM Mapping
 ```bash
-# Using integrated launch with Gazebo Classic
+# Launch with SLAM in simulation
 ./b4m_launch.sh --simulation
 
-# Or using direct Gazebo Classic launch for SLAM testing
-ros2 launch yahboomcar_nav slam_test_gazebo_classic.py
-```
-Then use keyboard teleop to drive the robot:
-```bash
+# Drive robot with keyboard
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
 ```
-Monitor SLAM map generation (69x77 grid) in RViz.
 
-### 2. Automated System Validation
+#### Automated Testing
 ```bash
+# Run regression tests in simulation
 ./b4m_launch.sh --simulation --regression
-```
-Runs comprehensive regression test suite including:
-- 360-degree rotation test with laser scan stability validation
-- Automated image comparison for RViz visualization
-- SLAM map generation verification
-- Full system health checks
-- Note: MQTT testing only if --b4m-HA is also provided
 
-### 3. Quick System Check
-```bash
+# Run with debug output
 ./b4m_launch.sh --simulation --regression --debug
 ```
-Validates all components with verbose output for troubleshooting, including regression tests.
 
-### 4. Real Robot Testing
+#### Development Mode
 ```bash
-./b4m_launch.sh --regression --debug
-```
-Runs regression tests with physical robot (requires robot to be powered on).
-
-### 5. Development/Debug Mode
-```bash
+# Debug mode with verbose logging
 ./b4m_launch.sh --simulation --debug
 ```
-Interactive mode with verbose logging for development work.
 
-### 6. Ollama LLM Navigation Mode
+### 6. Ollama LLM Navigation Modes
 
-#### Real Robot with Ollama AI Navigation
-```bash
-# Prerequisites: ollama serve, ollama pull llama3.2:latest
-./b4m_launch.sh --ollama
-```
-Physical robot uses Ollama LLM for fully autonomous obstacle navigation decisions.
+**Prerequisites for all Ollama modes:**
+- Ollama service running: `ollama serve`
+- Model downloaded: `ollama pull llama3.2:latest`
+- Config file: `config/ollama_config.yaml`
 
-#### Simulation with Ollama AI Navigation
-```bash
-# Prerequisites: ollama serve, ollama pull llama3.2:latest
-./b4m_launch.sh --simulation --ollama
-```
-Simulated robot demonstrates LLM-powered navigation in Gazebo Classic.
+| Mode | Description | Command |
+|------|-------------|------|
+| **Basic** | Cardinal directions (front/left/right/behind) | `--ollama` |
+| **Advanced** | 360° spatial context with clock positions | `--ollama-advanced` |
+| **Nav2** | LLM sets Nav2 goals for path planning | `--ollama-nav` |
+| **Explore** | Autonomous exploration with LLM goal selection | `--ollama-nav-explore` |
 
-**Ollama LLM Features:**
-- **Fully Autonomous**: No user input required - LLM makes all decisions
-- **Real-time Decision Making**: Obstacle analysis and navigation choices in 3-15 seconds
-- **Confidence Scoring**: Each decision includes confidence level (0.0-1.0)
-- **Reasoning Output**: LLM explains why it chose each action
-- **Hysteresis Protection**: Prevents sensor noise from causing decision flicker
-- **Safety Timeouts**: Robot stops if LLM takes too long to respond
-- **Real-time Topics**:
-  - Console output shows all LLM decisions and reasoning
-  - Same spatial analysis as B4M API mode but automated
-  - Timestamps on all navigation events
-- **Control**: Only Ctrl+C to stop (fully autonomous otherwise)
+**Features:**
+- Fully autonomous - no user input required
+- Real-time decision making with confidence scoring
+- LLM reasoning output for each action
+- Safety features: timeouts, minimum distances, emergency stops
+- Press Ctrl+C to stop
 
-### 7. B4M LiDAR Navigation Mode
+### 7. B4M Navigation Explore Mode
 
-#### Real Robot with AI Navigation
-```bash
-./b4m_launch.sh --b4m-lidar
-```
-Physical robot uses bike4mind API for intelligent obstacle navigation.
+**Prerequisites:** `B4M_API_KEY` environment variable set
 
-#### Simulation with AI Navigation
-```bash
-./b4m_launch.sh --simulation --b4m-lidar
-```
-Simulated robot demonstrates API-based navigation in Gazebo.
+Combines Navigation 2 with B4M API for LLM-guided autonomous exploration:
+- Nav2 path planning and obstacle avoidance
+- B4M API analyzes environment and suggests goals
+- Cartographer SLAM for real-time mapping
+- Intelligent exploration target selection
+- Safe navigation with collision avoidance
 
-**B4M LiDAR Features:**
-- **API Integration**: Connects to bike4mind API for obstacle analysis
-- **Natural Language**: Receives navigation suggestions in plain English
-- **Smart Cooldown**: 20-second API rate limiting
-- **Safe Distance**: Maintains 1-foot (30.48cm) minimum distance
-- **Real-time Topics**:
-  - `/b4m_lidar/status` - Current navigation state
-  - `/b4m_lidar/obstacle_info` - Detected obstacles
-  - `/b4m_lidar/api_cooldown` - API availability
-  - `/b4m_lidar/command` - Control interface
+### 8. Autonomous Exploration Mode
 
-**Control Commands:**
-```bash
-# Stop navigation
-ros2 topic pub -1 /b4m_lidar/command std_msgs/String '{data: stop}'
+Simple obstacle-avoiding exploration with SLAM mapping:
 
-# Resume navigation
-ros2 topic pub -1 /b4m_lidar/command std_msgs/String '{data: start}'
+**Features:**
+- Safe movement at 0.08 m/s
+- Obstacle detection and avoidance
+- Random direction changes for thorough exploration
+- Real-time SLAM map building
+- Runs continuously until Ctrl+C
 
-# Reset system
-ros2 topic pub -1 /b4m_lidar/command std_msgs/String '{data: reset}'
-```
-
-### 7. Autonomous Exploration Mode
-
-#### Real Robot Exploration (Physical Robot)
-```bash
-./b4m_launch.sh --explore
-```
-**Physical robot** autonomously explores the real environment with obstacle avoidance while building a SLAM map.
-
-#### Gazebo Classic Simulation Exploration
-```bash
-./b4m_launch.sh --simulation --explore
-```
-**Simulated robot** autonomously explores the Gazebo Classic simulation environment with obstacle avoidance while building a SLAM map.
-
-**Important:** 
-- `--explore` alone = **REAL PHYSICAL ROBOT** exploration
-- `--explore --simulation` = **GAZEBO SIMULATION** exploration
-
-**Exploration Features:**
-- **Safe movement**: Very slow speed (0.08 m/s) for safe exploration
-- **Obstacle avoidance**: Uses laser scanner to detect and avoid obstacles
-- **Random exploration**: Changes direction periodically to explore thoroughly
-- **SLAM integration**: Builds map in real-time during exploration
-- **Continuous operation**: Runs until manually stopped with Ctrl+C
-- **Works in both modes**: Identical behavior in simulation and real robot
+**Usage:**
+- Real robot: `./b4m_launch.sh --explore`
+- Simulation: `./b4m_launch.sh --simulation --explore`
 
 ## System Launch Steps
 
@@ -293,7 +223,7 @@ Available in both simulation and real robot modes:
 Launch Navigation 2 with Cartographer SLAM for interactive goal-based navigation:
 
 1. **System Launch**: Initializes robot, sensors, and RViz
-2. **Cartographer SLAM**: Real-time mapping and localization  
+2. **Cartographer SLAM**: Real-time mapping and localization
 3. **Nav2 Stack**: Full navigation 2 system with path planning
 4. **Interactive Control**: Use RViz '2D Nav Goal' tool to set destinations
    - Click '2D Nav Goal' button in RViz toolbar
@@ -309,104 +239,62 @@ Launch Navigation 2 with Cartographer SLAM for interactive goal-based navigation
 - **Path visualization**: See planned routes in RViz
 - **Compatible with simulation and real robot**
 
-### Special Testing Modes
+### Ollama Navigation Modes (`--ollama-*`)
 
-#### B4M LiDAR Mode (--b4m-lidar)
-Enables intelligent LiDAR-based navigation with bike4mind API integration:
-- Real-time obstacle detection and classification via API
-- Natural language navigation suggestions
-- API cooldown management (20 seconds between calls)
-- Stop distance: 30.48cm (1 foot) from obstacles
-- Publishes status on `/b4m_lidar/status` and `/b4m_lidar/obstacle_info`
-- Control via `/b4m_lidar/command` topic (stop/start/reset)
-- Works in both simulation and real robot modes
-- Incompatible with other navigation modes
+Multiple LLM-powered navigation options:
+
+1. **Basic Ollama (--ollama)**: Simple cardinal direction decisions
+2. **Advanced Ollama (--ollama-advanced)**: Full 360° spatial awareness
+3. **Ollama Nav (--ollama-nav)**: LLM sets Nav2 goals intelligently
+4. **Ollama Explore (--ollama-nav-explore)**: Autonomous exploration with LLM
+
+### B4M Navigation Explore Mode (`--b4m-nav-explore`)
+
+Combines Nav2 with B4M API for intelligent exploration:
+
+1. **System Launch**: Same as Nav2 mode
+2. **B4M API Integration**: LLM analyzes environment via API
+3. **Goal Selection**: LLM chooses exploration targets
+4. **Autonomous Operation**: Continuous exploration without user input
+
+### Special Modes
 
 #### B4M API Mode (--b4m-api)
-Interactive spatial interpretation with obstacle analysis:
-- Launches Cartographer SLAM for real-time mapping
-- Runs B4M Spatial Interpreter in the same terminal (foreground)
-- Robot moves forward until obstacle detected
-- Provides detailed spatial descriptions (front/left/right/behind)
-- Interactive navigation choices (1-4 options) in same terminal
-- User selects action and robot continues
-- Logs spatial analysis to file for debugging
+Duplicate of --explore mode for API integration testing:
+- Same functionality as autonomous exploration mode
+- Used for backward compatibility with API integration
+- Robot autonomously explores with obstacle avoidance
+- Builds SLAM map in real-time
 - Works in both simulation and real robot modes
-- Incompatible with other navigation modes
 
-**How it works:**
-- Robot starts moving forward automatically
-- When obstacle detected, shows spatial analysis
-- Prompts for navigation choice: 1) Turn LEFT 90°, 2) Turn RIGHT 90°, 3) Turn AROUND 180°, 4) Move FORWARD
-- User selects option in same terminal where b4m_launch.sh was run
-- Robot executes choice and continues until next obstacle
-- Press Ctrl+C to stop and clean up
+#### Ollama LLM Modes
+Multiple LLM-powered navigation modes using Ollama:
 
-#### Ollama LLM Mode (--ollama)
-AI-powered autonomous navigation using Large Language Models for decision-making:
-- Launches Cartographer SLAM for real-time mapping
-- Runs Ollama LLM integration in the same terminal (foreground)
-- Robot moves forward until obstacle detected
-- LLM analyzes spatial data and makes autonomous navigation decisions
-- Real-time decision logging with confidence scores and reasoning
-- Fully autonomous operation - no user interaction required
-- Works in both simulation and real robot modes
-- Incompatible with other navigation modes
+**Basic Mode (--ollama)**: Cardinal direction navigation
+**Advanced Mode (--ollama-advanced)**: 360° spatial awareness
+**Nav Mode (--ollama-nav)**: LLM-guided Nav2 goal setting
+**Explore Mode (--ollama-nav-explore)**: Autonomous exploration with LLM
 
-**Prerequisites:**
-- Ollama service running locally: `ollama serve`
-- Ollama model downloaded: `ollama pull llama3.2:latest` (or model specified in config)
-- Configuration file: `config/ollama_config.yaml`
+**Prerequisites for all Ollama modes:**
+- Ollama service running: `ollama serve`
+- Model downloaded: `ollama pull llama3.2:latest`
+- Configuration: `config/ollama_config.yaml`
 
-**How it works:**
-- Robot starts moving forward automatically
-- When obstacle detected at 28cm, robot stops and waits for LLM decision
-- Spatial sensor data sent to Ollama API as structured prompt
-- LLM responds with JSON decision: action, reason, and confidence
-- Robot executes LLM decision and continues autonomously
-- Obstacle detection uses hysteresis (detect at 28cm, clear at 32cm) to prevent sensor noise
-- Real-time unbuffered output shows all decisions and reasoning
-- Press Ctrl+C to stop and clean up
-
-**Expected terminal output example:**
-```
-[2024-12-08 15:42:17] 🤖 Ollama Navigator initialized
-[2024-12-08 15:42:18] Moving forward...
-[2024-12-08 15:42:23] 🛑 OBSTACLE DETECTED - Stopping robot
-[2024-12-08 15:42:23] 📡 Calling Ollama API...
-[2024-12-08 15:42:25] 🤖 LLM Decision: turn_right (confidence: 0.85)
-[2024-12-08 15:42:25] 💭 Reasoning: Front blocked, right path clear for safe navigation
-[2024-12-08 15:42:25] ↩️  Executing: turn_right
-[2024-12-08 15:42:28] ✅ Turn complete, path clear - resuming forward
-```
-
-**Safety features:**
-- Robot stops completely while waiting for Ollama response (3-15 second timeout)
-- Emergency stop distance: 10cm (overrides all other behavior)
-- Manual override: Ctrl+C stops immediately
-- Confidence threshold: 0.7 minimum to execute LLM decisions
-- Fallback: Robot stops if LLM confidence too low or API fails
+See Section 6 for detailed documentation of each mode.
 
 #### B4M Ping Mode (--b4m-ping)
-Standalone API testing tool that:
-- Tests bike4mind API connectivity
-- Sends random obstacle detection messages
+Standalone API testing tool:
+- Tests B4M API connectivity
+- Sends robot navigation messages
 - Validates API response handling
 - Incompatible with other modes
 
-#### Localization Test Mode (--localization-test) [Experimental]
-Advanced testing for localization quality:
-- Measures AMCL performance metrics
-- Tests navigation accuracy
-- Can be combined with --tune-params for parameter optimization
-- Can use --parameter-set to test specific AMCL configurations
-
-#### Navigation Performance Test (--navigation-performance-test) [Experimental]
+#### Navigation Performance Test (--navigation-performance-test) [Untested]
 Executes comprehensive 1x1m square navigation testing:
 - Precise movement patterns
 - Performance metrics collection
-- Automatically enables localization testing
 - Validates navigation stack accuracy
+- Note: This mode is currently untested and may not work as expected
 
 ## Operation Modes
 
@@ -910,82 +798,3 @@ For additional help:
 - Refer to individual component documentation in the workspace
 - Monitor ROS2 system status with standard ROS2 tools
 
-## 🗺️ Autonomous Exploration Mode
-
-### Quick Reference: Real Robot vs Simulation
-
-| Use Case | Command | What Happens |
-|----------|---------|--------------|
-| **Explore with REAL robot** | `./b4m_launch.sh --explore` | Physical robot explores real environment |
-| **Explore in simulation** | `./b4m_launch.sh --simulation --explore` | Simulated robot explores in Gazebo Classic |
-
-### Enhanced Simulation Environment
-
-When using `--simulation --explore`, the robot operates in a rich obstacle environment featuring:
-
-- **Boundary Walls**: 7x7 meter enclosed area with proper boundaries
-- **Central Table**: Large 0.8x1.2m obstacle for complex navigation testing  
-- **Cylindrical Pillars**: Multiple columns of varying sizes for avoidance challenges
-- **Box Obstacles**: Scattered rectangular obstacles at different orientations
-- **L-shaped Obstacles**: Complex geometric challenges requiring sophisticated navigation
-- **Narrow Passages**: Test precise navigation through tight spaces
-- **Reference Markers**: Visual corner markers for orientation and debugging
-
-### Exploration Performance Features
-
-- **Safe Movement**: Very slow exploration speed (0.08 m/s) for safety
-- **1-Foot Stop Distance**: Robot stops immediately when obstacles are ≤1 foot (30.48cm) away
-- **Random Turn Direction**: Turns randomly left or right when obstacles are detected
-- **Turn Until Clear**: Continues turning in place until path is clear (>40cm)
-- **360° Obstacle Detection**: Full laser scan processing with real-time obstacle avoidance
-- **Smart Navigation**: Forward → stop → turn in place → forward state machine
-- **SLAM Integration**: Real-time map building while exploring obstacles
-- **Continuous Operation**: Runs until manually stopped with Ctrl+C
-- **Status Logging**: Regular exploration updates every 10 seconds
-
-### Usage Examples
-
-#### Quick Start - Real Robot
-```bash
-# Start exploration on physical robot
-./b4m_launch.sh --explore
-# Robot will explore real environment, stopping at 1-foot distance from obstacles
-```
-
-#### Quick Start - Enhanced Simulation  
-```bash
-# Start exploration in Gazebo Classic with rich obstacle environment
-./b4m_launch.sh --simulation --explore
-# Virtual robot explores complex environment, demonstrating 1-foot stop behavior with obstacles
-```
-
-#### With Debug Logging
-```bash
-# Real robot with verbose logging
-./b4m_launch.sh --explore --debug
-
-# Enhanced simulation with verbose logging  
-./b4m_launch.sh --simulation --explore --debug
-```
-
-### ⚠️ Safety Notes
-
-**Real Robot Operation** (`--explore`):
-- ALWAYS supervise physical robot operation
-- Ensure clear space around robot before starting
-- Robot moves slowly but continuously
-- Emergency stop: Ctrl+C in terminal
-
-**Enhanced Simulation** (`--simulation --explore`):
-- Safe for testing and development
-- No physical robot movement
-- Visual monitoring via RViz
-- Rich obstacle interactions demonstrating 1-foot stop behavior
-- Perfect for observing obstacle avoidance algorithms in action
-
-### Available Test Scripts
-- `test_square_corners.py` - Main navigation test (uses Gazebo Classic)
-- `test_slam_working.py` - SLAM functionality validation
-- `test_simple.py` - Basic system functionality test
-- `scripts/autonomous_exploration.py` - Autonomous exploration with obstacle avoidance
-- Various specialized tests: `test_motor_control.py`, `test_turning.py`, etc.
