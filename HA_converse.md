@@ -1,7 +1,7 @@
 # HA_converse Specification
 
 ## Overview
-A speech-to-text application for Ubuntu Linux 22.04 LTS that uses OpenAI's Whisper model to continuously capture and transcribe spoken words, maintaining a rolling buffer of the last 500 words.
+A speech-to-text application for Ubuntu Linux 22.04 LTS that uses Whisper models (via faster-whisper for efficiency) to continuously capture and transcribe spoken words, maintaining a rolling buffer of the last 100 words.
 
 ## Core Functionality
 
@@ -14,12 +14,12 @@ A speech-to-text application for Ubuntu Linux 22.04 LTS that uses OpenAI's Whisp
 - Silent periods handled transparently (no output during silence)
 
 ### 2. Rolling Buffer Management
-- Maintain a rolling buffer of the previous 500 words
+- Maintain a rolling buffer of the previous 100 words (configurable)
 - Store current buffer in `conversation.txt`
 - Update file as new words are captured
 
 ### 3. Overflow Handling
-When the 500-word limit is exceeded:
+When the 100-word limit is exceeded:
 1. Create a backup copy of `conversation.txt`
 2. Name the backup as `prompt_<datetime>.txt` where `<datetime>` follows the format `YYYY-MM-DD-HH-MM-SS`
 3. Output notification to Linux terminal displaying the created filename
@@ -32,15 +32,13 @@ When the 500-word limit is exceeded:
 - Python 3.10+ (default on Ubuntu 22.04)
 
 ### Dependencies
-- **Whisper**: `openai-whisper` - Core STT engine
-- **Audio Capture**: `sounddevice` or `pyaudio` - Microphone input
+- **Whisper**: `faster-whisper` - Optimized STT engine (preferred) or `openai-whisper` as fallback
+- **Audio Capture**: `sounddevice` - Microphone input
 - **Audio Processing**: `numpy` - Audio data manipulation
-- **Optional GPU Support**: CUDA toolkit for accelerated inference
-- **VAD**: `webrtcvad` or `silero-vad` - Voice activity detection
 - Standard Python libraries for file I/O and datetime
 
 ### File Management
-- **Primary file**: `conversation.txt` - Contains current rolling buffer (up to 500 words) in working directory
+- **Primary file**: `conversation.txt` - Contains current rolling buffer (up to 100 words) in working directory
 - **Archive directory**: `prompts/` - Directory for archived conversations
 - **Archive files**: `prompts/prompt_YYYY-MM-DD-HH-MM-SS.txt` - Timestamped backups when buffer exceeds limit
 
@@ -67,8 +65,10 @@ When the 500-word limit is exceeded:
   5. Clean exit
 
 ### Whisper Configuration
+- **Model Implementation**: `faster-whisper` with CPU optimization (int8 compute type)
 - **Model Selection**: Using `base` model (74M parameters) for optimal balance of accuracy and latency
 - **Language**: Fixed to English (`language='en'`) for best accuracy
+- **VAD**: Enabled in faster-whisper for efficient processing
 - **Processing Strategy**:
   - Audio chunks of 10 seconds with 0.5 second overlap for accuracy/latency balance
   - Overlap prevents word cutoff at chunk boundaries
@@ -129,7 +129,7 @@ When the 500-word limit is exceeded:
 ## Configuration Options
 
 ### Adjustable Parameters
-- Buffer size (default: 500 words)
+- Buffer size (default: 100 words, configurable)
 - Archive directory path
 - **Whisper-specific**:
   - Model: `base` (default, configurable)
@@ -150,12 +150,12 @@ When the 500-word limit is exceeded:
 ## Performance Considerations
 
 ### Resource Usage
-- **Model Memory Requirements**:
-  - Tiny: ~390 MB
-  - Base: ~740 MB
-  - Small: ~2.4 GB
-  - Medium: ~7.6 GB
-  - Large: ~15.5 GB
+- **Model Memory Requirements (faster-whisper)**:
+  - Tiny: ~39 MB
+  - Base: ~74 MB  (currently used)
+  - Small: ~244 MB
+  - Medium: ~769 MB
+  - Large: ~1.5 GB
 - **Processing Optimization**:
   - GPU acceleration when available (10-50x speedup)
   - CPU with multiple threads for parallel processing
@@ -196,6 +196,15 @@ When the 500-word limit is exceeded:
 - Fallback from base to tiny model during high CPU usage
 - User-selectable performance profiles (accuracy-first, balanced, speed-first)
 - Real-time monitoring of transcription backlog
+
+## Implementation Notes
+
+### Actual Implementation
+- Uses `faster-whisper` library for 10x smaller model size
+- Supports fallback to `openai-whisper` if faster-whisper unavailable
+- Buffer size reduced to 100 words for testing (configurable)
+- Files in `prompts/` directory are gitignored
+- Setup via `setup_ha_converse_minimal.sh` for minimal disk usage
 
 ## Testing Requirements
 

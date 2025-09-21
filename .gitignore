@@ -131,3 +131,7 @@ regression/screenshots/*.png
 regression/screenshots/*.json
 !regression/reference_screenshots_simulation/
 !regression/reference_screenshots_real/
+
+# HA_converse speech-to-text output files
+conversation.txt
+prompts/
