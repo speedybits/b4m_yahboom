@@ -14,21 +14,40 @@ A speech-to-text application for Ubuntu Linux 22.04 LTS that uses Whisper models
 - Silent periods handled transparently (no output during silence)
 
 ### 2. Rolling Buffer Management
-- Maintain a rolling buffer of the previous 100 words (configurable)
+- Maintain a rolling buffer of the previous 20 words (configurable)
 - Store current buffer in `conversation.txt`
 - Update file as new words are captured
 - Buffer continuously overwrites oldest words when full (no automatic archiving)
 
-### 3. Trigger-Based Archiving
-When the trigger word "Rosie" is detected:
-1. Immediately archive the current buffer contents (regardless of word count)
-2. Create a backup copy of `conversation.txt`
-3. Name the backup as `prompt_<datetime>.txt` where `<datetime>` follows the format `YYYY-MM-DD-HH-MM-SS`
-4. Output notification to Linux terminal displaying the created filename
-5. Clear `conversation.txt` and restart with new content
-6. **If --b4m switch enabled**: Send archived text to B4M API and display response
+### 3. Automatic B4M Processing
+When the conversation buffer reaches 20 words:
+1. **If --b4m switch enabled**: Send current buffer contents to B4M API
+2. Store AI response in `response.txt` (overwrite if file exists)
+3. Continue normal buffer operation (circular buffer, oldest words replaced)
+4. No archiving occurs automatically
 
-**Note**: Without the trigger word, the buffer simply overwrites oldest words when full - no archiving occurs.
+### 4. Voice Response Triggering
+Two modes are available for triggering voice response:
+
+#### 4a. Keyword Trigger Mode (Default)
+When the trigger word "Rosie" is detected:
+1. **If --piper switch enabled**: Read and speak contents of `response.txt` using Piper TTS
+2. **Clear `response.txt` after speaking** to prevent repeated responses
+3. Continue normal operation (no archiving, no buffer clearing)
+4. **If `response.txt` doesn't exist or is empty**: Show info message but remain silent (no voice output)
+
+#### 4b. Interactive Mode (--interactive switch)
+When **--interactive switch enabled**:
+1. Monitor for 3 seconds of continuous silence
+2. **If silence detected and --piper enabled**: Read and speak contents of `response.txt` using Piper TTS
+3. **Clear `response.txt` after speaking** to prevent repeated responses
+4. Continue normal operation after speaking
+5. **If `response.txt` doesn't exist or is empty**: Remain silent (no voice output)
+6. Silence detection resets only when speech is detected (not after voice response)
+7. Timer displays after 0.5 seconds of silence, stops after trigger
+8. Prevents repeated triggers until speech resets the system
+
+**Note**: Interactive mode disables keyword ("Rosie") trigger detection. Only one trigger mode can be active at a time.
 
 ## Technical Requirements
 
@@ -46,8 +65,9 @@ When the trigger word "Rosie" is detected:
 
 ### File Management
 - **Primary file**: `conversation.txt` - Contains current rolling buffer (up to 100 words) in working directory
-- **Archive directory**: `prompts/` - Directory for archived conversations
-- **Archive files**: `prompts/prompt_YYYY-MM-DD-HH-MM-SS.txt` - Timestamped backups when buffer exceeds limit
+- **Response file**: `response.txt` - Contains latest B4M AI response (overwritten with each new response)
+- **Archive directory**: `prompts/` - Directory for manual archives (not used in automatic workflow)
+- **Archive files**: `prompts/prompt_YYYY-MM-DD-HH-MM-SS.txt` - Manual timestamped backups (optional feature)
 
 ## Implementation Details
 
@@ -63,11 +83,14 @@ When the trigger word "Rosie" is detected:
 - **Runtime Behavior**:
   - Continuous audio capture in 10-second chunks
   - Remove exact consecutive duplicate phrases
-  - Monitor for trigger word "Rosie" in transcriptions
+  - **Trigger Detection**:
+    - **Default Mode**: Monitor for trigger word "Rosie" in transcriptions
+    - **Interactive Mode** (--interactive): Monitor for 3 seconds of silence
   - Update terminal with word count
-  - Write to `conversation.txt` every 10 seconds or 50 new words
-  - Archive immediately when trigger word "Rosie" is detected
-  - Handle silence without any special notation
+  - Write to `conversation.txt` every 10 seconds or 10 new words
+  - **Send to B4M API when buffer reaches 20 words** (if --b4m enabled)
+  - **Speak response.txt when trigger activated** (if --piper enabled)
+  - Handle silence detection for interactive mode triggering
 - **Shutdown Sequence** (Ctrl+C):
   1. Stop audio capture
   2. Process any remaining audio in buffer
@@ -97,26 +120,43 @@ When the trigger word "Rosie" is detected:
 ### Buffer Behavior
 - New words are appended to the buffer
 - Exact consecutive duplicates removed (from chunk overlap)
-- When buffer is full without trigger: oldest words are replaced (circular buffer)
-- When trigger word "Rosie" detected: immediately archive current buffer and reset
-- Trigger word "Rosie" (case-insensitive) triggers immediate archiving
+- When buffer reaches 20 words: **send to B4M API** (if --b4m enabled), then oldest words are replaced (circular buffer)
+- **Trigger Behavior**:
+  - **Default Mode**: When trigger word "Rosie" detected → **speak response.txt** (if --piper enabled)
+  - **Interactive Mode** (--interactive): When 3 seconds of silence detected → **speak response.txt** (if --piper enabled)
+- Trigger activation only controls voice response (no archiving or buffer clearing)
+- No automatic archiving occurs - buffer operates as continuous circular buffer
 - On startup, begin with empty `conversation.txt` (clear any existing)
 
 ### File Operations
 - `conversation.txt` created in current working directory
-- `prompts/` directory created automatically on first run if not exists
-- Archive files saved to `prompts/` subdirectory
+- `response.txt` created in current working directory (contains latest B4M AI response)
+- `prompts/` directory created automatically on first run if not exists (for manual archives)
 - Files use UTF-8 encoding
 - Atomic write operations to prevent data loss
-- **Write frequency**: Every 10 seconds or after 50 new words (whichever comes first)
+- **Write frequency**:
+  - `conversation.txt`: Every 10 seconds or after 10 new words (whichever comes first)
+  - `response.txt`: Immediately after each B4M API response (overwrite previous)
   - Balances data persistence with I/O efficiency
   - Ensures minimal data loss on unexpected shutdown
 
 ### Terminal Output
-- Running word count display: `Buffer: XXX/100 words`
+- Running word count display: `Buffer: XX/20 words`
 - Buffer rollover indicator: `↻ Buffer rollover: X oldest word(s) dropped`
-- Trigger detection message: `🎯 Trigger word 'Rosie' detected - will archive when buffer full`
-- Archive creation message: `Archive created: prompts/prompt_YYYY-MM-DD-HH-MM-SS.txt`
+- B4M processing message: `🤖 Buffer full (20 words) - sending to B4M AI...`
+- B4M response saved: `💾 AI response saved to response.txt`
+- **Trigger Detection Messages**:
+  - **Default Mode with response**: `🎯 Trigger word 'Rosie' detected - speaking AI response`
+  - **Default Mode without response**: `ℹ️ response.txt not found (no AI response to speak)`
+  - **Interactive Mode with response**: `🤫 3 seconds of silence detected - speaking AI response`
+  - **Interactive Mode without response**: `🤫 3 seconds of silence detected` (silent)
+- Voice output messages:
+  - `🔊 Speaking AI response from response.txt`
+  - `💾 Cleared response.txt after speaking`
+- **Interactive Mode Timer**:
+  - `⏳ Silence timer: X.Xs / 3.0s` (displays after 0.5s of silence)
+  - Timer stops displaying after trigger to prevent confusion
+  - Resets only when speech is detected
 - Output to stdout for logging and monitoring
 - Word count updates after each transcription
 
@@ -143,8 +183,10 @@ When the trigger word "Rosie" is detected:
 ## Configuration Options
 
 ### Adjustable Parameters
-- Buffer size (default: 100 words, configurable)
-- Trigger word (default: "Rosie", case-insensitive)
+- Buffer size (default: 20 words, configurable)
+- **Trigger Configuration**:
+  - Trigger word (default: "Rosie", case-insensitive) - for default mode
+  - Silence timeout (default: 3.0 seconds, configurable) - for interactive mode
 - Archive directory path
 - **Whisper-specific**:
   - Model: `base` (default, configurable)
@@ -154,6 +196,9 @@ When the trigger word "Rosie" is detected:
   - Audio chunk duration: 10 seconds (configurable)
   - Chunk overlap: 0.5 seconds
   - VAD sensitivity threshold
+- **Interactive Mode Specific**:
+  - Silence detection threshold (dB level for "silence")
+  - Silence timer resolution (default: 0.1 seconds)
 - Microphone device selection (default: system default)
 - Initial prompt for context (optional)
 
@@ -161,9 +206,14 @@ When the trigger word "Rosie" is detected:
 - Graceful shutdown via Ctrl+C (saves current buffer before exit)
 - Automatic startup with system default microphone
 - No manual configuration required for basic operation
-- Optional `--b4m` switch enables B4M API integration
-- Optional `--piper` switch enables text-to-speech for B4M responses
-- Combined usage: `--b4m --piper` for full voice interaction
+- **Command-Line Switches**:
+  - `--b4m`: Enable B4M API integration
+  - `--piper`: Enable text-to-speech for AI responses
+  - `--interactive`: Enable silence-based triggering (replaces "Rosie" keyword detection)
+- **Usage Combinations**:
+  - `--b4m --piper`: Full voice interaction with keyword trigger
+  - `--b4m --piper --interactive`: Full voice interaction with silence trigger
+  - `--interactive --piper`: Silence-triggered voice without B4M (speaks existing response.txt)
 
 ## Performance Considerations
 
@@ -219,13 +269,13 @@ When the trigger word "Rosie" is detected:
 
 ### Command-Line Switch
 - **`--b4m`**: Enables B4M AI service integration
-  - When enabled, archived prompts are sent to B4M API
-  - Response is displayed in terminal
+  - When enabled, conversation buffer is sent to B4M API when it reaches 20 words
+  - Response is stored in `response.txt` (overwrites previous response)
   - Requires B4M_API_KEY environment variable
 
 ### B4M Communication Flow
-When `--b4m` is enabled and a prompt is archived:
-1. Send archived text to B4M API endpoint with conversation context
+When `--b4m` is enabled and buffer reaches 20 words:
+1. Send current buffer contents to B4M API endpoint with conversation context
 2. Include session metadata (Rosie ID, User ID) for continuity
 3. Poll for response using quest-based polling system:
    - Check quest status every 7 seconds (up to 15 attempts)
@@ -234,10 +284,17 @@ When `--b4m` is enabled and a prompt is archived:
 4. Extract AI response using multiple fallback methods:
    - Primary: `replies` array (current B4M structure)
    - Fallback: `reply`, `questMasterReply`, `researchModeResults`, `messages`
-5. Display formatted AI response in terminal with metadata
-6. **If Piper TTS enabled**: Convert AI response to speech and play audio
-7. Show token usage, response time, and processing status
+5. **Save AI response to `response.txt`** (overwrite previous content)
+6. Display processing status in terminal
+7. Continue normal buffer operation (circular buffer)
 8. Provide debug output if response extraction fails
+
+### Response File Management
+- **File**: `response.txt` in working directory
+- **Content**: Latest B4M AI response text only
+- **Behavior**: Overwritten with each new B4M response
+- **Encoding**: UTF-8 text file
+- **Access**: Read by Piper TTS when "Rosie" trigger word detected
 
 ### B4M Configuration
 - **API Endpoint**: `https://app.bike4mind.com/api/ai/llm`
@@ -277,13 +334,23 @@ When `--b4m` is enabled and a prompt is archived:
 ### Piper Audio Pipeline
 When `--piper` is enabled:
 1. **Startup Test**: On application start, speaks "Hello World! Piper text-to-speech is working correctly."
-2. **B4M Response Processing**: When B4M response is received:
-   - Extract AI response text from B4M API
+2. **Voice Response Triggering**:
+   - **Default Mode**: When "Rosie" keyword is detected
+   - **Interactive Mode** (--interactive): When 3 seconds of silence is detected
+3. **Voice Response Process**:
+   - Read contents of `response.txt` file
    - Load Piper voice model (cached after first use)
-   - Synthesize speech from response text
+   - **If file exists with content**: Synthesize and speak the text
+   - **If file missing or empty**: Remain silent (no voice output)
    - Stream audio directly to system speakers
    - Continue normal operation while audio plays
    - Handle audio errors gracefully (continue without TTS)
+4. **Interactive Mode Specific**:
+   - Monitor silence duration during audio capture
+   - Display timer after 0.5 seconds of silence
+   - Stop timer display after trigger fires
+   - Reset silence detection only when speech is detected
+   - Prevent repeated triggers with state management
 
 ### Piper System Requirements
 - **CPU**: Modern x64 processor (optimized for efficiency)
@@ -297,15 +364,30 @@ When `--piper` is enabled:
 ### Actual Implementation
 - Uses `faster-whisper` library for 10x smaller model size
 - Supports fallback to `openai-whisper` if faster-whisper unavailable
-- Buffer size reduced to 100 words for testing (configurable)
-- Trigger word "Rosie" controls archiving behavior
-- Without trigger: circular buffer, no archiving
-- With trigger: archives current buffer immediately then resets
-- Files in `prompts/` directory are gitignored
+- Buffer size set to 20 words (configurable)
+- **Core Workflow**: 20-word buffer → B4M API → response.txt → trigger activation → voice output
+- **Trigger Options**:
+  - **Default**: "Rosie" keyword detection (case-insensitive)
+  - **Interactive Mode**: 3-second silence detection with visual timer display
+- Trigger activation controls voice response only (no archiving)
+- Continuous circular buffer operation (no automatic archiving)
+- AI responses stored in `response.txt` (overwritten with each new response)
+- **Silent Operation**: No voice output when `response.txt` is missing or empty
+- Files `conversation.txt`, `response.txt`, and `prompts/` directory are gitignored
 - Setup via `setup_ha_converse_minimal.sh` for minimal disk usage
-- Optional B4M API integration for AI-powered responses
-- Optional Piper TTS integration for voice synthesis of AI responses
-- Full voice interaction: Speech-to-text → AI processing → Text-to-speech
+- B4M API integration processes every 20-word buffer automatically
+- Piper TTS integration speaks `response.txt` only when content exists
+- **Complete Workflows**:
+  - **Keyword Mode**: Speech → 20-word buffer → AI → response.txt → "Rosie" → voice (if content exists)
+  - **Interactive Mode**: Speech → 20-word buffer → AI → response.txt → 3-sec silence → voice (if content exists)
+
+### Interactive Mode Implementation Details
+- **Silence Detection**: Tracks time since last detected speech
+- **Timer Display**: Shows countdown after 0.5s of silence (`⏳ X.Xs / 3.0s`)
+- **Single Trigger**: Prevents repeated triggers until speech resets the system
+- **State Management**: Uses `silence_triggered` flag to control behavior
+- **Timer Reset**: Updates `last_speech_time` after trigger and when speech detected
+- **No Annoying Voice**: Remains silent when no AI response is available
 
 ## Testing Requirements
 

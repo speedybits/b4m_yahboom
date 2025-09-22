@@ -5,7 +5,7 @@ A Whisper-based continuous speech-to-text application that maintains a 100-word 
 ## Features
 
 - Continuous speech capture using faster-whisper (optimized Whisper implementation)
-- 100-word rolling buffer with trigger-based archiving
+- 20-word rolling buffer with automatic B4M processing
 - Trigger word "Rosie" activates archiving mode
 - Circular buffer when no trigger (oldest words replaced)
 - Real-time word count display with trigger status
@@ -65,7 +65,8 @@ python3 ha_converse.py --help
 Options:
   --b4m              Enable B4M API integration
   --piper            Enable Piper TTS for voice output
-  --buffer-size N    Set buffer size (default: 100)
+  --interactive      Enable interactive mode (3s silence trigger)
+  --buffer-size N    Set buffer size (default: 20)
   --model SIZE       Whisper model: tiny/base/small/medium/large
 ```
 
@@ -81,19 +82,11 @@ Options:
 
 ### Trigger Word Behavior
 
-1. **Without trigger**: Buffer acts as a circular buffer, continuously overwriting oldest words
-   - Shows `↻ Buffer rollover: X oldest word(s) dropped` when overflow occurs
-2. **With trigger**: When you say "Rosie":
-   - System shows `🎯 Trigger word 'Rosie' detected - archiving current buffer`
-   - **Immediately archives** current buffer contents (regardless of word count)
-   - Archives to `prompts/` with timestamp
-   - **If --b4m enabled**:
-     - Sends text to B4M AI service
-     - Polls for response with status monitoring
-     - Displays formatted AI response with metadata
-     - **If --piper enabled**: Converts AI response to speech and plays audio
-     - Shows debug info if response extraction fails
-   - Clears buffer and starts fresh
+1. **Automatic Processing**: Every 20 words, sends buffer to B4M AI automatically (if --b4m enabled)
+   - Shows `↻ Buffer rollover: X oldest word(s) dropped` when buffer is full
+2. **Voice Triggers**: Choose between two modes:
+   - **Default**: Say "Rosie" to speak latest AI response
+   - **Interactive Mode** (--interactive): 3 seconds of silence speaks latest AI response
 
 ### B4M AI Integration
 
@@ -134,10 +127,11 @@ export PIPER_CONFIG_PATH='/path/to/config.json' # Optional for custom voice
 
 ### Output Files
 
-- `conversation.txt` - Current conversation buffer (up to 100 words)
-- `prompts/prompt_YYYY-MM-DD-HH-MM-SS.txt` - Archived conversations (only when triggered by "Rosie")
+- `conversation.txt` - Current conversation buffer (up to 20 words)
+- `response.txt` - Latest AI response from B4M (overwritten with each response)
+- `prompts/prompt_YYYY-MM-DD-HH-MM-SS.txt` - Manual archives (optional)
 
-**Note**: Both `conversation.txt` and the `prompts/` directory are gitignored. Archives are only created when the trigger word is detected.
+**Note**: Files `conversation.txt`, `response.txt`, and the `prompts/` directory are gitignored.
 
 ### Piper TTS Integration
 
@@ -185,10 +179,10 @@ export PIPER_CONFIG_PATH='/path/to/en_US-lessac-medium.onnx.json'
 2. **Transcription**: faster-whisper processes each chunk with VAD filtering
 3. **Trigger Detection**: Monitors for "Rosie" (case-insensitive) in transcriptions
 4. **Buffer Management**:
-   - Without trigger: Circular 100-word buffer (overwrites oldest)
-   - With trigger: **Immediately archives** current buffer contents
-5. **File Updates**: Writes to disk every 10 seconds or 50 new words
-6. **Archiving**: Creates timestamped files in `prompts/` immediately when "Rosie" is detected
+   - Circular 20-word buffer (overwrites oldest)
+   - Automatically sends to B4M API when buffer reaches 20 words
+5. **File Updates**: Writes to disk every 10 seconds or 10 new words
+6. **Voice Response**: Trigger modes available (keyword or interactive silence)
 
 ## Troubleshooting
 
@@ -246,8 +240,8 @@ pip3 install --no-cache-dir faster-whisper sounddevice numpy requests piper-tts
 - Exact consecutive duplicates from overlap are removed
 - All processing is done locally (no cloud services)
 - English-only for optimal accuracy with base model
-- Buffer size reduced to 100 words (configurable via --buffer-size)
-- Trigger word "Rosie" controls archiving (no automatic archiving)
+- Buffer size set to 20 words (configurable via --buffer-size)
+- Trigger word "Rosie" controls voice response (automatic B4M processing every 20 words)
 - Uses faster-whisper for 10x smaller footprint than OpenAI Whisper
 - Optional B4M AI integration for intelligent responses to archived prompts
 - Optional Piper TTS integration for full voice interaction workflow

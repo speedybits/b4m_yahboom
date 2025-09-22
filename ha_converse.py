@@ -46,7 +46,8 @@ except ImportError:
 class WhisperSTT:
     """Whisper-based speech-to-text with rolling buffer management"""
 
-    def __init__(self, model_name: str = "base", buffer_size: int = 100, trigger_word: str = "rosie", b4m_enabled: bool = False, piper_enabled: bool = False):
+    def __init__(self, model_name: str = "base", buffer_size: int = 20, trigger_word: str = "rosie",
+                 b4m_enabled: bool = False, piper_enabled: bool = False, interactive_mode: bool = False):
         self.model_name = model_name
         self.buffer_size = buffer_size
         self.trigger_word = trigger_word.lower()  # Case-insensitive
@@ -67,6 +68,13 @@ class WhisperSTT:
         self.piper_voice = None
         if self.piper_enabled:
             self._init_piper()
+
+        # Interactive mode settings
+        self.interactive_mode = interactive_mode
+        self.silence_timeout = 3.0  # 3 seconds of silence triggers response
+        self.silence_start_time = None
+        self.last_speech_time = time.time()
+        self.silence_triggered = False  # Prevent repeated triggers
 
         # File paths
         self.conversation_file = Path("conversation.txt")
@@ -199,17 +207,97 @@ class WhisperSTT:
 
         return True
 
-    def _send_to_b4m(self, text: str):
-        """Send archived text to B4M API and display response"""
-        if not self.b4m_api_key:
+    def _send_buffer_to_b4m(self):
+        """Send current buffer to B4M API and save response to response.txt"""
+        if not self.b4m_enabled or not self.word_buffer:
             return
 
-        print("\n🤖 Sending to B4M AI service...")
+        # Get current buffer content
+        buffer_content = " ".join(self.word_buffer)
 
-        headers = {
+        # Send to B4M API
+        try:
+            response_text = self._send_to_b4m_and_get_response(buffer_content)
+            if response_text:
+                # Save response to response.txt
+                response_file = Path("response.txt")
+                response_file.write_text(response_text, encoding='utf-8')
+                print(f"💾 AI response saved to response.txt")
+            else:
+                print("⚠️  No response received from B4M API")
+        except Exception as e:
+            print(f"❌ B4M API error: {str(e)}")
+
+    def _send_to_b4m_and_get_response(self, text: str) -> str:
+        """Send text to B4M API and return the response text"""
+        if not self.b4m_api_key:
+            print("❌ B4M_API_KEY environment variable not set")
+            return ""
+
+        try:
+            print("🤖 Sending to B4M AI service...")
+            start_time = time.time()
+
+            # Send initial request
+            response = self._make_b4m_request(text)
+            if not response:
+                return ""
+
+            # Poll for completion
+            final_response = self._poll_b4m_response(response, self._get_b4m_headers())
+
+            # Extract AI response
+            ai_response = self._extract_ai_response(final_response)
+
+            if ai_response:
+                elapsed_time = time.time() - start_time
+                print(f"✅ B4M response received in {elapsed_time:.2f} seconds")
+                return ai_response
+            else:
+                print("❌ Failed to extract AI response from B4M")
+                return ""
+
+        except Exception as e:
+            print(f"❌ B4M API error: {str(e)}")
+            return ""
+
+    def _speak_response_file(self):
+        """Read and speak the contents of response.txt using Piper TTS"""
+        if not self.piper_enabled:
+            return  # Silently return if Piper not enabled
+
+        response_file = Path("response.txt")
+
+        try:
+            if response_file.exists() and response_file.stat().st_size > 0:
+                response_text = response_file.read_text(encoding='utf-8').strip()
+                if response_text:
+                    print("🔊 Speaking AI response from response.txt")
+                    self._speak_text(response_text)
+                    # Clear response.txt after speaking to prevent repeat
+                    response_file.write_text("", encoding='utf-8')
+                    print("💾 Cleared response.txt after speaking")
+                else:
+                    # response.txt is empty - don't speak anything
+                    if not self.interactive_mode:
+                        print("ℹ️  response.txt is empty (no AI response to speak)")
+            else:
+                # response.txt doesn't exist - don't speak anything
+                if not self.interactive_mode:
+                    print("ℹ️  response.txt not found (no AI response to speak)")
+        except Exception as e:
+            print(f"❌ Error reading response.txt: {str(e)}")
+
+    def _get_b4m_headers(self):
+        """Get headers for B4M API requests"""
+        return {
             "X-API-Key": self.b4m_api_key,
             "Content-Type": "application/json"
         }
+
+    def _make_b4m_request(self, text: str):
+        """Make initial B4M API request and return response"""
+        headers = self._get_b4m_headers()
 
         # Prepare the message for B4M
         message = f"Please respond to the following conversation or query:\n\n{text}"
@@ -235,31 +323,49 @@ class WhisperSTT:
         }
 
         try:
-            start_time = time.time()
             response = requests.post(
                 self.b4m_api_url,
                 headers=headers,
                 json=payload,
                 timeout=10.0
             )
-            elapsed_time = time.time() - start_time
 
             if response.status_code == 200:
-                result = response.json()
-                print(f"✅ B4M response received in {elapsed_time:.2f} seconds")
-
-                # Check if we need to poll for the result
-                if (result.get('status') == 'running' or
-                    (result.get('replies') is not None and len(result.get('replies', [])) == 0)):
-                    print("   Processing... polling for result")
-                    result = self._poll_b4m_response(result, headers)
-
-                # Extract and display the response
-                self._display_b4m_response(result)
-
+                return response.json()
             else:
                 print(f"❌ B4M API Error: Status {response.status_code}")
-                print(f"   Response: {response.text[:200]}")
+                return None
+
+        except Exception as e:
+            print(f"❌ B4M request error: {str(e)}")
+            return None
+
+    def _send_to_b4m(self, text: str):
+        """Send archived text to B4M API and display response"""
+        if not self.b4m_api_key:
+            return
+
+        print("\n🤖 Sending to B4M AI service...")
+
+        try:
+            start_time = time.time()
+
+            # Send initial request
+            result = self._make_b4m_request(text)
+            if not result:
+                return
+
+            elapsed_time = time.time() - start_time
+            print(f"✅ B4M response received in {elapsed_time:.2f} seconds")
+
+            # Check if we need to poll for the result
+            if (result.get('status') == 'running' or
+                (result.get('replies') is not None and len(result.get('replies', [])) == 0)):
+                print("   Processing... polling for result")
+                result = self._poll_b4m_response(result, self._get_b4m_headers())
+
+            # Extract and display the response
+            self._display_b4m_response(result)
 
         except requests.Timeout:
             print("⏰ B4M request timed out")
@@ -408,7 +514,7 @@ class WhisperSTT:
                     print("🔊 No Piper voice model available")
                     return
 
-            print("🔊 Speaking AI response...")
+            print("🔊 Converting text to speech...")
 
             # Create temporary WAV file for audio
             with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
@@ -482,7 +588,7 @@ class WhisperSTT:
     def _should_write_to_file(self) -> bool:
         """Determine if we should write to file based on time or word count"""
         time_elapsed = time.time() - self.last_write_time >= 10.0
-        words_added = len(self.word_buffer) - self.last_word_count >= 50
+        words_added = len(self.word_buffer) - self.last_word_count >= 10
         return time_elapsed or words_added
 
     def _remove_consecutive_duplicates(self, words: List[str]) -> List[str]:
@@ -503,25 +609,65 @@ class WhisperSTT:
 
     def _check_for_trigger(self, text: str) -> bool:
         """Check if trigger word is in the text"""
+        # In interactive mode, we don't use keyword trigger
+        if self.interactive_mode:
+            return False
         return self.trigger_word in text.lower()
+
+    def _check_silence_trigger(self) -> bool:
+        """Check if silence duration has exceeded threshold in interactive mode"""
+        if not self.interactive_mode:
+            return False
+
+        current_time = time.time()
+        silence_duration = current_time - self.last_speech_time
+
+        # If we've already triggered, don't show timer or check again until speech resets it
+        if self.silence_triggered:
+            return False
+
+        # Show silence timer if we have some silence
+        if silence_duration >= 0.5:  # Only show after 0.5 seconds
+            print(f"\r⏳ Silence timer: {silence_duration:.1f}s / {self.silence_timeout}s", end="", flush=True)
+
+        # Check if we've reached the silence threshold
+        if silence_duration >= self.silence_timeout:
+            if not self.silence_triggered:
+                # Check if we have a response to speak before showing the message
+                response_file = Path("response.txt")
+                if response_file.exists() and response_file.stat().st_size > 0:
+                    print(f"\n🤫 {self.silence_timeout} seconds of silence detected - speaking AI response")
+                else:
+                    print(f"\n🤫 {self.silence_timeout} seconds of silence detected")
+                self.silence_triggered = True
+                # Reset the timer after triggering
+                self.last_speech_time = current_time
+                return True
+
+        return False
 
     def _process_transcription(self, text: str):
         """Process transcribed text and update buffer"""
         if not text or text.strip() == "":
+            # In interactive mode, check for silence trigger during empty transcriptions
+            if self.interactive_mode:
+                if self._check_silence_trigger():
+                    self._speak_response_file()
+                    # Don't immediately reset the flag - wait for speech to reset it
             return
 
-        # Check for trigger word - immediate archiving
+        # We have speech - reset silence tracking in interactive mode
+        if self.interactive_mode:
+            self.last_speech_time = time.time()
+            self.silence_triggered = False
+            # Clear the silence timer line
+            print("\r" + " " * 50 + "\r", end="", flush=True)
+
+        # Check for trigger word - speak response.txt (only in non-interactive mode)
         if self._check_for_trigger(text):
-            print(f"\n🎯 Trigger word 'Rosie' detected - archiving current buffer")
-            # Add current words to buffer first
-            words = text.strip().split()
-            words = self._remove_consecutive_duplicates(words)
-            if words:
-                self.word_buffer.extend(words)
-            # Immediately archive current buffer
-            self._update_conversation_file()
-            self._archive_conversation()
-            return  # Exit early after archiving
+            print(f"\n🎯 Trigger word 'Rosie' detected - speaking AI response")
+            self._speak_response_file()
+            # Continue processing the text normally (don't return early)
 
         # Split into words and clean
         words = text.strip().split()
@@ -530,19 +676,30 @@ class WhisperSTT:
         if not words:
             return
 
-        # Add to buffer (normal processing, no trigger detected)
+        # Add to buffer and check if we need to send to B4M
+        old_buffer_size = len(self.word_buffer)
+
         if len(self.word_buffer) + len(words) > self.buffer_size:
+            # Buffer will overflow - send to B4M before rollover
+            if old_buffer_size >= self.buffer_size and self.b4m_enabled:
+                print(f"\n🤖 Buffer full ({self.buffer_size} words) - sending to B4M AI...")
+                self._send_buffer_to_b4m()
+
             # Circular buffer - keep only last buffer_size words
-            old_size = len(self.word_buffer)
             self.word_buffer.extend(words)
             self.word_buffer = self.word_buffer[-self.buffer_size:]
             # Show rollover indicator
-            words_dropped = (old_size + len(words)) - self.buffer_size
+            words_dropped = (old_buffer_size + len(words)) - self.buffer_size
             if words_dropped > 0:
-                print(f"\n↻ Buffer rollover: {words_dropped} oldest word(s) dropped")
+                print(f"↻ Buffer rollover: {words_dropped} oldest word(s) dropped")
         else:
             # Normal addition
             self.word_buffer.extend(words)
+
+            # Check if we just reached buffer_size
+            if len(self.word_buffer) == self.buffer_size and self.b4m_enabled:
+                print(f"\n🤖 Buffer full ({self.buffer_size} words) - sending to B4M AI...")
+                self._send_buffer_to_b4m()
 
         # Update display
         word_count = len(self.word_buffer)
@@ -606,12 +763,18 @@ class WhisperSTT:
 
                         if text:
                             self._process_transcription(text)
+                        else:
+                            # Even with no text, check for silence in interactive mode
+                            self._process_transcription("")
 
                     except Exception as e:
                         print(f"\nTranscription error: {e}")
                         self._process_transcription("[inaudible]")
 
             except queue.Empty:
+                # In interactive mode, still check for silence trigger
+                if self.interactive_mode:
+                    self._process_transcription("")
                 continue
             except Exception as e:
                 print(f"\nWorker error: {e}")
@@ -620,7 +783,10 @@ class WhisperSTT:
         """Start the speech-to-text system"""
         print("Starting HA_converse Speech-to-Text System")
         print(f"Using Whisper {self.model_name} model")
-        print(f"Trigger word: 'Rosie' (say it to enable archiving)")
+        if self.interactive_mode:
+            print(f"Interactive mode: {self.silence_timeout}s silence triggers voice response")
+        else:
+            print(f"Trigger word: 'Rosie' (say it to speak AI response)")
         print(f"Buffer size: {self.buffer_size} words")
         if self.b4m_enabled:
             print(f"B4M API: ENABLED - responses will be sent to AI")
@@ -689,8 +855,10 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s                    # Basic mode
-  %(prog)s --b4m             # With B4M AI integration
+  %(prog)s                         # Basic mode with "Rosie" trigger
+  %(prog)s --b4m                  # With B4M AI integration
+  %(prog)s --b4m --piper          # With voice output
+  %(prog)s --b4m --piper --interactive  # Interactive mode (3s silence trigger)
 
 Environment variables for B4M:
   B4M_API_KEY     Required API key for B4M service
@@ -712,10 +880,16 @@ Environment variables for B4M:
     )
 
     parser.add_argument(
+        '--interactive',
+        action='store_true',
+        help='Enable interactive mode - speaks response after 3 seconds of silence (replaces "Rosie" trigger)'
+    )
+
+    parser.add_argument(
         '--buffer-size',
         type=int,
-        default=100,
-        help='Buffer size in words (default: 100)'
+        default=20,
+        help='Buffer size in words (default: 20)'
     )
 
     parser.add_argument(
@@ -770,7 +944,8 @@ Environment variables for B4M:
         buffer_size=args.buffer_size,
         trigger_word="rosie",
         b4m_enabled=args.b4m,
-        piper_enabled=args.piper
+        piper_enabled=args.piper,
+        interactive_mode=args.interactive
     )
 
     try:
