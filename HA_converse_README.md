@@ -79,15 +79,15 @@ Options:
 1. **Without trigger**: Buffer acts as a circular buffer, continuously overwriting oldest words
    - Shows `↻ Buffer rollover: X oldest word(s) dropped` when overflow occurs
 2. **With trigger**: When you say "Rosie":
-   - System shows `🎯 Trigger word 'Rosie' detected`
-   - Buffer continues filling to 100 words
-   - Archives to `prompts/` when full
+   - System shows `🎯 Trigger word 'Rosie' detected - archiving current buffer`
+   - **Immediately archives** current buffer contents (regardless of word count)
+   - Archives to `prompts/` with timestamp
    - **If --b4m enabled**:
      - Sends text to B4M AI service
      - Polls for response with status monitoring
      - Displays formatted AI response with metadata
      - Shows debug info if response extraction fails
-   - Resets buffer and trigger flag
+   - Clears buffer and starts fresh
 
 ### B4M AI Integration
 
@@ -145,9 +145,9 @@ export B4M_USER_ID='user_id'              # Optional (default provided)
 3. **Trigger Detection**: Monitors for "Rosie" (case-insensitive) in transcriptions
 4. **Buffer Management**:
    - Without trigger: Circular 100-word buffer (overwrites oldest)
-   - With trigger: Fills to 100 words then archives
+   - With trigger: **Immediately archives** current buffer contents
 5. **File Updates**: Writes to disk every 10 seconds or 50 new words
-6. **Archiving**: Creates timestamped files in `prompts/` only when triggered
+6. **Archiving**: Creates timestamped files in `prompts/` immediately when "Rosie" is detected
 
 ## Troubleshooting
 

@@ -46,7 +46,6 @@ class WhisperSTT:
         self.last_word_count = 0
         self.running = False
         self.audio_queue = queue.Queue()
-        self.trigger_active = False  # Flag for archiving when buffer is full
 
         # B4M API integration
         self.b4m_enabled = b4m_enabled
@@ -106,7 +105,8 @@ class WhisperSTT:
 
     def _archive_conversation(self):
         """Archive current conversation to timestamped file"""
-        if not self.trigger_active:
+        if not self.word_buffer:
+            print("No content to archive")
             return False
 
         timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
@@ -126,9 +126,7 @@ class WhisperSTT:
         self.conversation_file.write_text("")
         self.word_buffer.clear()
 
-        # Reset trigger flag
-        self.trigger_active = False
-        print("Trigger reset - listening for 'Rosie' again")
+        print("Ready for new conversation - listening for 'Rosie' again")
 
         return True
 
@@ -356,10 +354,18 @@ class WhisperSTT:
         if not text or text.strip() == "":
             return
 
-        # Check for trigger word
-        if not self.trigger_active and self._check_for_trigger(text):
-            self.trigger_active = True
-            print(f"\n🎯 Trigger word 'Rosie' detected - will archive when buffer full")
+        # Check for trigger word - immediate archiving
+        if self._check_for_trigger(text):
+            print(f"\n🎯 Trigger word 'Rosie' detected - archiving current buffer")
+            # Add current words to buffer first
+            words = text.strip().split()
+            words = self._remove_consecutive_duplicates(words)
+            if words:
+                self.word_buffer.extend(words)
+            # Immediately archive current buffer
+            self._update_conversation_file()
+            self._archive_conversation()
+            return  # Exit early after archiving
 
         # Split into words and clean
         words = text.strip().split()
@@ -368,39 +374,23 @@ class WhisperSTT:
         if not words:
             return
 
-        # Add to buffer
+        # Add to buffer (normal processing, no trigger detected)
         if len(self.word_buffer) + len(words) > self.buffer_size:
-            # Buffer will overflow
-            if self.trigger_active:
-                # Archive before adding new words
-                words_to_add = self.buffer_size - len(self.word_buffer)
-                self.word_buffer.extend(words[:words_to_add])
-                self._update_conversation_file()
-                self._archive_conversation()
-                # Add remaining words to new buffer
-                self.word_buffer = words[words_to_add:]
-            else:
-                # Circular buffer - keep only last buffer_size words
-                old_size = len(self.word_buffer)
-                self.word_buffer.extend(words)
-                self.word_buffer = self.word_buffer[-self.buffer_size:]
-                # Show rollover indicator
-                words_dropped = (old_size + len(words)) - self.buffer_size
-                if words_dropped > 0:
-                    print(f"\n↻ Buffer rollover: {words_dropped} oldest word(s) dropped")
+            # Circular buffer - keep only last buffer_size words
+            old_size = len(self.word_buffer)
+            self.word_buffer.extend(words)
+            self.word_buffer = self.word_buffer[-self.buffer_size:]
+            # Show rollover indicator
+            words_dropped = (old_size + len(words)) - self.buffer_size
+            if words_dropped > 0:
+                print(f"\n↻ Buffer rollover: {words_dropped} oldest word(s) dropped")
         else:
             # Normal addition
             self.word_buffer.extend(words)
 
-        # Check if we should archive (buffer full with trigger)
-        if self.trigger_active and len(self.word_buffer) >= self.buffer_size:
-            self._update_conversation_file()
-            self._archive_conversation()
-
         # Update display
         word_count = len(self.word_buffer)
-        status = " [TRIGGER ACTIVE]" if self.trigger_active else ""
-        print(f"\rBuffer: {word_count}/{self.buffer_size} words{status}", end="", flush=True)
+        print(f"\rBuffer: {word_count}/{self.buffer_size} words", end="", flush=True)
 
         # Write to file if needed
         if self._should_write_to_file():

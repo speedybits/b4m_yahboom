@@ -21,14 +21,12 @@ A speech-to-text application for Ubuntu Linux 22.04 LTS that uses Whisper models
 
 ### 3. Trigger-Based Archiving
 When the trigger word "Rosie" is detected:
-1. Set a flag to archive the buffer when it next reaches 100 words
-2. Continue capturing words until buffer is full (100 words)
-3. Create a backup copy of `conversation.txt`
-4. Name the backup as `prompt_<datetime>.txt` where `<datetime>` follows the format `YYYY-MM-DD-HH-MM-SS`
-5. Output notification to Linux terminal displaying the created filename
-6. Clear `conversation.txt` and restart with new content
-7. Clear the archive flag
-8. **If --b4m switch enabled**: Send archived text to B4M API and display response
+1. Immediately archive the current buffer contents (regardless of word count)
+2. Create a backup copy of `conversation.txt`
+3. Name the backup as `prompt_<datetime>.txt` where `<datetime>` follows the format `YYYY-MM-DD-HH-MM-SS`
+4. Output notification to Linux terminal displaying the created filename
+5. Clear `conversation.txt` and restart with new content
+6. **If --b4m switch enabled**: Send archived text to B4M API and display response
 
 **Note**: Without the trigger word, the buffer simply overwrites oldest words when full - no archiving occurs.
 
@@ -62,9 +60,9 @@ When the trigger word "Rosie" is detected:
   - Continuous audio capture in 10-second chunks
   - Remove exact consecutive duplicate phrases
   - Monitor for trigger word "Rosie" in transcriptions
-  - Update terminal with word count and trigger status
+  - Update terminal with word count
   - Write to `conversation.txt` every 10 seconds or 50 new words
-  - Archive only when trigger activated AND buffer full
+  - Archive immediately when trigger word "Rosie" is detected
   - Handle silence without any special notation
 - **Shutdown Sequence** (Ctrl+C):
   1. Stop audio capture
@@ -96,8 +94,8 @@ When the trigger word "Rosie" is detected:
 - New words are appended to the buffer
 - Exact consecutive duplicates removed (from chunk overlap)
 - When buffer is full without trigger: oldest words are replaced (circular buffer)
-- When buffer is full with trigger active: archive and reset
-- Trigger word "Rosie" (case-insensitive) activates archiving mode
+- When trigger word "Rosie" detected: immediately archive current buffer and reset
+- Trigger word "Rosie" (case-insensitive) triggers immediate archiving
 - On startup, begin with empty `conversation.txt` (clear any existing)
 
 ### File Operations
@@ -254,7 +252,7 @@ When `--b4m` is enabled and a prompt is archived:
 - Buffer size reduced to 100 words for testing (configurable)
 - Trigger word "Rosie" controls archiving behavior
 - Without trigger: circular buffer, no archiving
-- With trigger: archives next full buffer then resets
+- With trigger: archives current buffer immediately then resets
 - Files in `prompts/` directory are gitignored
 - Setup via `setup_ha_converse_minimal.sh` for minimal disk usage
 - Optional B4M API integration for AI-powered responses
