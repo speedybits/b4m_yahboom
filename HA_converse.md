@@ -17,13 +17,19 @@ A speech-to-text application for Ubuntu Linux 22.04 LTS that uses Whisper models
 - Maintain a rolling buffer of the previous 100 words (configurable)
 - Store current buffer in `conversation.txt`
 - Update file as new words are captured
+- Buffer continuously overwrites oldest words when full (no automatic archiving)
 
-### 3. Overflow Handling
-When the 100-word limit is exceeded:
-1. Create a backup copy of `conversation.txt`
-2. Name the backup as `prompt_<datetime>.txt` where `<datetime>` follows the format `YYYY-MM-DD-HH-MM-SS`
-3. Output notification to Linux terminal displaying the created filename
-4. Clear `conversation.txt` and restart with new content
+### 3. Trigger-Based Archiving
+When the trigger word "Rosie" is detected:
+1. Set a flag to archive the buffer when it next reaches 100 words
+2. Continue capturing words until buffer is full (100 words)
+3. Create a backup copy of `conversation.txt`
+4. Name the backup as `prompt_<datetime>.txt` where `<datetime>` follows the format `YYYY-MM-DD-HH-MM-SS`
+5. Output notification to Linux terminal displaying the created filename
+6. Clear `conversation.txt` and restart with new content
+7. Clear the archive flag
+
+**Note**: Without the trigger word, the buffer simply overwrites oldest words when full - no archiving occurs.
 
 ## Technical Requirements
 
@@ -54,8 +60,10 @@ When the 100-word limit is exceeded:
 - **Runtime Behavior**:
   - Continuous audio capture in 10-second chunks
   - Remove exact consecutive duplicate phrases
-  - Update terminal with word count after each transcription
+  - Monitor for trigger word "Rosie" in transcriptions
+  - Update terminal with word count and trigger status
   - Write to `conversation.txt` every 10 seconds or 50 new words
+  - Archive only when trigger activated AND buffer full
   - Handle silence without any special notation
 - **Shutdown Sequence** (Ctrl+C):
   1. Stop audio capture
@@ -86,8 +94,9 @@ When the 100-word limit is exceeded:
 ### Buffer Behavior
 - New words are appended to the buffer
 - Exact consecutive duplicates removed (from chunk overlap)
-- When word count reaches 500, trigger overflow handling
-- After archiving, the buffer resets to empty
+- When buffer is full without trigger: oldest words are replaced (circular buffer)
+- When buffer is full with trigger active: archive and reset
+- Trigger word "Rosie" (case-insensitive) activates archiving mode
 - On startup, begin with empty `conversation.txt` (clear any existing)
 
 ### File Operations
@@ -101,7 +110,9 @@ When the 100-word limit is exceeded:
   - Ensures minimal data loss on unexpected shutdown
 
 ### Terminal Output
-- Running word count display: `Buffer: XXX/500 words`
+- Running word count display: `Buffer: XXX/100 words`
+- Buffer rollover indicator: `↻ Buffer rollover: X oldest word(s) dropped`
+- Trigger detection message: `🎯 Trigger word 'Rosie' detected - will archive when buffer full`
 - Archive creation message: `Archive created: prompts/prompt_YYYY-MM-DD-HH-MM-SS.txt`
 - Output to stdout for logging and monitoring
 - Word count updates after each transcription
@@ -130,6 +141,7 @@ When the 100-word limit is exceeded:
 
 ### Adjustable Parameters
 - Buffer size (default: 100 words, configurable)
+- Trigger word (default: "Rosie", case-insensitive)
 - Archive directory path
 - **Whisper-specific**:
   - Model: `base` (default, configurable)
@@ -203,6 +215,9 @@ When the 100-word limit is exceeded:
 - Uses `faster-whisper` library for 10x smaller model size
 - Supports fallback to `openai-whisper` if faster-whisper unavailable
 - Buffer size reduced to 100 words for testing (configurable)
+- Trigger word "Rosie" controls archiving behavior
+- Without trigger: circular buffer, no archiving
+- With trigger: archives next full buffer then resets
 - Files in `prompts/` directory are gitignored
 - Setup via `setup_ha_converse_minimal.sh` for minimal disk usage
 

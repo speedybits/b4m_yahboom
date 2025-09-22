@@ -34,14 +34,16 @@ except ImportError:
 class WhisperSTT:
     """Whisper-based speech-to-text with rolling buffer management"""
 
-    def __init__(self, model_name: str = "base", buffer_size: int = 100):
+    def __init__(self, model_name: str = "base", buffer_size: int = 100, trigger_word: str = "rosie"):
         self.model_name = model_name
         self.buffer_size = buffer_size
+        self.trigger_word = trigger_word.lower()  # Case-insensitive
         self.word_buffer: List[str] = []
         self.last_write_time = time.time()
         self.last_word_count = 0
         self.running = False
         self.audio_queue = queue.Queue()
+        self.trigger_active = False  # Flag for archiving when buffer is full
 
         # File paths
         self.conversation_file = Path("conversation.txt")
@@ -78,6 +80,9 @@ class WhisperSTT:
 
     def _archive_conversation(self):
         """Archive current conversation to timestamped file"""
+        if not self.trigger_active:
+            return False
+
         timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
         archive_file = self.prompts_dir / f"prompt_{timestamp}.txt"
 
@@ -85,11 +90,17 @@ class WhisperSTT:
         content = self.conversation_file.read_text()
         archive_file.write_text(content)
 
-        print(f"Archive created: {archive_file}")
+        print(f"\nArchive created: {archive_file}")
 
         # Clear conversation file and buffer
         self.conversation_file.write_text("")
         self.word_buffer.clear()
+
+        # Reset trigger flag
+        self.trigger_active = False
+        print("Trigger reset - listening for 'Rosie' again")
+
+        return True
 
     def _update_conversation_file(self):
         """Write buffer to conversation file"""
@@ -118,10 +129,19 @@ class WhisperSTT:
 
         return result
 
+    def _check_for_trigger(self, text: str) -> bool:
+        """Check if trigger word is in the text"""
+        return self.trigger_word in text.lower()
+
     def _process_transcription(self, text: str):
         """Process transcribed text and update buffer"""
         if not text or text.strip() == "":
             return
+
+        # Check for trigger word
+        if not self.trigger_active and self._check_for_trigger(text):
+            self.trigger_active = True
+            print(f"\n🎯 Trigger word 'Rosie' detected - will archive when buffer full")
 
         # Split into words and clean
         words = text.strip().split()
@@ -131,15 +151,38 @@ class WhisperSTT:
             return
 
         # Add to buffer
-        self.word_buffer.extend(words)
+        if len(self.word_buffer) + len(words) > self.buffer_size:
+            # Buffer will overflow
+            if self.trigger_active:
+                # Archive before adding new words
+                words_to_add = self.buffer_size - len(self.word_buffer)
+                self.word_buffer.extend(words[:words_to_add])
+                self._update_conversation_file()
+                self._archive_conversation()
+                # Add remaining words to new buffer
+                self.word_buffer = words[words_to_add:]
+            else:
+                # Circular buffer - keep only last buffer_size words
+                old_size = len(self.word_buffer)
+                self.word_buffer.extend(words)
+                self.word_buffer = self.word_buffer[-self.buffer_size:]
+                # Show rollover indicator
+                words_dropped = (old_size + len(words)) - self.buffer_size
+                if words_dropped > 0:
+                    print(f"\n↻ Buffer rollover: {words_dropped} oldest word(s) dropped")
+        else:
+            # Normal addition
+            self.word_buffer.extend(words)
 
-        # Check if we need to archive
-        if len(self.word_buffer) >= self.buffer_size:
+        # Check if we should archive (buffer full with trigger)
+        if self.trigger_active and len(self.word_buffer) >= self.buffer_size:
+            self._update_conversation_file()
             self._archive_conversation()
 
         # Update display
         word_count = len(self.word_buffer)
-        print(f"\rBuffer: {word_count}/{self.buffer_size} words", end="", flush=True)
+        status = " [TRIGGER ACTIVE]" if self.trigger_active else ""
+        print(f"\rBuffer: {word_count}/{self.buffer_size} words{status}", end="", flush=True)
 
         # Write to file if needed
         if self._should_write_to_file():
@@ -213,6 +256,8 @@ class WhisperSTT:
         """Start the speech-to-text system"""
         print("Starting HA_converse Speech-to-Text System")
         print(f"Using Whisper {self.model_name} model")
+        print(f"Trigger word: 'Rosie' (say it to enable archiving)")
+        print(f"Buffer size: {self.buffer_size} words")
         print(f"Listening on default microphone...")
         print(f"Press Ctrl+C to stop\n")
 
@@ -283,7 +328,7 @@ def main():
         sys.exit(1)
 
     # Start the system
-    stt = WhisperSTT(model_name="base", buffer_size=100)
+    stt = WhisperSTT(model_name="base", buffer_size=100, trigger_word="rosie")
 
     try:
         stt.start()

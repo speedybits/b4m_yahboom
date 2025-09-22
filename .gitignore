@@ -135,3 +135,6 @@ regression/screenshots/*.json
 # HA_converse speech-to-text output files
 conversation.txt
 prompts/
+
+# Unused/temporary files directory
+unused/

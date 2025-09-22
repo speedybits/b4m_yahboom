@@ -5,8 +5,10 @@ A Whisper-based continuous speech-to-text application that maintains a 100-word 
 ## Features
 
 - Continuous speech capture using faster-whisper (optimized Whisper implementation)
-- 100-word rolling buffer with automatic archiving (configurable)
-- Real-time word count display
+- 100-word rolling buffer with trigger-based archiving
+- Trigger word "Rosie" activates archiving mode
+- Circular buffer when no trigger (oldest words replaced)
+- Real-time word count display with trigger status
 - Automatic duplicate removal from audio chunk overlap
 - Graceful shutdown with Ctrl+C
 - English-only transcription for optimal accuracy
@@ -46,15 +48,29 @@ chmod +x ha_converse.py
 ### Controls
 
 - **Start**: Run the script to begin listening
+- **Trigger**: Say "Rosie" to enable archiving mode
 - **Stop**: Press `Ctrl+C` to gracefully shutdown and save the current buffer
-- **Monitor**: Watch the terminal for real-time word count updates
+- **Monitor**: Watch the terminal for:
+  - Real-time word count
+  - Buffer rollover notifications
+  - Trigger status
+
+### Trigger Word Behavior
+
+1. **Without trigger**: Buffer acts as a circular buffer, continuously overwriting oldest words
+   - Shows `↻ Buffer rollover: X oldest word(s) dropped` when overflow occurs
+2. **With trigger**: When you say "Rosie":
+   - System shows `🎯 Trigger word 'Rosie' detected`
+   - Buffer continues filling to 100 words
+   - Archives to `prompts/` when full
+   - Resets buffer and trigger flag
 
 ### Output Files
 
 - `conversation.txt` - Current conversation buffer (up to 100 words)
-- `prompts/prompt_YYYY-MM-DD-HH-MM-SS.txt` - Archived conversations when buffer exceeds 100 words
+- `prompts/prompt_YYYY-MM-DD-HH-MM-SS.txt` - Archived conversations (only when triggered by "Rosie")
 
-**Note**: Both `conversation.txt` and the `prompts/` directory are gitignored.
+**Note**: Both `conversation.txt` and the `prompts/` directory are gitignored. Archives are only created when the trigger word is detected.
 
 ## System Requirements
 
@@ -68,9 +84,12 @@ chmod +x ha_converse.py
 
 1. **Audio Capture**: Continuously records 10-second chunks with 0.5-second overlap
 2. **Transcription**: faster-whisper processes each chunk with VAD filtering
-3. **Buffer Management**: Maintains rolling 100-word buffer with duplicate removal
-4. **File Updates**: Writes to disk every 10 seconds or 50 new words
-5. **Archiving**: Automatically archives to timestamped files when buffer is full
+3. **Trigger Detection**: Monitors for "Rosie" (case-insensitive) in transcriptions
+4. **Buffer Management**:
+   - Without trigger: Circular 100-word buffer (overwrites oldest)
+   - With trigger: Fills to 100 words then archives
+5. **File Updates**: Writes to disk every 10 seconds or 50 new words
+6. **Archiving**: Creates timestamped files in `prompts/` only when triggered
 
 ## Troubleshooting
 
@@ -115,4 +134,5 @@ pip3 install --no-cache-dir faster-whisper sounddevice numpy
 - All processing is done locally (no cloud services)
 - English-only for optimal accuracy with base model
 - Buffer size reduced to 100 words (configurable in code)
+- Trigger word "Rosie" controls archiving (no automatic archiving)
 - Uses faster-whisper for 10x smaller footprint than OpenAI Whisper
