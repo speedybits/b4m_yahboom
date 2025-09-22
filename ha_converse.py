@@ -14,6 +14,8 @@ import threading
 import argparse
 import requests
 import json
+import wave
+import tempfile
 from datetime import datetime
 from pathlib import Path
 import numpy as np
@@ -33,11 +35,18 @@ except ImportError:
         print("Or: pip3 install openai-whisper")
         sys.exit(1)
 
+# Optional Piper TTS support
+try:
+    from piper.voice import PiperVoice
+    PIPER_AVAILABLE = True
+except ImportError:
+    PIPER_AVAILABLE = False
+
 
 class WhisperSTT:
     """Whisper-based speech-to-text with rolling buffer management"""
 
-    def __init__(self, model_name: str = "base", buffer_size: int = 100, trigger_word: str = "rosie", b4m_enabled: bool = False):
+    def __init__(self, model_name: str = "base", buffer_size: int = 100, trigger_word: str = "rosie", b4m_enabled: bool = False, piper_enabled: bool = False):
         self.model_name = model_name
         self.buffer_size = buffer_size
         self.trigger_word = trigger_word.lower()  # Case-insensitive
@@ -52,6 +61,12 @@ class WhisperSTT:
         self.debug_mode = False  # Can be enabled for troubleshooting
         if self.b4m_enabled:
             self._init_b4m()
+
+        # Piper TTS integration
+        self.piper_enabled = piper_enabled
+        self.piper_voice = None
+        if self.piper_enabled:
+            self._init_piper()
 
         # File paths
         self.conversation_file = Path("conversation.txt")
@@ -82,6 +97,60 @@ class WhisperSTT:
         print(f"✅ B4M API integration enabled")
         print(f"   Rosie ID: {self.b4m_session_id}")
         print(f"   User ID: {self.b4m_user_id}")
+
+    def _init_piper(self):
+        """Initialize Piper TTS configuration"""
+        if not PIPER_AVAILABLE:
+            print("\n⚠️  WARNING: piper-tts is not installed!")
+            print("   Piper TTS disabled. Install with: pip install piper-tts")
+            self.piper_enabled = False
+            return
+
+        # Get Piper model path from environment or use default
+        self.piper_model_path = os.environ.get('PIPER_MODEL_PATH')
+        self.piper_config_path = os.environ.get('PIPER_CONFIG_PATH')
+
+        if not self.piper_model_path:
+            print("\n⚠️  WARNING: PIPER_MODEL_PATH environment variable not set!")
+            print("   Using default Piper voice (if available)")
+            print("   Set custom model: export PIPER_MODEL_PATH='/path/to/model.onnx'")
+            # Try to use a default model if available
+            self.piper_model_path = None
+        else:
+            # Verify model file exists
+            if not os.path.exists(self.piper_model_path):
+                print(f"\n⚠️  WARNING: Piper model not found at {self.piper_model_path}")
+                print("   Piper TTS disabled. Check PIPER_MODEL_PATH")
+                self.piper_enabled = False
+                return
+
+            # Verify config file exists if specified
+            if self.piper_config_path and not os.path.exists(self.piper_config_path):
+                print(f"\n⚠️  WARNING: Piper config not found at {self.piper_config_path}")
+                print("   Piper TTS disabled. Check PIPER_CONFIG_PATH")
+                self.piper_enabled = False
+                return
+
+        try:
+            # Load Piper voice model
+            if self.piper_model_path:
+                print(f"🔊 Loading Piper voice model: {os.path.basename(self.piper_model_path)}")
+                if self.piper_config_path:
+                    self.piper_voice = PiperVoice.load(self.piper_model_path, self.piper_config_path)
+                else:
+                    self.piper_voice = PiperVoice.load(self.piper_model_path)
+            else:
+                # Try to use default model (this might fail, which is fine)
+                print("🔊 Attempting to load default Piper voice...")
+                # We'll defer loading until first use
+                self.piper_voice = None
+
+            print("✅ Piper TTS integration enabled")
+
+        except Exception as e:
+            print(f"\n⚠️  WARNING: Failed to load Piper voice: {str(e)}")
+            print("   Piper TTS disabled")
+            self.piper_enabled = False
 
     def _setup_directories(self):
         """Create necessary directories and files"""
@@ -318,6 +387,93 @@ class WhisperSTT:
 
         print("="*50 + "\n")
 
+        # Speak the response if Piper is enabled
+        if self.piper_enabled and response_text:
+            self._speak_text(response_text)
+
+    def _speak_text(self, text: str):
+        """Convert text to speech using Piper TTS"""
+        if not self.piper_enabled or not text:
+            return
+
+        try:
+            # Load voice model if not already loaded
+            if not self.piper_voice:
+                if self.piper_model_path:
+                    if self.piper_config_path:
+                        self.piper_voice = PiperVoice.load(self.piper_model_path, self.piper_config_path)
+                    else:
+                        self.piper_voice = PiperVoice.load(self.piper_model_path)
+                else:
+                    print("🔊 No Piper voice model available")
+                    return
+
+            print("🔊 Speaking AI response...")
+
+            # Create temporary WAV file for audio
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
+                temp_path = temp_file.name
+
+            # Generate speech using correct Piper API
+            audio_chunks = list(self.piper_voice.synthesize(text))
+
+            # Save to temporary WAV file
+            with wave.open(temp_path, 'wb') as wav_file:
+                # Configure WAV file based on first chunk
+                if audio_chunks:
+                    first_chunk = audio_chunks[0]
+                    wav_file.setnchannels(first_chunk.sample_channels)
+                    wav_file.setsampwidth(first_chunk.sample_width)
+                    wav_file.setframerate(first_chunk.sample_rate)
+
+                    # Write all audio chunks
+                    for chunk in audio_chunks:
+                        wav_file.writeframes(chunk.audio_int16_bytes)
+
+            # Play the audio file
+            self._play_audio_file(temp_path)
+
+            # Clean up temporary file
+            try:
+                os.unlink(temp_path)
+            except:
+                pass  # Ignore cleanup errors
+
+        except Exception as e:
+            print(f"🔊 TTS Error: {str(e)}")
+            print("   Continuing without speech synthesis")
+
+    def _play_audio_file(self, file_path: str):
+        """Play audio file using sounddevice"""
+        try:
+            # Read WAV file
+            with wave.open(file_path, 'rb') as wav_file:
+                frames = wav_file.readframes(wav_file.getnframes())
+                sample_rate = wav_file.getframerate()
+                channels = wav_file.getnchannels()
+                sample_width = wav_file.getsampwidth()
+
+            # Convert to numpy array
+            if sample_width == 2:  # 16-bit
+                audio_data = np.frombuffer(frames, dtype=np.int16)
+            else:
+                print(f"🔊 Unsupported audio format: {sample_width} bytes")
+                return
+
+            # Reshape for channels
+            if channels == 2:
+                audio_data = audio_data.reshape(-1, 2)
+
+            # Convert to float32 for sounddevice
+            audio_data = audio_data.astype(np.float32) / 32768.0
+
+            # Play audio
+            sd.play(audio_data, sample_rate)
+            sd.wait()  # Wait until playback is finished
+
+        except Exception as e:
+            print(f"🔊 Audio playback error: {str(e)}")
+
     def _update_conversation_file(self):
         """Write buffer to conversation file"""
         content = " ".join(self.word_buffer)
@@ -468,6 +624,11 @@ class WhisperSTT:
         print(f"Buffer size: {self.buffer_size} words")
         if self.b4m_enabled:
             print(f"B4M API: ENABLED - responses will be sent to AI")
+        if self.piper_enabled:
+            print(f"Piper TTS: ENABLED - AI responses will be spoken")
+            # Test Piper TTS on startup
+            print("🔊 Testing Piper TTS...")
+            self._speak_text("Hello World! Piper text-to-speech is working correctly.")
         print(f"Listening on default microphone...")
         print(f"Press Ctrl+C to stop\n")
 
@@ -545,6 +706,12 @@ Environment variables for B4M:
     )
 
     parser.add_argument(
+        '--piper',
+        action='store_true',
+        help='Enable Piper TTS - speaks B4M AI responses aloud (requires --b4m)'
+    )
+
+    parser.add_argument(
         '--buffer-size',
         type=int,
         default=100,
@@ -585,12 +752,25 @@ Environment variables for B4M:
             print("Please install: pip install requests")
             sys.exit(1)
 
+    # Check for piper-tts if Piper is enabled
+    if args.piper:
+        if not args.b4m:
+            print("Error: --piper requires --b4m to be enabled")
+            print("Piper TTS is used to speak B4M AI responses")
+            sys.exit(1)
+
+        if not PIPER_AVAILABLE:
+            print("Missing dependency for Piper TTS: piper-tts")
+            print("Please install: pip install piper-tts")
+            sys.exit(1)
+
     # Start the system
     stt = WhisperSTT(
         model_name=args.model,
         buffer_size=args.buffer_size,
         trigger_word="rosie",
-        b4m_enabled=args.b4m
+        b4m_enabled=args.b4m,
+        piper_enabled=args.piper
     )
 
     try:

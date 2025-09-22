@@ -40,6 +40,8 @@ When the trigger word "Rosie" is detected:
 - **Whisper**: `faster-whisper` - Optimized STT engine (preferred) or `openai-whisper` as fallback
 - **Audio Capture**: `sounddevice` - Microphone input
 - **Audio Processing**: `numpy` - Audio data manipulation
+- **Text-to-Speech**: `piper-tts` - Local neural TTS for speaking B4M responses (optional)
+- **HTTP Requests**: `requests` - For B4M API communication (optional)
 - Standard Python libraries for file I/O and datetime
 
 ### File Management
@@ -54,8 +56,10 @@ When the trigger word "Rosie" is detected:
   1. Create `prompts/` directory if not exists
   2. Clear/create empty `conversation.txt`
   3. Load Whisper base model
-  4. Initialize audio capture with default microphone
-  5. Begin continuous listening loop
+  4. Initialize Piper TTS (if --piper enabled)
+  5. **Startup Voice Test**: Speak "Hello World!" message (if --piper enabled)
+  6. Initialize audio capture with default microphone
+  7. Begin continuous listening loop
 - **Runtime Behavior**:
   - Continuous audio capture in 10-second chunks
   - Remove exact consecutive duplicate phrases
@@ -158,6 +162,8 @@ When the trigger word "Rosie" is detected:
 - Automatic startup with system default microphone
 - No manual configuration required for basic operation
 - Optional `--b4m` switch enables B4M API integration
+- Optional `--piper` switch enables text-to-speech for B4M responses
+- Combined usage: `--b4m --piper` for full voice interaction
 
 ## Performance Considerations
 
@@ -229,8 +235,9 @@ When `--b4m` is enabled and a prompt is archived:
    - Primary: `replies` array (current B4M structure)
    - Fallback: `reply`, `questMasterReply`, `researchModeResults`, `messages`
 5. Display formatted AI response in terminal with metadata
-6. Show token usage, response time, and processing status
-7. Provide debug output if response extraction fails
+6. **If Piper TTS enabled**: Convert AI response to speech and play audio
+7. Show token usage, response time, and processing status
+8. Provide debug output if response extraction fails
 
 ### B4M Configuration
 - **API Endpoint**: `https://app.bike4mind.com/api/ai/llm`
@@ -244,6 +251,47 @@ When `--b4m` is enabled and a prompt is archived:
 - **Extraction**: Multiple fallback methods for robust response handling
 - **Debug**: Automatic troubleshooting output when responses not found
 
+## Piper TTS Integration
+
+### Command-Line Switch
+- **`--piper`**: Enables Piper TTS for speaking B4M AI responses
+  - Requires Piper TTS installation and voice model
+  - Automatically speaks AI responses after display
+  - Works in combination with `--b4m` switch
+
+### Piper Configuration
+- **Installation**: `pip install piper-tts` or system package manager
+- **Voice Models**: ONNX-based neural voice models
+  - Downloaded from Hugging Face or Piper repositories
+  - Requires both `.onnx` model and `.json` config files
+  - Multiple voice options available (male, female, different languages)
+- **Audio Output**: Direct to system speakers via sounddevice
+- **Performance**: Fast local synthesis, ~200ms latency
+
+### Environment Variables for Piper
+- **`PIPER_MODEL_PATH`**: Path to Piper voice model (.onnx file)
+- **`PIPER_CONFIG_PATH`**: Path to model configuration (.json file)
+- **`PIPER_VOICE`**: Voice name (if using multiple models)
+- **Default**: Uses built-in English voice if no custom model specified
+
+### Piper Audio Pipeline
+When `--piper` is enabled:
+1. **Startup Test**: On application start, speaks "Hello World! Piper text-to-speech is working correctly."
+2. **B4M Response Processing**: When B4M response is received:
+   - Extract AI response text from B4M API
+   - Load Piper voice model (cached after first use)
+   - Synthesize speech from response text
+   - Stream audio directly to system speakers
+   - Continue normal operation while audio plays
+   - Handle audio errors gracefully (continue without TTS)
+
+### Piper System Requirements
+- **CPU**: Modern x64 processor (optimized for efficiency)
+- **Memory**: ~100-500MB additional RAM for voice model
+- **Audio**: Working audio output device
+- **Storage**: 50-200MB per voice model
+- **Dependencies**: espeak-ng (for phonemization)
+
 ## Implementation Notes
 
 ### Actual Implementation
@@ -256,6 +304,8 @@ When `--b4m` is enabled and a prompt is archived:
 - Files in `prompts/` directory are gitignored
 - Setup via `setup_ha_converse_minimal.sh` for minimal disk usage
 - Optional B4M API integration for AI-powered responses
+- Optional Piper TTS integration for voice synthesis of AI responses
+- Full voice interaction: Speech-to-text → AI processing → Text-to-speech
 
 ## Testing Requirements
 

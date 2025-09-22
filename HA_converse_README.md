@@ -11,6 +11,7 @@ A Whisper-based continuous speech-to-text application that maintains a 100-word 
 - Real-time word count display with trigger status
 - Automatic duplicate removal from audio chunk overlap
 - **B4M AI Integration** (optional): Send archived prompts to AI service for responses
+- **Piper TTS Integration** (optional): Convert AI responses to speech for full voice interaction
 - Graceful shutdown with Ctrl+C
 - English-only transcription for optimal accuracy
 - Minimal disk usage (~74MB for base model vs 1.5GB for OpenAI version)
@@ -25,7 +26,7 @@ A Whisper-based continuous speech-to-text application that maintains a 100-word 
 ### Option 2: Manual Installation
 If you have disk space issues or sudo restrictions:
 ```bash
-pip3 install --no-cache-dir faster-whisper sounddevice numpy
+pip3 install --no-cache-dir faster-whisper sounddevice numpy requests piper-tts
 ```
 
 The setup will:
@@ -52,6 +53,9 @@ export B4M_ROSIE_ID='your_rosie_session_id'
 
 # Run with B4M integration
 python3 ha_converse.py --b4m
+
+# Run with both B4M and voice output
+python3 ha_converse.py --b4m --piper
 ```
 
 ### Command-Line Options
@@ -60,6 +64,7 @@ python3 ha_converse.py --help
 
 Options:
   --b4m              Enable B4M API integration
+  --piper            Enable Piper TTS for voice output
   --buffer-size N    Set buffer size (default: 100)
   --model SIZE       Whisper model: tiny/base/small/medium/large
 ```
@@ -86,6 +91,7 @@ Options:
      - Sends text to B4M AI service
      - Polls for response with status monitoring
      - Displays formatted AI response with metadata
+     - **If --piper enabled**: Converts AI response to speech and plays audio
      - Shows debug info if response extraction fails
    - Clears buffer and starts fresh
 
@@ -101,9 +107,11 @@ When `--b4m` is enabled:
 
 **Environment Variables**:
 ```bash
-export B4M_API_KEY='your_key_here'        # Required
+export B4M_API_KEY='your_key_here'        # Required for B4M
 export B4M_ROSIE_ID='rosie_session_id'    # Optional (default provided)
 export B4M_USER_ID='user_id'              # Optional (default provided)
+export PIPER_MODEL_PATH='/path/to/model.onnx'  # Optional for custom voice
+export PIPER_CONFIG_PATH='/path/to/config.json' # Optional for custom voice
 ```
 
 **B4M Response Display**:
@@ -120,6 +128,7 @@ export B4M_USER_ID='user_id'              # Optional (default provided)
 
 📊 Token Usage: 245 total
 ⚡ Response Time: 3420ms
+🔊 Speaking response... (if --piper enabled)
 ==================================================
 ```
 
@@ -129,6 +138,38 @@ export B4M_USER_ID='user_id'              # Optional (default provided)
 - `prompts/prompt_YYYY-MM-DD-HH-MM-SS.txt` - Archived conversations (only when triggered by "Rosie")
 
 **Note**: Both `conversation.txt` and the `prompts/` directory are gitignored. Archives are only created when the trigger word is detected.
+
+### Piper TTS Integration
+
+When `--piper` is enabled:
+1. **Startup Test**: Speaks "Hello World!" message to verify TTS is working
+2. **AI Response Speech** (requires `--b4m`): AI responses from B4M are automatically converted to speech
+3. Audio is played through system speakers after text display
+4. Uses local neural text-to-speech (no cloud services)
+5. Supports custom voice models via environment variables
+
+**Installation**:
+```bash
+pip3 install piper-tts
+```
+
+**Voice Model Setup** (optional):
+```bash
+# Download custom voice models from Hugging Face
+# Example: Download English female voice
+wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx
+wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json
+
+# Set environment variables
+export PIPER_MODEL_PATH='/path/to/en_US-lessac-medium.onnx'
+export PIPER_CONFIG_PATH='/path/to/en_US-lessac-medium.onnx.json'
+```
+
+**Audio Output**:
+- **Startup Test**: Immediate voice confirmation on application start
+- Plays through default system audio device
+- Continues normal operation while audio plays
+- Graceful fallback if TTS fails (continues without audio)
 
 ## System Requirements
 
@@ -168,7 +209,7 @@ export B4M_USER_ID='user_id'              # Optional (default provided)
 ### Missing Dependencies
 If you see import errors, reinstall dependencies:
 ```bash
-pip3 install --no-cache-dir faster-whisper sounddevice numpy requests
+pip3 install --no-cache-dir faster-whisper sounddevice numpy requests piper-tts
 ```
 
 ### B4M API Issues
@@ -178,6 +219,12 @@ pip3 install --no-cache-dir faster-whisper sounddevice numpy requests
 - **Debug output**: System automatically shows response structure when extraction fails
 - **Polling timeout**: Max 15 attempts (105 seconds) before giving up
 - **Status monitoring**: Watch for 'done', 'running', or 'stopped' quest status
+
+### Piper TTS Issues
+- **Missing Dependencies**: Install piper-tts with `pip3 install piper-tts`
+- **Audio Device**: Ensure system has working audio output
+- **Voice Models**: Custom models require both .onnx and .json files
+- **Fallback Behavior**: System continues without TTS if Piper fails to initialize
 
 ## File Structure
 ```
@@ -203,3 +250,4 @@ pip3 install --no-cache-dir faster-whisper sounddevice numpy requests
 - Trigger word "Rosie" controls archiving (no automatic archiving)
 - Uses faster-whisper for 10x smaller footprint than OpenAI Whisper
 - Optional B4M AI integration for intelligent responses to archived prompts
+- Optional Piper TTS integration for full voice interaction workflow
