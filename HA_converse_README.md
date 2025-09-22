@@ -219,7 +219,22 @@ pip3 install --no-cache-dir faster-whisper sounddevice numpy requests piper-tts
 - **Missing Dependencies**: Install piper-tts with `pip3 install piper-tts`
 - **Audio Device**: Ensure system has working audio output
 - **Voice Models**: Custom models require both .onnx and .json files
+- **Environment Variables**: If you have `PIPER_MODEL_PATH` or `PIPER_CONFIG_PATH` in your `.bashrc`, they will override the default joe voice. Either unset them or point them to your preferred voice model.
 - **Fallback Behavior**: System continues without TTS if Piper fails to initialize
+
+**Common Voice Issues**:
+```bash
+# Check if environment variables are overriding voice selection
+echo $PIPER_MODEL_PATH
+echo $PIPER_CONFIG_PATH
+
+# To use automatic joe voice detection, unset environment variables
+unset PIPER_MODEL_PATH PIPER_CONFIG_PATH
+
+# Or comment them out in ~/.bashrc:
+# #export PIPER_MODEL_PATH="..."
+# #export PIPER_CONFIG_PATH="..."
+```
 
 ## File Structure
 ```
