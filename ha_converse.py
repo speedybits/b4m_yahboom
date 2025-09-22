@@ -117,14 +117,25 @@ class WhisperSTT:
         # Get Piper configuration from environment
         self.piper_model_path = os.environ.get('PIPER_MODEL_PATH')
         self.piper_config_path = os.environ.get('PIPER_CONFIG_PATH')
-        self.piper_voice_name = os.environ.get('PIPER_VOICE', 'joe[medium]')  # Default to joe[medium]
+        self.piper_voice_name = os.environ.get('PIPER_VOICE', 'en_US-joe-medium')  # Default to en_US-joe-medium
 
-        # If no model path is set, we'll try to use the voice name
+        # If no model path is set, try to use downloaded voice model
         if not self.piper_model_path:
-            print(f"\n✅ Using Piper voice: {self.piper_voice_name}")
-            print("   Set custom model: export PIPER_MODEL_PATH='/path/to/model.onnx'")
-            # Use voice name instead of file path
-            self.piper_model_path = None
+            # Try default downloaded location first
+            default_voice_dir = os.path.expanduser(f"~/.local/share/piper/voices")
+            default_model_path = os.path.join(default_voice_dir, f"{self.piper_voice_name}.onnx")
+            default_config_path = os.path.join(default_voice_dir, f"{self.piper_voice_name}.onnx.json")
+
+            if os.path.exists(default_model_path) and os.path.exists(default_config_path):
+                self.piper_model_path = default_model_path
+                self.piper_config_path = default_config_path
+                print(f"\n✅ Using downloaded Piper voice: {self.piper_voice_name}")
+                print(f"   Model: {self.piper_model_path}")
+            else:
+                print(f"\n⚠️  Piper voice '{self.piper_voice_name}' not found in {default_voice_dir}")
+                print("   Set custom model: export PIPER_MODEL_PATH='/path/to/model.onnx'")
+                print("   Or download voice: see HA_converse_README.md for instructions")
+                self.piper_model_path = None
         else:
             # Verify model file exists
             if not os.path.exists(self.piper_model_path):
@@ -506,28 +517,22 @@ class WhisperSTT:
         try:
             # Load voice model if not already loaded
             if not self.piper_voice:
-                if self.piper_model_path:
-                    # Use custom model file path
-                    if self.piper_config_path:
-                        self.piper_voice = PiperVoice.load(self.piper_model_path, self.piper_config_path)
-                    else:
-                        self.piper_voice = PiperVoice.load(self.piper_model_path)
-                else:
-                    # Use voice name (like 'joe[medium]')
+                if self.piper_model_path and os.path.exists(self.piper_model_path):
+                    # Use model file path
                     try:
-                        self.piper_voice = PiperVoice.load(self.piper_voice_name)
+                        if self.piper_config_path and os.path.exists(self.piper_config_path):
+                            self.piper_voice = PiperVoice.load(self.piper_model_path, self.piper_config_path)
+                        else:
+                            self.piper_voice = PiperVoice.load(self.piper_model_path)
                         print(f"✅ Loaded Piper voice: {self.piper_voice_name}")
                     except Exception as e:
-                        print(f"❌ Failed to load voice '{self.piper_voice_name}': {str(e)}")
-                        print("🔊 Trying fallback voice...")
-                        # Try a common fallback voice
-                        try:
-                            self.piper_voice = PiperVoice.load('en_US-lessac-medium')
-                            print("✅ Using fallback voice: en_US-lessac-medium")
-                        except Exception as e2:
-                            print(f"❌ Fallback voice failed: {str(e2)}")
-                            print("🔊 No Piper voice model available")
-                            return
+                        print(f"❌ Failed to load Piper voice: {str(e)}")
+                        print("🔊 No Piper voice model available")
+                        return
+                else:
+                    print("🔊 No Piper voice model available")
+                    print("   Download voice files or set PIPER_MODEL_PATH")
+                    return
 
             print("🔊 Converting text to speech...")
 
@@ -943,11 +948,6 @@ Environment variables for B4M:
 
     # Check for piper-tts if Piper is enabled
     if args.piper:
-        if not args.b4m:
-            print("Error: --piper requires --b4m to be enabled")
-            print("Piper TTS is used to speak B4M AI responses")
-            sys.exit(1)
-
         if not PIPER_AVAILABLE:
             print("Missing dependency for Piper TTS: piper-tts")
             print("Please install: pip install piper-tts")
