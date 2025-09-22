@@ -11,6 +11,9 @@ import time
 import signal
 import queue
 import threading
+import argparse
+import requests
+import json
 from datetime import datetime
 from pathlib import Path
 import numpy as np
@@ -34,7 +37,7 @@ except ImportError:
 class WhisperSTT:
     """Whisper-based speech-to-text with rolling buffer management"""
 
-    def __init__(self, model_name: str = "base", buffer_size: int = 100, trigger_word: str = "rosie"):
+    def __init__(self, model_name: str = "base", buffer_size: int = 100, trigger_word: str = "rosie", b4m_enabled: bool = False):
         self.model_name = model_name
         self.buffer_size = buffer_size
         self.trigger_word = trigger_word.lower()  # Case-insensitive
@@ -44,6 +47,12 @@ class WhisperSTT:
         self.running = False
         self.audio_queue = queue.Queue()
         self.trigger_active = False  # Flag for archiving when buffer is full
+
+        # B4M API integration
+        self.b4m_enabled = b4m_enabled
+        self.debug_mode = False  # Can be enabled for troubleshooting
+        if self.b4m_enabled:
+            self._init_b4m()
 
         # File paths
         self.conversation_file = Path("conversation.txt")
@@ -57,6 +66,23 @@ class WhisperSTT:
         # Initialize
         self._setup_directories()
         self._load_model()
+
+    def _init_b4m(self):
+        """Initialize B4M API configuration"""
+        self.b4m_api_key = os.environ.get('B4M_API_KEY')
+        if not self.b4m_api_key:
+            print("\n⚠️  WARNING: B4M_API_KEY environment variable not set!")
+            print("   B4M integration disabled. Set it with: export B4M_API_KEY='your_key_here'")
+            self.b4m_enabled = False
+            return
+
+        self.b4m_api_url = "https://app.bike4mind.com/api/ai/llm"
+        self.b4m_session_id = os.environ.get('B4M_ROSIE_ID', '68b1e0fcac3f77504fce09b5')
+        self.b4m_user_id = os.environ.get('B4M_USER_ID', '65563f622213b120cd1d9592')
+
+        print(f"✅ B4M API integration enabled")
+        print(f"   Rosie ID: {self.b4m_session_id}")
+        print(f"   User ID: {self.b4m_user_id}")
 
     def _setup_directories(self):
         """Create necessary directories and files"""
@@ -92,6 +118,10 @@ class WhisperSTT:
 
         print(f"\nArchive created: {archive_file}")
 
+        # Send to B4M API if enabled
+        if self.b4m_enabled and content:
+            self._send_to_b4m(content)
+
         # Clear conversation file and buffer
         self.conversation_file.write_text("")
         self.word_buffer.clear()
@@ -101,6 +131,194 @@ class WhisperSTT:
         print("Trigger reset - listening for 'Rosie' again")
 
         return True
+
+    def _send_to_b4m(self, text: str):
+        """Send archived text to B4M API and display response"""
+        if not self.b4m_api_key:
+            return
+
+        print("\n🤖 Sending to B4M AI service...")
+
+        headers = {
+            "X-API-Key": self.b4m_api_key,
+            "Content-Type": "application/json"
+        }
+
+        # Prepare the message for B4M
+        message = f"Please respond to the following conversation or query:\n\n{text}"
+
+        payload = {
+            "sessionId": self.b4m_session_id,
+            "message": message,
+            "historyCount": 10,
+            "fabFileIds": [],
+            "messageFileIds": [],
+            "params": {
+                "model": "gpt-4o-mini",
+                "temperature": 0.7,  # Conversational temperature
+                "max_tokens": 500,
+                "stream": False
+            },
+            "promptMeta": {
+                "session": {
+                    "id": self.b4m_session_id,
+                    "userId": self.b4m_user_id
+                }
+            }
+        }
+
+        try:
+            start_time = time.time()
+            response = requests.post(
+                self.b4m_api_url,
+                headers=headers,
+                json=payload,
+                timeout=10.0
+            )
+            elapsed_time = time.time() - start_time
+
+            if response.status_code == 200:
+                result = response.json()
+                print(f"✅ B4M response received in {elapsed_time:.2f} seconds")
+
+                # Check if we need to poll for the result
+                if (result.get('status') == 'running' or
+                    (result.get('replies') is not None and len(result.get('replies', [])) == 0)):
+                    print("   Processing... polling for result")
+                    result = self._poll_b4m_response(result, headers)
+
+                # Extract and display the response
+                self._display_b4m_response(result)
+
+            else:
+                print(f"❌ B4M API Error: Status {response.status_code}")
+                print(f"   Response: {response.text[:200]}")
+
+        except requests.Timeout:
+            print("⏰ B4M request timed out")
+        except Exception as e:
+            print(f"❌ B4M request failed: {str(e)}")
+
+    def _poll_b4m_response(self, initial_response, headers):
+        """Poll B4M API for final response"""
+        quest_id = initial_response.get('id')
+        if not quest_id:
+            return initial_response
+
+        poll_url = f"https://app.bike4mind.com/api/sessions/{self.b4m_session_id}/chat/{quest_id}"
+        max_polls = 15
+        poll_interval = 7.0
+
+        for i in range(max_polls):
+            time.sleep(poll_interval)
+
+            try:
+                poll_response = requests.get(poll_url, headers=headers, timeout=10.0)
+
+                if poll_response.status_code == 200:
+                    result = poll_response.json()
+                    status = result.get('status', 'unknown')
+
+                    # Check status first (like b4m_ping_test.py)
+                    if status == 'done':
+                        ai_response = self._extract_ai_response(result)
+                        if ai_response:
+                            print(f"   Response ready after {i+1} polls")
+                            return result
+                        else:
+                            print(f"   Quest done but no AI response found")
+                            return result
+                    elif status == 'stopped':
+                        print(f"   Quest was stopped")
+                        return result
+                    elif status == 'running':
+                        print(f"   Poll {i+1}/{max_polls}: Status = '{status}'")
+                    else:
+                        # Check if response is ready by content
+                        if result.get('replies') and len(result.get('replies', [])) > 0:
+                            print(f"   Response ready after {i+1} polls")
+                            return result
+                        print(f"   Poll {i+1}/{max_polls}: Status = '{status}'")
+
+                else:
+                    print(f"   Poll {i+1}: HTTP {poll_response.status_code}")
+
+            except Exception as e:
+                print(f"   Poll error: {str(e)}")
+
+        print("   Max polling attempts reached")
+        return initial_response
+
+    def _extract_ai_response(self, quest_data):
+        """Extract AI response using multiple fallback methods (from b4m_ping_test.py)"""
+        # Primary: check replies array (current B4M structure)
+        if (quest_data.get('replies') and
+            isinstance(quest_data['replies'], list) and
+            len(quest_data['replies']) > 0):
+            return '\n'.join(quest_data['replies'])
+
+        # Fallback 1: check single reply field (legacy)
+        elif quest_data.get('reply'):
+            return quest_data['reply']
+
+        # Fallback 2: check questMasterReply
+        elif quest_data.get('questMasterReply'):
+            return quest_data['questMasterReply']
+
+        # Fallback 3: check Research Mode results
+        elif (quest_data.get('researchModeResults') and
+              isinstance(quest_data['researchModeResults'], list)):
+            results = [r['response'] for r in quest_data['researchModeResults']
+                      if r.get('response')]
+            if results:
+                return '\n\n'.join(results)
+
+        # Fallback 4: check messages array
+        elif quest_data.get('messages'):
+            for msg in quest_data.get('messages', []):
+                if msg.get('role') == 'assistant' and msg.get('content'):
+                    return msg['content']
+
+        return None
+
+    def _display_b4m_response(self, response_data):
+        """Extract and display B4M AI response"""
+        print("\n" + "="*50)
+        print("📝 B4M AI Response:")
+        print("="*50)
+
+        # Use the comprehensive extraction method
+        response_text = self._extract_ai_response(response_data)
+
+        if response_text:
+            # Clean up and display the response text
+            response_text = response_text.strip()
+            print(response_text)
+        else:
+            print("⚠️ No AI response found in the quest data")
+            # Always show debug info when response not found
+            print("\n🔍 Debug - Response structure:")
+            debug_data = {
+                'status': response_data.get('status'),
+                'replies': response_data.get('replies', []),
+                'reply': response_data.get('reply'),
+                'questMasterReply': response_data.get('questMasterReply'),
+                'messages': response_data.get('messages', []),
+                'available_keys': list(response_data.keys())
+            }
+            print(json.dumps(debug_data, indent=2)[:800] + "...")
+
+        # Display metadata if available
+        if response_data.get('promptMeta'):
+            meta = response_data['promptMeta']
+            if meta.get('tokenUsage'):
+                tokens = meta['tokenUsage']
+                print(f"\n📊 Token Usage: {tokens.get('totalTokens', 0)} total")
+            if meta.get('performance'):
+                perf = meta['performance']
+                print(f"⚡ Response Time: {perf.get('totalResponseTime', 0)}ms")
+
+        print("="*50 + "\n")
 
     def _update_conversation_file(self):
         """Write buffer to conversation file"""
@@ -258,6 +476,8 @@ class WhisperSTT:
         print(f"Using Whisper {self.model_name} model")
         print(f"Trigger word: 'Rosie' (say it to enable archiving)")
         print(f"Buffer size: {self.buffer_size} words")
+        if self.b4m_enabled:
+            print(f"B4M API: ENABLED - responses will be sent to AI")
         print(f"Listening on default microphone...")
         print(f"Press Ctrl+C to stop\n")
 
@@ -312,6 +532,45 @@ def main():
     # Setup signal handler
     signal.signal(signal.SIGINT, signal_handler)
 
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(
+        description="HA_converse Speech-to-Text with rolling buffer",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  %(prog)s                    # Basic mode
+  %(prog)s --b4m             # With B4M AI integration
+
+Environment variables for B4M:
+  B4M_API_KEY     Required API key for B4M service
+  B4M_ROSIE_ID    Optional Rosie session ID (default provided)
+  B4M_USER_ID     Optional user ID (default provided)
+        """
+    )
+
+    parser.add_argument(
+        '--b4m',
+        action='store_true',
+        help='Enable B4M API integration - sends archived prompts to AI service'
+    )
+
+    parser.add_argument(
+        '--buffer-size',
+        type=int,
+        default=100,
+        help='Buffer size in words (default: 100)'
+    )
+
+    parser.add_argument(
+        '--model',
+        type=str,
+        default='base',
+        choices=['tiny', 'base', 'small', 'medium', 'large'],
+        help='Whisper model size (default: base)'
+    )
+
+    args = parser.parse_args()
+
     # Check for required dependencies
     try:
         import sounddevice
@@ -327,8 +586,22 @@ def main():
             print("Please install requirements: pip install openai-whisper sounddevice numpy")
         sys.exit(1)
 
+    # Check for requests if B4M is enabled
+    if args.b4m:
+        try:
+            import requests
+        except ImportError:
+            print("Missing dependency for B4M integration: requests")
+            print("Please install: pip install requests")
+            sys.exit(1)
+
     # Start the system
-    stt = WhisperSTT(model_name="base", buffer_size=100, trigger_word="rosie")
+    stt = WhisperSTT(
+        model_name=args.model,
+        buffer_size=args.buffer_size,
+        trigger_word="rosie",
+        b4m_enabled=args.b4m
+    )
 
     try:
         stt.start()

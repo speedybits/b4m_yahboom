@@ -28,6 +28,7 @@ When the trigger word "Rosie" is detected:
 5. Output notification to Linux terminal displaying the created filename
 6. Clear `conversation.txt` and restart with new content
 7. Clear the archive flag
+8. **If --b4m switch enabled**: Send archived text to B4M API and display response
 
 **Note**: Without the trigger word, the buffer simply overwrites oldest words when full - no archiving occurs.
 
@@ -158,6 +159,7 @@ When the trigger word "Rosie" is detected:
 - Graceful shutdown via Ctrl+C (saves current buffer before exit)
 - Automatic startup with system default microphone
 - No manual configuration required for basic operation
+- Optional `--b4m` switch enables B4M API integration
 
 ## Performance Considerations
 
@@ -209,6 +211,41 @@ When the trigger word "Rosie" is detected:
 - User-selectable performance profiles (accuracy-first, balanced, speed-first)
 - Real-time monitoring of transcription backlog
 
+## B4M API Integration
+
+### Command-Line Switch
+- **`--b4m`**: Enables B4M AI service integration
+  - When enabled, archived prompts are sent to B4M API
+  - Response is displayed in terminal
+  - Requires B4M_API_KEY environment variable
+
+### B4M Communication Flow
+When `--b4m` is enabled and a prompt is archived:
+1. Send archived text to B4M API endpoint with conversation context
+2. Include session metadata (Rosie ID, User ID) for continuity
+3. Poll for response using quest-based polling system:
+   - Check quest status every 7 seconds (up to 15 attempts)
+   - Wait for `status: 'done'` confirmation
+   - Handle `status: 'running'` and `status: 'stopped'` appropriately
+4. Extract AI response using multiple fallback methods:
+   - Primary: `replies` array (current B4M structure)
+   - Fallback: `reply`, `questMasterReply`, `researchModeResults`, `messages`
+5. Display formatted AI response in terminal with metadata
+6. Show token usage, response time, and processing status
+7. Provide debug output if response extraction fails
+
+### B4M Configuration
+- **API Endpoint**: `https://app.bike4mind.com/api/ai/llm`
+- **Environment Variables**:
+  - `B4M_API_KEY`: Required API key for authentication
+  - `B4M_ROSIE_ID`: Optional Rosie session ID (default provided)
+  - `B4M_USER_ID`: Optional user ID (default provided)
+- **Model**: Uses GPT-4o-mini for responses
+- **Temperature**: 0.7 for conversational responses
+- **Polling**: Quest-based system with status monitoring
+- **Extraction**: Multiple fallback methods for robust response handling
+- **Debug**: Automatic troubleshooting output when responses not found
+
 ## Implementation Notes
 
 ### Actual Implementation
@@ -220,6 +257,7 @@ When the trigger word "Rosie" is detected:
 - With trigger: archives next full buffer then resets
 - Files in `prompts/` directory are gitignored
 - Setup via `setup_ha_converse_minimal.sh` for minimal disk usage
+- Optional B4M API integration for AI-powered responses
 
 ## Testing Requirements
 
