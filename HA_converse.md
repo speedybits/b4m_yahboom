@@ -326,10 +326,10 @@ When `--b4m` is enabled and buffer reaches 20 words:
 - **Performance**: Fast local synthesis, ~200ms latency
 
 ### Environment Variables for Piper
-- **`PIPER_MODEL_PATH`**: Path to Piper voice model (.onnx file)
-- **`PIPER_CONFIG_PATH`**: Path to model configuration (.json file)
-- **`PIPER_VOICE`**: Voice name (if using multiple models)
-- **Default**: Uses built-in English voice if no custom model specified
+- **`PIPER_MODEL_PATH`**: Path to Piper voice model (.onnx file) [optional]
+- **`PIPER_CONFIG_PATH`**: Path to model configuration (.json file) [optional]
+- **`PIPER_VOICE`**: Voice name (default: 'joe[medium]')
+- **Default**: Uses 'joe[medium]' voice if no custom model specified
 
 ### Piper Audio Pipeline
 When `--piper` is enabled:

@@ -114,15 +114,16 @@ class WhisperSTT:
             self.piper_enabled = False
             return
 
-        # Get Piper model path from environment or use default
+        # Get Piper configuration from environment
         self.piper_model_path = os.environ.get('PIPER_MODEL_PATH')
         self.piper_config_path = os.environ.get('PIPER_CONFIG_PATH')
+        self.piper_voice_name = os.environ.get('PIPER_VOICE', 'joe[medium]')  # Default to joe[medium]
 
+        # If no model path is set, we'll try to use the voice name
         if not self.piper_model_path:
-            print("\n⚠️  WARNING: PIPER_MODEL_PATH environment variable not set!")
-            print("   Using default Piper voice (if available)")
+            print(f"\n✅ Using Piper voice: {self.piper_voice_name}")
             print("   Set custom model: export PIPER_MODEL_PATH='/path/to/model.onnx'")
-            # Try to use a default model if available
+            # Use voice name instead of file path
             self.piper_model_path = None
         else:
             # Verify model file exists
@@ -506,13 +507,27 @@ class WhisperSTT:
             # Load voice model if not already loaded
             if not self.piper_voice:
                 if self.piper_model_path:
+                    # Use custom model file path
                     if self.piper_config_path:
                         self.piper_voice = PiperVoice.load(self.piper_model_path, self.piper_config_path)
                     else:
                         self.piper_voice = PiperVoice.load(self.piper_model_path)
                 else:
-                    print("🔊 No Piper voice model available")
-                    return
+                    # Use voice name (like 'joe[medium]')
+                    try:
+                        self.piper_voice = PiperVoice.load(self.piper_voice_name)
+                        print(f"✅ Loaded Piper voice: {self.piper_voice_name}")
+                    except Exception as e:
+                        print(f"❌ Failed to load voice '{self.piper_voice_name}': {str(e)}")
+                        print("🔊 Trying fallback voice...")
+                        # Try a common fallback voice
+                        try:
+                            self.piper_voice = PiperVoice.load('en_US-lessac-medium')
+                            print("✅ Using fallback voice: en_US-lessac-medium")
+                        except Exception as e2:
+                            print(f"❌ Fallback voice failed: {str(e2)}")
+                            print("🔊 No Piper voice model available")
+                            return
 
             print("🔊 Converting text to speech...")
 

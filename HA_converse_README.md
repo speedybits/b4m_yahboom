@@ -103,8 +103,9 @@ When `--b4m` is enabled:
 export B4M_API_KEY='your_key_here'        # Required for B4M
 export B4M_ROSIE_ID='rosie_session_id'    # Optional (default provided)
 export B4M_USER_ID='user_id'              # Optional (default provided)
-export PIPER_MODEL_PATH='/path/to/model.onnx'  # Optional for custom voice
-export PIPER_CONFIG_PATH='/path/to/config.json' # Optional for custom voice
+export PIPER_VOICE='joe[medium]'          # Optional voice name (default: joe[medium])
+export PIPER_MODEL_PATH='/path/to/model.onnx'  # Optional for custom voice files
+export PIPER_CONFIG_PATH='/path/to/config.json' # Optional for custom voice files
 ```
 
 **B4M Response Display**:
