@@ -328,8 +328,8 @@ When `--b4m` is enabled and buffer reaches 20 words:
 ### Environment Variables for Piper
 - **`PIPER_MODEL_PATH`**: Path to Piper voice model (.onnx file) [optional]
 - **`PIPER_CONFIG_PATH`**: Path to model configuration (.json file) [optional]
-- **`PIPER_VOICE`**: Voice name (default: 'en_US-joe-medium')
-- **Default**: Uses 'en_US-joe-medium' voice if no custom model specified
+- **`PIPER_VOICE`**: Voice name (default: 'en_GB-jenny_dioco-medium')
+- **Default**: Uses 'en_GB-jenny_dioco-medium' voice if no custom model specified
 
 ### Piper Audio Pipeline
 When `--piper` is enabled:

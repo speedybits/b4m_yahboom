@@ -117,7 +117,7 @@ class WhisperSTT:
         # Get Piper configuration from environment
         self.piper_model_path = os.environ.get('PIPER_MODEL_PATH')
         self.piper_config_path = os.environ.get('PIPER_CONFIG_PATH')
-        self.piper_voice_name = os.environ.get('PIPER_VOICE', 'en_US-joe-medium')  # Default to en_US-joe-medium
+        self.piper_voice_name = os.environ.get('PIPER_VOICE', 'en_GB-jenny_dioco-medium')  # Default to en_GB-jenny_dioco-medium
 
         # If no model path is set, try to use downloaded voice model
         if not self.piper_model_path:

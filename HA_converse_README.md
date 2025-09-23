@@ -103,7 +103,7 @@ When `--b4m` is enabled:
 export B4M_API_KEY='your_key_here'        # Required for B4M
 export B4M_ROSIE_ID='rosie_session_id'    # Optional (default provided)
 export B4M_USER_ID='user_id'              # Optional (default provided)
-export PIPER_VOICE='en_US-joe-medium'    # Optional voice name (default: en_US-joe-medium)
+export PIPER_VOICE='en_GB-jenny_dioco-medium'  # Optional voice name (default: en_GB-jenny_dioco-medium)
 export PIPER_MODEL_PATH='/path/to/model.onnx'  # Optional for custom voice files
 export PIPER_CONFIG_PATH='/path/to/config.json' # Optional for custom voice files
 ```
@@ -151,14 +151,20 @@ pip3 install piper-tts
 **Voice Model Setup** (optional):
 ```bash
 # Download custom voice models from Hugging Face
-# Example: Download English female voice
+# Default: Jenny (Dioco) voice (British English, female)
+wget https://huggingface.co/Derur/piper-tts-models/resolve/main/en/jenny_dioco/en_GB-jenny_dioco-medium.onnx
+wget https://huggingface.co/Derur/piper-tts-models/resolve/main/en/jenny_dioco/en_GB-jenny_dioco-medium.onnx.json
+
+# Alternative voices (US English)
 wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx
 wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json
 
 # Set environment variables
-export PIPER_MODEL_PATH='/path/to/en_US-lessac-medium.onnx'
-export PIPER_CONFIG_PATH='/path/to/en_US-lessac-medium.onnx.json'
+export PIPER_MODEL_PATH='/path/to/voice-model.onnx'
+export PIPER_CONFIG_PATH='/path/to/voice-model.onnx.json'
 ```
+
+**Note**: The Jenny (Dioco) voice requires attribution - the voice must be referred to as "Jenny" or "Jenny (Dioco)" where practical. Commercial use is permitted.
 
 **Audio Output**:
 - **Startup Test**: Immediate voice confirmation on application start
