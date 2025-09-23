@@ -33,19 +33,27 @@ Two modes are available for triggering voice response:
 When the trigger word "Rosie" is detected:
 1. **If --piper switch enabled**: Read and speak contents of `response.txt` using Piper TTS
 2. **Clear `response.txt` after speaking** to prevent repeated responses
-3. Continue normal operation (no archiving, no buffer clearing)
-4. **If `response.txt` doesn't exist or is empty**: Show info message but remain silent (no voice output)
+3. **Voice Interruption**: If user speaks while TTS is playing:
+   - Immediately stop TTS playback
+   - Clear `response.txt` to prevent re-triggering
+   - Resume normal speech recognition
+4. Continue normal operation (no archiving, no buffer clearing)
+5. **If `response.txt` doesn't exist or is empty**: Show info message but remain silent (no voice output)
 
 #### 4b. Interactive Mode (--interactive switch)
 When **--interactive switch enabled**:
 1. Monitor for 3 seconds of continuous silence
 2. **If silence detected and --piper enabled**: Read and speak contents of `response.txt` using Piper TTS
 3. **Clear `response.txt` after speaking** to prevent repeated responses
-4. Continue normal operation after speaking
-5. **If `response.txt` doesn't exist or is empty**: Remain silent (no voice output)
-6. Silence detection resets only when speech is detected (not after voice response)
-7. Timer displays after 0.5 seconds of silence, stops after trigger
-8. Prevents repeated triggers until speech resets the system
+4. **Voice Interruption**: If user speaks while TTS is playing:
+   - Immediately stop TTS playback
+   - Clear `response.txt` to prevent re-triggering
+   - Resume normal speech recognition
+5. Continue normal operation after speaking
+6. **If `response.txt` doesn't exist or is empty**: Remain silent (no voice output)
+7. Silence detection resets only when speech is detected (not after voice response)
+8. Timer displays after 0.5 seconds of silence, stops after trigger
+9. Prevents repeated triggers until speech resets the system
 
 **Note**: Interactive mode disables keyword ("Rosie") trigger detection. Only one trigger mode can be active at a time.
 
@@ -153,6 +161,8 @@ When **--interactive switch enabled**:
 - Voice output messages:
   - `🔊 Speaking AI response from response.txt`
   - `💾 Cleared response.txt after speaking`
+  - `⏹️  Speech interrupted - stopping playback` (when user speaks during TTS)
+  - `💾 Cleared response.txt due to voice detection` (when interrupted)
 - **Interactive Mode Timer**:
   - `⏳ Silence timer: X.Xs / 3.0s` (displays after 0.5s of silence)
   - Timer stops displaying after trigger to prevent confusion

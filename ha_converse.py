@@ -76,6 +76,11 @@ class WhisperSTT:
         self.last_speech_time = time.time()
         self.silence_triggered = False  # Prevent repeated triggers
 
+        # TTS interruption tracking
+        self.is_speaking = False  # Track if TTS is currently playing
+        self.voice_detected_during_speech = False  # Track if voice detected while speaking
+        self.stop_playback = False  # Signal to stop audio playback
+
         # File paths
         self.conversation_file = Path("conversation.txt")
         self.prompts_dir = Path("prompts")
@@ -570,7 +575,7 @@ class WhisperSTT:
             print("   Continuing without speech synthesis")
 
     def _play_audio_file(self, file_path: str):
-        """Play audio file using sounddevice"""
+        """Play audio file using sounddevice with interruption support"""
         try:
             # Read WAV file
             with wave.open(file_path, 'rb') as wav_file:
@@ -593,12 +598,33 @@ class WhisperSTT:
             # Convert to float32 for sounddevice
             audio_data = audio_data.astype(np.float32) / 32768.0
 
+            # Mark as speaking and reset interruption flags
+            self.is_speaking = True
+            self.stop_playback = False
+            self.voice_detected_during_speech = False
+
             # Play audio
             sd.play(audio_data, sample_rate)
-            sd.wait()  # Wait until playback is finished
+
+            # Wait for playback to finish, checking for interruption
+            while sd.get_stream().active:
+                if self.stop_playback or self.voice_detected_during_speech:
+                    sd.stop()  # Stop playback immediately
+                    print("\n⏹️  Speech interrupted - stopping playback")
+
+                    # Clear response.txt if voice was detected
+                    if self.voice_detected_during_speech:
+                        response_file = Path("response.txt")
+                        response_file.write_text("", encoding='utf-8')
+                        print("💾 Cleared response.txt due to voice detection")
+                    break
+                time.sleep(0.1)  # Check every 100ms
+
+            self.is_speaking = False
 
         except Exception as e:
             print(f"🔊 Audio playback error: {str(e)}")
+            self.is_speaking = False
 
     def _update_conversation_file(self):
         """Write buffer to conversation file"""
@@ -675,6 +701,14 @@ class WhisperSTT:
                     self._speak_response_file()
                     # Don't immediately reset the flag - wait for speech to reset it
             return
+
+        # We have speech detected
+        # Check if TTS is currently speaking
+        if self.is_speaking:
+            # Set flag to interrupt TTS
+            self.voice_detected_during_speech = True
+            self.stop_playback = True
+            return  # Don't process this text further during interruption
 
         # We have speech - reset silence tracking in interactive mode
         if self.interactive_mode:
