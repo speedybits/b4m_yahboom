@@ -3,46 +3,10 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Commits
-Only commit files if the regression test has passed:
-- For simulation development: ./b4m_launch.sh --simulation --regression
-- For real robot deployment: ./b4m_launch.sh --regression
-
-## Get help running important commands
-If you are unable to run a command that you need to run, please stop and tell me what you need me to run. For example, if you can't run a 'sudo' command, please stop and tell me.
-
-## User guide
-After any changes that involve user interaction, please make sure the USERGUIDE.md is updated
+Never commit files automatically
 
 ## Test file location
 Any new test file created should be located in the 'tests' directory
-
-The regression test now includes automated image comparison that validates RViz visualization:
-- Captures screenshots at 3 key moments: initial, mid-rotation (180°), and final (360°)
-- Compares against mode-appropriate reference screenshots with 90% similarity threshold
-- Uses multi-method analysis: histogram, SSIM, feature matching, and template matching
-- Ensures laser scan visualization and SLAM mapping functionality remain consistent
-- Test fails if screenshots differ by more than 10% from reference images
-- Automatically detects simulation vs real robot mode and uses correct reference directory
-
-**Important**: The regression test now:
-- Cleans up at the START (not end) to ensure clean state
-- Leaves system running after tests for debugging
-- Uses filtered `/odom` topic (from EKF), not raw `/odom_raw`
-- To manually clean up after debugging: `./b4m_shutdown.sh --keep-agent`
-
-Dependencies required: python3-opencv python3-skimage
-
-## Running and Shut down
-Always use b4m_launch to run tests. Use the --simulation switch for Gazebo Classic simulation tests
-If not running a simulation, always use the --skip-agent switch
-Always use b4m_shutdown to stop all running processes when appropriate
-If not running a simulation, always use b4m_shutdown --keep-agent
-
-
-## Test-Driven Development
-Always create unit tests first for new features. These tests should fail because there is no code implemented at first
-Never create code that has mocked components or tests mocked components
-Keep iterating on the code implementation until the unit tests pass
 
 ### Testing Best Practices
 - **Test Real Behavior**: Tests must use actual components, not mocks, to detect real issues

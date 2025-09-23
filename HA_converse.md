@@ -57,7 +57,36 @@ When **--interactive switch enabled**:
 
 **Note**: Interactive mode disables keyword ("Rosie") trigger detection. Only one trigger mode can be active at a time.
 
-## Technical Requirements
+### 5. Thread Architecture
+The application operates with two independent threads for simultaneous processing:
+
+#### 5a. Speech Recognition Thread (Main Thread)
+Handles all speech-to-text and B4M API communication:
+- Continuous audio capture from microphone
+- Whisper model transcription
+- Circular buffer management (20-word rolling buffer)
+- B4M API requests when buffer reaches 20 words
+- Writing responses to `response.txt`
+- Updating `conversation.txt` with current buffer
+- **Voice Activity Monitoring**: Detects when user is speaking for TTS interruption
+
+#### 5b. Text-to-Speech Thread (Secondary Thread)
+Handles all voice output and trigger detection:
+- Monitors for trigger conditions (keyword or silence based on mode)
+- Reads `response.txt` when triggered
+- Synthesizes and plays audio via Piper TTS
+- **Interruptible Playback**: Monitors voice activity flag from main thread
+- **Immediate Stop**: Halts audio playback when voice detected
+- Clears `response.txt` after speaking or when interrupted
+- Manages trigger state to prevent repeated responses
+
+#### 5c. Thread Communication
+- **Shared Voice Activity Flag**: Main thread sets flag when speech detected
+- **Thread-Safe Operations**: File operations use locking to prevent conflicts
+- **Non-Blocking Design**: TTS thread never blocks speech recognition
+- **Real-Time Interruption**: Sub-100ms response time for voice interruption
+
+## 6. Technical Requirements
 
 ### Platform
 - Ubuntu Linux 22.04 LTS
@@ -77,7 +106,7 @@ When **--interactive switch enabled**:
 - **Archive directory**: `prompts/` - Directory for manual archives (not used in automatic workflow)
 - **Archive files**: `prompts/prompt_YYYY-MM-DD-HH-MM-SS.txt` - Manual timestamped backups (optional feature)
 
-## Implementation Details
+## 7. Implementation Details
 
 ### Application Behavior
 - **Startup Sequence**:
@@ -170,7 +199,7 @@ When **--interactive switch enabled**:
 - Output to stdout for logging and monitoring
 - Word count updates after each transcription
 
-## Error Handling
+## 8. Error Handling
 
 ### Audio Issues
 - Gracefully handle microphone unavailability
@@ -190,7 +219,7 @@ When **--interactive switch enabled**:
 - Handle unsupported audio format errors
 - Continue processing next chunk after failures
 
-## Configuration Options
+## 9. Configuration Options
 
 ### Adjustable Parameters
 - Buffer size (default: 20 words, configurable)
@@ -225,7 +254,7 @@ When **--interactive switch enabled**:
   - `--b4m --piper --interactive`: Full voice interaction with silence trigger
   - `--interactive --piper`: Silence-triggered voice without B4M (speaks existing response.txt)
 
-## Performance Considerations
+## 10. Performance Considerations
 
 ### Resource Usage
 - **Model Memory Requirements (faster-whisper)**:
@@ -252,7 +281,7 @@ When **--interactive switch enabled**:
   - Sub-second with GPU acceleration
   - Total delay: 2-3 seconds from speech to text file update
 
-## Security and Privacy
+## 11. Security and Privacy
 
 ### Data Handling
 - Fully offline operation with local Whisper models
@@ -266,7 +295,7 @@ When **--interactive switch enabled**:
 - User-specific file storage
 - Optional encryption for archived files
 
-## Future Enhancements
+## 12. Future Enhancements
 
 ### Dynamic Performance Mode
 - Configurable quality/speed trade-off
@@ -275,7 +304,7 @@ When **--interactive switch enabled**:
 - User-selectable performance profiles (accuracy-first, balanced, speed-first)
 - Real-time monitoring of transcription backlog
 
-## B4M API Integration
+## 13. B4M API Integration
 
 ### Command-Line Switch
 - **`--b4m`**: Enables B4M AI service integration
@@ -318,7 +347,7 @@ When `--b4m` is enabled and buffer reaches 20 words:
 - **Extraction**: Multiple fallback methods for robust response handling
 - **Debug**: Automatic troubleshooting output when responses not found
 
-## Piper TTS Integration
+## 14. Piper TTS Integration
 
 ### Command-Line Switch
 - **`--piper`**: Enables Piper TTS for speaking B4M AI responses
@@ -369,7 +398,7 @@ When `--piper` is enabled:
 - **Storage**: 50-200MB per voice model
 - **Dependencies**: espeak-ng (for phonemization)
 
-## Implementation Notes
+## 15. Implementation Notes
 
 ### Actual Implementation
 - Uses `faster-whisper` library for 10x smaller model size
@@ -399,7 +428,24 @@ When `--piper` is enabled:
 - **Timer Reset**: Updates `last_speech_time` after trigger and when speech detected
 - **No Annoying Voice**: Remains silent when no AI response is available
 
-## Testing Requirements
+### Thread Architecture Implementation
+- **Threading Library**: Uses Python's `threading` module with daemon threads
+- **Voice Activity Detection**: Main thread continuously monitors audio input for speech
+- **Shared State Management**:
+  - `voice_activity_flag`: Thread-safe boolean indicating when user is speaking
+  - `tts_interrupt_flag`: Signal from main thread to stop TTS playback
+  - `response_file_lock`: File system lock for thread-safe `response.txt` operations
+- **TTS Interruption Mechanism**:
+  - TTS thread checks voice activity flag every 50ms during playback
+  - Immediate audio stream termination when voice detected
+  - Audio buffer flush to prevent delayed playback continuation
+  - File cleanup (clear `response.txt`) occurs in interrupted state
+- **Performance Optimization**:
+  - Non-blocking audio synthesis using streaming buffers
+  - Minimal latency voice detection (< 100ms interrupt response)
+  - Efficient thread communication using threading Events and Locks
+
+## 16. Testing Requirements
 
 ### Unit Tests
 - Word counting accuracy
