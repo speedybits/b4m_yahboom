@@ -387,16 +387,56 @@ When `--b4m` is enabled and conversation files exist:
   - Files accumulate if TTS is disabled or not triggered
 
 ### B4M Configuration
-- **API Endpoint**: `https://app.bike4mind.com/api/ai/llm`
-- **Environment Variables**:
-  - `B4M_API_KEY`: Required API key for authentication
-  - `B4M_ROSIE_ID`: Optional Rosie session ID (default provided)
-  - `B4M_USER_ID`: Optional user ID (default provided)
-- **Model**: Uses GPT-4o-mini for responses
-- **Temperature**: 0.7 for conversational responses
-- **Polling**: Quest-based system with status monitoring
-- **Extraction**: Multiple fallback methods for robust response handling
-- **Debug**: Automatic troubleshooting output when responses not found
+
+#### API Endpoint and Authentication
+- **Primary Endpoint**: `https://app.bike4mind.com/api/ai/llm`
+- **Polling Endpoint**: `https://app.bike4mind.com/api/sessions/{sessionId}/chat/{questId}`
+- **Authentication Method**: API key via `X-API-Key` header (not Bearer token)
+
+#### Environment Variables
+- **`B4M_API_KEY`**: Required API key for authentication (set in user's `.bashrc`)
+- **`B4M_ROSIE_ID`**: Session/Rosie ID for conversation context (set in user's `.bashrc`)
+- **`B4M_USER_ID`**: Optional user ID (defaults to documented test user if not set)
+
+#### API Request Structure
+```json
+{
+  "sessionId": "68d09269ca497a521d0d3231",  // From B4M_ROSIE_ID
+  "message": "conversation text content",
+  "historyCount": 10,
+  "fabFileIds": [],
+  "messageFileIds": []
+}
+```
+
+#### Headers
+```json
+{
+  "X-API-Key": "b4m_live_a1683f10f37fcfb1d530f61935d07a2a",  // From B4M_API_KEY
+  "Content-Type": "application/json"
+}
+```
+
+#### Polling System
+- **Initial Request**: POST to main endpoint, may return status "running" with empty replies
+- **Polling Required**: When `status == "running"` or `replies` array is empty
+- **Polling Endpoint**: `/api/sessions/{sessionId}/chat/{questId}` from initial response
+- **Polling Interval**: 7 seconds between attempts (as per working implementation)
+- **Max Attempts**: 15 polling attempts (105 seconds total timeout)
+- **Success Condition**: `status == "done"` with populated `replies` array
+
+#### Response Extraction Methods (Priority Order)
+1. **Primary**: `replies` array - current B4M API structure
+2. **Fallback 1**: `reply` field - legacy compatibility
+3. **Fallback 2**: `questMasterReply` - alternative response format
+4. **Fallback 3**: `researchModeResults` - research mode responses
+5. **Fallback 4**: `messages` array with `content` field
+
+#### Configuration Values
+- **Model**: Determined by B4M API (typically GPT-4o-mini)
+- **History Count**: 10 messages for conversation context
+- **File Support**: Empty arrays for fabFileIds and messageFileIds (future extension)
+- **Timeouts**: 10 seconds for initial request, 5 seconds for polling requests
 
 ## 14. Piper TTS Integration
 
