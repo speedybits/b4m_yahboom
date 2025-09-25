@@ -5,6 +5,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commits
 Never commit files automatically
 
+## Application Control Standards
+
+### Graceful Shutdown Requirement
+**All Python applications must implement proper CTRL+C (SIGINT) handling for graceful shutdown.**
+
+**Requirements:**
+- Applications must respond to CTRL+C within 100-500ms maximum
+- All running threads must be cleanly terminated
+- Any temporary files should be cleaned up
+- Audio streams and hardware resources must be properly released
+- Buffer contents should be saved if needed
+- Application should return control to terminal cleanly
+
+**Implementation:**
+- Use `signal.signal(signal.SIGINT, handler)` to register shutdown handler
+- Use `threading.Event()` for coordinated shutdown across all threads
+- Replace blocking operations with interruptible polling loops
+- Check shutdown event frequently during long-running operations
+
 ## Implementation Standards
 
 ### No Placeholder Code
