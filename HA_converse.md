@@ -98,6 +98,8 @@ Handles all voice output and trigger detection:
 - **Independent B4M Processing**: TTS operations continue during API calls
 - **Timestamped Response Files**: Multiple `response_<timestamp>.txt` files for queue management
 - **Sequential TTS Processing**: TTS thread processes response files in chronological order
+- **Shutdown Event**: Threading.Event() shared between threads for clean termination
+- **Signal Propagation**: SIGINT/SIGTERM handlers set shutdown event for all threads
 
 ## 6. Technical Requirements
 
@@ -112,6 +114,7 @@ Handles all voice output and trigger detection:
 - **Text-to-Speech**: `piper-tts` - Local neural TTS for speaking B4M responses (optional)
 - **HTTP Requests**: `requests` - For B4M API communication (optional)
 - **Threading**: `threading` - For concurrent speech recognition and TTS operations
+- **Signal Handling**: `signal` - For clean Ctrl+C shutdown and termination handling
 - Standard Python libraries for file I/O and datetime
 
 ### File Management
@@ -148,14 +151,15 @@ Handles all voice output and trigger detection:
   - Handle silence detection for interactive mode triggering
   - **Voice activity discrimination** to prevent TTS self-interruption
 - **Shutdown Sequence** (Ctrl+C):
-  1. Signal thread termination to both threads
-  2. Stop audio capture in speech recognition thread
-  3. Complete any ongoing TTS playback in TTS thread
-  4. Process any remaining audio in buffer
-  5. Save current conversation buffer
-  6. Clean up timestamped response files
-  7. Display final word count
-  8. Join threads and clean exit
+  1. **Signal Handling Setup**: Register SIGINT (Ctrl+C) and SIGTERM handlers on startup
+  2. **Immediate Response**: Handler sets shutdown event within 100ms of Ctrl+C
+  3. **Thread Notification**: Signal termination to both STT and TTS threads via shutdown_event
+  4. **Graceful Audio Stop**: Stop audio capture and complete any ongoing TTS playback
+  5. **Buffer Preservation**: Save current conversation buffer if non-empty
+  6. **File Cleanup**: Remove temporary response files
+  7. **Status Display**: Show final word count and shutdown message
+  8. **Thread Joining**: Wait for all threads to complete (max 5 seconds)
+  9. **Clean Exit**: Return control to terminal
 
 ### Whisper Configuration
 - **Model Implementation**: `faster-whisper` with CPU optimization (int8 compute type)
@@ -164,7 +168,9 @@ Handles all voice output and trigger detection:
 - **VAD**: Use Whisper's built-in VAD for voice activity detection
 - **VAD Purpose**: Distinguishes user speech from both background noise and TTS audio output
 - **Processing Strategy**:
-  - Audio chunks of 10 seconds with 0.5 second overlap for accuracy/latency balance
+  - **Interruptible Recording**: 500ms mini-chunks accumulated to 10-second segments
+  - **Shutdown Response**: Respond to CTRL+C
+  - Audio chunks of 10 seconds total for transcription accuracy
   - Overlap prevents word cutoff at chunk boundaries
   - Background thread for transcription
   - VAD-based adaptive chunking for efficient processing
@@ -284,7 +290,15 @@ Handles all voice output and trigger detection:
 - Initial prompt for context (optional)
 
 ### Runtime Controls
-- Graceful shutdown via Ctrl+C (saves current buffer before exit)
+- **Graceful Shutdown (Ctrl+C)**:
+  - Immediate response to interrupt signal
+  - Saves current buffer before exit
+  - Stops all threads cleanly
+  - Returns control to terminal
+- **Signal Handling**:
+  - SIGINT (Ctrl+C): Graceful shutdown with buffer save
+  - SIGTERM: Clean termination for system shutdown
+  - Thread-safe shutdown event propagation
 - Automatic startup with system default microphone
 - No manual configuration required for basic operation
 - **Command-Line Switches**:
@@ -456,10 +470,30 @@ When `--b4m` is enabled and conversation files exist:
 - **Performance**: Fast local synthesis, ~200ms latency
 
 ### Environment Variables for Piper
-- **`PIPER_MODEL_PATH`**: Path to Piper voice model (.onnx file) [optional]
-- **`PIPER_CONFIG_PATH`**: Path to model configuration (.json file) [optional]
+- **`PIPER_MODEL_PATH`**: Path to Piper voice model (.onnx file) [required for real TTS]
+- **`PIPER_CONFIG_PATH`**: Path to model configuration (.json file) [required for real TTS]
 - **`PIPER_VOICE`**: Voice name (default: 'en_GB-jenny_dioco-medium')
-- **Default**: Uses 'en_GB-jenny_dioco-medium' voice if no custom model specified
+
+### Piper Voice Model Setup
+To use real TTS (not simulation), you need to download a Piper voice model:
+
+```bash
+# Create directory for Piper voices
+mkdir -p ~/.local/share/piper-voices
+
+# Download a voice model (example: en_US-lessac-medium)
+cd ~/.local/share/piper-voices
+wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx
+wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json
+
+# Set environment variables in ~/.bashrc
+echo 'export PIPER_MODEL_PATH="$HOME/.local/share/piper-voices/en_US-lessac-medium.onnx"' >> ~/.bashrc
+echo 'export PIPER_CONFIG_PATH="$HOME/.local/share/piper-voices/en_US-lessac-medium.onnx.json"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+**Available Voices**: Browse https://huggingface.co/rhasspy/piper-voices for more voice options
+**Fallback**: If no voice model is configured, the system uses simulation mode
 
 ### Piper Audio Pipeline
 When `--piper` is enabled:
@@ -472,9 +506,10 @@ When `--piper` is enabled:
    - Load Piper voice model (cached after first use)
    - **If oldest file exists with content**:
      - Synthesize and speak the text
+     - **Interruptible Playback**: Checks shutdown_event every 100ms
      - Delete the file after speaking completes
    - **If no response files exist**: Remain silent (no voice output)
-   - **If interrupted during playback**: Delete the file immediately
+   - **If interrupted during playback**: Stop audio immediately and delete file
    - Stream audio directly to system speakers
    - Continue normal operation while audio plays
    - Handle audio errors gracefully (continue without TTS)
@@ -531,17 +566,25 @@ When `--piper` is enabled:
   - `voice_activity_flag`: Thread-safe boolean indicating when user is speaking (excludes TTS audio)
   - `tts_interrupt_flag`: Signal from main thread to stop TTS playback
   - `response_queue_lock`: File system lock for thread-safe timestamped response file operations
+  - `shutdown_event`: Threading.Event() for coordinated shutdown across all threads
 - **Response Queue Management**:
   - B4M responses saved as `response_YYYY-MM-DD_HH-MM-SS.txt` files (human-readable)
   - TTS thread finds and processes oldest file by timestamp when triggered
   - Each file deleted immediately after successful playback or interruption
   - Unlimited queue size - new files created as responses arrive
   - Queue naturally empties as TTS processes oldest files first
+- **Interruptible Audio Implementation**:
+  - **Recording**: 500ms mini-chunks checked between each recording segment
+  - **Playback**: Non-blocking `sd.play()` with 100ms polling of stream status
+  - **Simulation**: Replaced `time.sleep()` with 100ms polling loops
+  - **Shutdown Detection**: All blocking operations check `shutdown_event` frequently
+  - **Maximum Response Time**: 500ms for recording, 100ms for playback
 - **TTS Interruption Mechanism**:
   - TTS thread checks voice activity flag every 50ms during playback
   - Immediate audio stream termination when user voice detected
   - Audio buffer flush to prevent delayed playback continuation
   - File cleanup occurs in interrupted state
+  - `sd.stop()` immediately halts audio output on shutdown
 - **Error Handling**:
   - All thread errors output to Linux terminal with thread identification
   - Graceful error recovery without affecting other thread operations
