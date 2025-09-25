@@ -5,6 +5,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commits
 Never commit files automatically
 
+## Implementation Standards
+
+### No Placeholder Code
+**Never use placeholder code, mock implementations, or incomplete functionality in production code.**
+
+**Prohibited Examples:**
+- `# Real implementation would go here`
+- `# TODO: Implement actual functionality`
+- `pass  # Placeholder`
+- Simulated behavior when real implementation is expected
+- Mock objects in production code paths
+
+**Requirements:**
+- All code must be fully functional when deployed
+- If a feature cannot be implemented completely, it should not be included
+- Use actual libraries, APIs, and integrations - not simulations
+- Error handling should be real, not simulated
+
+**Testing vs Implementation:**
+- **Tests**: Mocking external dependencies (MQTT brokers, ROS services) is acceptable and encouraged
+- **Implementation**: Never mock or simulate - use actual functionality
+- If external dependency is unavailable, provide clear setup instructions rather than fake implementations
+
 ## Test file location
 Any new test file created should be located in the 'tests' directory
 
