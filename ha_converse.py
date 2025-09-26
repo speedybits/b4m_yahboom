@@ -14,6 +14,7 @@ import time
 import json
 import glob
 import re
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -125,14 +126,10 @@ class HAConverseApp:
 
     def load_whisper_model(self):
         """Load the Whisper model for speech recognition"""
-        print("🎤 [DEBUG] Starting Whisper model initialization...")
-        print(f"🎤 [DEBUG] Using backend: {WHISPER_BACKEND}")
+        print("🎤 Initializing Whisper base model...")
 
         try:
-            print("🎤 [DEBUG] Creating Whisper model instance...")
             if WHISPER_BACKEND == "faster-whisper":
-                print("🎤 [DEBUG] Loading faster-whisper model...")
-
                 # Use timeout wrapper for faster-whisper
                 import signal
                 def timeout_handler(signum, frame):
@@ -148,31 +145,25 @@ class HAConverseApp:
                         device="cpu"
                     )
                     signal.alarm(0)  # Cancel timeout
-                    print("🎤 [DEBUG] faster-whisper model created successfully")
                 except TimeoutError:
                     signal.alarm(0)
                     print("⚠️ Whisper model loading timed out after 30 seconds")
                     # Try with tiny model as fallback
-                    print("🎤 [DEBUG] Falling back to tiny model...")
+                    print("🎤 Falling back to tiny model...")
                     self.whisper_model = WhisperModel(
                         "tiny",
                         compute_type="int8",
                         device="cpu"
                     )
-                    print("🎤 [DEBUG] faster-whisper tiny model loaded as fallback")
 
             else:  # openai-whisper
-                print("🎤 [DEBUG] Loading openai-whisper model...")
                 self.whisper_model = whisper.load_model("base")
-                print("🎤 [DEBUG] openai-whisper model created successfully")
 
             print("✅ Whisper model loaded successfully")
             return True
 
         except Exception as e:
             print(f"❌ Failed to load Whisper model: {e}")
-            import traceback
-            print(f"❌ Traceback: {traceback.format_exc()}")
             return False
 
     def initialize_piper(self):
@@ -299,7 +290,7 @@ class HAConverseApp:
             with open(filename, "w", encoding="utf-8") as f:
                 f.write(content)
 
-            print(f"💾 Conversation saved to {filename}")
+            print(f"💾 Saving conversation to {filename}")
             return filename, current_counter
 
         except Exception as e:
@@ -707,6 +698,7 @@ class HAConverseApp:
 
             sentence = self.test_sentences[self.test_sentence_index]
             print(f"🎤 Processing sentence {self.test_sentence_index + 1}/{len(self.test_sentences)}: \"{sentence[:50]}...\"")
+            print(f"🗣️ Speech-to-text: {sentence}")
 
             # Update speech timing for interactive mode
             self.last_speech_time = time.time()
@@ -772,8 +764,49 @@ class HAConverseApp:
 
                     # Transcribe audio
                     transcription = self.transcribe_audio(audio_data)
+
+                    # Filter out common Whisper hallucinations
                     if transcription and transcription != "[inaudible]":
-                        self.update_buffer(transcription)
+                        # Check for repetitive hallucinations
+                        words = transcription.lower().split()
+                        is_hallucination = False
+
+                        # Check for single word repetition
+                        if len(words) > 4:
+                            word_counts = {}
+                            for word in words:
+                                word_counts[word] = word_counts.get(word, 0) + 1
+                            max_repetition = max(word_counts.values())
+                            if max_repetition / len(words) > 0.5:
+                                # Likely a hallucination
+                                is_hallucination = True
+                                print(f"⚠️ Detected word repetition hallucination, skipping: {transcription[:50]}...")
+
+                        # Check for phrase repetition (e.g., "I don't know if I'm going to be able to do it")
+                        if not is_hallucination and len(words) > 10:
+                            # Look for repeated phrases of 3-10 words
+                            for phrase_len in range(3, min(11, len(words) // 2)):
+                                phrases = []
+                                for i in range(len(words) - phrase_len + 1):
+                                    phrase = ' '.join(words[i:i+phrase_len])
+                                    phrases.append(phrase)
+
+                                # Check if any phrase appears more than twice
+                                phrase_counts = {}
+                                for phrase in phrases:
+                                    phrase_counts[phrase] = phrase_counts.get(phrase, 0) + 1
+
+                                # Check if we found repetition
+                                max_phrase_count = max(phrase_counts.values()) if phrase_counts else 0
+                                if max_phrase_count > 2:
+                                    is_hallucination = True
+                                    print(f"⚠️ Detected phrase repetition hallucination, skipping: {transcription[:50]}...")
+                                    break  # Exit phrase length loop
+
+                        # Only process if not a hallucination
+                        if not is_hallucination:
+                            print(f"🗣️ Speech-to-text: {transcription}")
+                            self.update_buffer(transcription)
 
             except Exception as e:
                 print(f"❌ [Speech Recognition Thread] Audio processing error: {e}")
@@ -785,13 +818,10 @@ class HAConverseApp:
 
         # Check for orphaned response files on startup
         time.sleep(1)  # Let system initialize
-        print("🔊 [DEBUG] TTS Thread checking for orphaned response files on startup...")
         orphaned_response = self.get_oldest_response_file()
         if orphaned_response:
-            print(f"🔊 Found orphaned response file on startup: {orphaned_response}")
+            print(f"📄 Received {orphaned_response}")
             self.handle_voice_response()
-        else:
-            print("🔊 [DEBUG] No orphaned response files found on startup")
 
         while not self.shutdown_event.is_set():
             try:
@@ -807,19 +837,15 @@ class HAConverseApp:
 
                 if current_time - self._last_orphan_check > 5.0:
                     self._last_orphan_check = current_time
-                    print(f"🔊 [DEBUG] Checking for orphaned response files... (silence_triggered={self.silence_triggered})")
                     response_file = self.get_oldest_response_file()
                     if response_file:
                         if self.interactive_mode and self.silence_triggered:
-                            print(f"🔊 Found response file during silence - processing: {response_file}")
+                            print(f"📄 Received {response_file}")
                             self.handle_voice_response()
                         elif not self.interactive_mode:
-                            print(f"🔊 Found orphaned response file: {response_file}")
+                            print(f"📄 Received {response_file}")
                             self.handle_voice_response()
-                        else:
-                            print(f"🔊 [DEBUG] Response file {response_file} exists but waiting for silence trigger")
-                    else:
-                        print("🔊 [DEBUG] No orphaned response files found")
+                        # Silently wait for silence trigger in interactive mode
 
                 # Brief sleep to prevent busy waiting
                 time.sleep(0.1)
@@ -909,35 +935,22 @@ class HAConverseApp:
     def run(self):
         """Main application entry point"""
         print("🎤 HA_converse - Speech-to-Text Application Starting...")
-        print(f"🎤 [DEBUG] Interactive mode: {self.interactive_mode}, Test mode: {self.test_mode}")
-        print(f"🎤 [DEBUG] B4M enabled: {self.b4m_enabled}")
 
         # Cleanup old files
-        print("🎤 [DEBUG] Starting file cleanup...")
         self.cleanup_files()
-        print("🎤 [DEBUG] File cleanup complete")
 
         # Load Whisper model
-        print("🎤 [DEBUG] Loading Whisper model...")
         if not self.load_whisper_model():
-            print("❌ [DEBUG] Whisper model loading failed, exiting")
             return False
-        print("🎤 [DEBUG] Whisper model loaded successfully")
 
         # Load test sentences if in test mode
         if self.test_mode:
-            print("🎤 [DEBUG] Loading test sentences...")
             if not self.load_test_sentences():
-                print("❌ [DEBUG] Test sentences loading failed, exiting")
                 return False
-            print("🎤 [DEBUG] Test sentences loaded successfully")
 
         # Initialize Piper TTS
-        print("🎤 [DEBUG] Initializing Piper TTS...")
         if not self.initialize_piper():
-            print("❌ [DEBUG] Piper TTS initialization failed, exiting")
             return False
-        print("🎤 [DEBUG] Piper TTS initialized successfully")
 
         # Start speech recognition thread
         self.speech_thread = threading.Thread(
@@ -1000,28 +1013,21 @@ class HAConverseApp:
     def run_tts_only(self):
         """Run only TTS thread for testing orphaned response file detection"""
         print("🔊 TTS-only mode - Testing orphaned response file detection")
-        print(f"🔊 [DEBUG] Interactive mode: {self.interactive_mode}, Test mode: {self.test_mode}")
-        print(f"🔊 [DEBUG] B4M enabled: {self.b4m_enabled}")
 
         # Initialize Piper TTS only
-        print("🔊 [DEBUG] Initializing Piper TTS...")
         if not self.initialize_piper():
-            print("❌ [DEBUG] Piper TTS initialization failed, exiting")
             return False
-        print("🔊 [DEBUG] Piper TTS initialized successfully")
 
         # Start only TTS thread
-        print("🔊 [DEBUG] Starting TTS thread...")
         self.tts_thread = threading.Thread(
             target=self.tts_thread_main,
             daemon=True
         )
         self.tts_thread.start()
-        print("🔊 [DEBUG] TTS thread started successfully")
 
         # Main loop - wait for shutdown
         try:
-            print("🔊 [DEBUG] TTS-only mode running - press Ctrl+C to exit")
+            print("🔊 TTS-only mode running - press Ctrl+C to exit")
             while not self.shutdown_event.is_set():
                 time.sleep(0.5)
         except KeyboardInterrupt:
@@ -1060,7 +1066,6 @@ def main():
     )
 
     args = parser.parse_args()
-    print(f"🎤 [DEBUG] Command line args: interactive={args.interactive}, test={args.test}, tts_only={args.tts_only}")
 
     # Check required environment variables
     if not os.getenv('B4M_API_KEY'):
