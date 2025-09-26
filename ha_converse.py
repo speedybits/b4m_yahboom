@@ -81,10 +81,11 @@ class HAConverseApp:
         self.test_sentence_index = 0
 
         # B4M API configuration
-        self.b4m_enabled = True  # Always enabled as per spec
         self.b4m_api_key = os.getenv('B4M_API_KEY')
         self.b4m_rosie_id = os.getenv('B4M_ROSIE_ID')
         self.b4m_user_id = os.getenv('B4M_USER_ID', 'test_user')
+        # Only enable B4M if required environment variables are set
+        self.b4m_enabled = bool(self.b4m_api_key and self.b4m_rosie_id)
 
         # Piper TTS configuration
         self.piper_enabled = True  # Always enabled as per spec
@@ -124,23 +125,54 @@ class HAConverseApp:
 
     def load_whisper_model(self):
         """Load the Whisper model for speech recognition"""
-        print("🎤 Initializing Whisper base model...")
+        print("🎤 [DEBUG] Starting Whisper model initialization...")
+        print(f"🎤 [DEBUG] Using backend: {WHISPER_BACKEND}")
 
         try:
+            print("🎤 [DEBUG] Creating Whisper model instance...")
             if WHISPER_BACKEND == "faster-whisper":
-                self.whisper_model = WhisperModel(
-                    "base",
-                    compute_type="int8",
-                    device="cpu"
-                )
+                print("🎤 [DEBUG] Loading faster-whisper model...")
+
+                # Use timeout wrapper for faster-whisper
+                import signal
+                def timeout_handler(signum, frame):
+                    raise TimeoutError("Whisper model loading timed out")
+
+                signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(30)  # 30 second timeout
+
+                try:
+                    self.whisper_model = WhisperModel(
+                        "base",
+                        compute_type="int8",
+                        device="cpu"
+                    )
+                    signal.alarm(0)  # Cancel timeout
+                    print("🎤 [DEBUG] faster-whisper model created successfully")
+                except TimeoutError:
+                    signal.alarm(0)
+                    print("⚠️ Whisper model loading timed out after 30 seconds")
+                    # Try with tiny model as fallback
+                    print("🎤 [DEBUG] Falling back to tiny model...")
+                    self.whisper_model = WhisperModel(
+                        "tiny",
+                        compute_type="int8",
+                        device="cpu"
+                    )
+                    print("🎤 [DEBUG] faster-whisper tiny model loaded as fallback")
+
             else:  # openai-whisper
+                print("🎤 [DEBUG] Loading openai-whisper model...")
                 self.whisper_model = whisper.load_model("base")
+                print("🎤 [DEBUG] openai-whisper model created successfully")
 
             print("✅ Whisper model loaded successfully")
             return True
 
         except Exception as e:
             print(f"❌ Failed to load Whisper model: {e}")
+            import traceback
+            print(f"❌ Traceback: {traceback.format_exc()}")
             return False
 
     def initialize_piper(self):
@@ -326,6 +358,12 @@ class HAConverseApp:
     def process_b4m_api(self, conversation_file: str, retry_count: int = 0):
         """Process conversation file through B4M API with proper quest-based polling"""
         if not self.b4m_enabled or not self.b4m_api_key or not self.b4m_rosie_id:
+            # Delete conversation file even when B4M is disabled to prevent infinite loop
+            try:
+                os.remove(conversation_file)
+                print(f"🗑️ Deleted {conversation_file} (B4M disabled)")
+            except Exception as e:
+                print(f"⚠️ Could not delete {conversation_file}: {e}")
             return
 
         try:
@@ -607,12 +645,11 @@ class HAConverseApp:
         self.word_buffer.extend(new_words)
         current_count = len(self.word_buffer)
 
-        print(f"Buffer: {current_count}/{self.buffer_size} words")
-
         if current_count >= self.buffer_size:
             # Create conversation file
             conversation_text = " ".join(self.word_buffer[:self.buffer_size])
             conversation_file, _ = self.create_conversation_file(conversation_text)
+            print(f"📝 Buffer full (20 words) - created {conversation_file}")
 
             # Reset buffer with remaining words
             self.word_buffer = self.word_buffer[self.buffer_size:]
@@ -662,7 +699,11 @@ class HAConverseApp:
 
         while not self.shutdown_event.is_set():
             if self.test_sentence_index >= len(self.test_sentences):
-                self.test_sentence_index = 0  # Cycle back to start
+                print("🏁 Test complete - processed all sentences from conversation_test.txt")
+                print("🔄 Waiting for B4M processing and user input (Ctrl+C to exit)...")
+                # Keep running but don't process more sentences
+                time.sleep(1)
+                continue
 
             sentence = self.test_sentences[self.test_sentence_index]
             print(f"🎤 Processing sentence {self.test_sentence_index + 1}/{len(self.test_sentences)}: \"{sentence[:50]}...\"")
@@ -671,8 +712,21 @@ class HAConverseApp:
             self.last_speech_time = time.time()
             self.silence_triggered = False
 
-            # Process sentence
-            self.update_buffer(sentence)
+            # Process sentence word by word to simulate real speech
+            words = sentence.split()
+            for i, word in enumerate(words):
+                if self.shutdown_event.is_set():
+                    return
+
+                # Add single word to buffer
+                self.update_buffer(word)
+
+                # Small delay between words to simulate speech
+                time.sleep(0.05)
+
+                # Update speech time to prevent silence triggering mid-sentence
+                if i < len(words) - 1:  # Not the last word
+                    self.last_speech_time = time.time()
 
             self.test_sentence_index += 1
 
@@ -729,11 +783,43 @@ class HAConverseApp:
         """Main TTS thread for handling voice responses"""
         print("🔊 TTS Thread started")
 
+        # Check for orphaned response files on startup
+        time.sleep(1)  # Let system initialize
+        print("🔊 [DEBUG] TTS Thread checking for orphaned response files on startup...")
+        orphaned_response = self.get_oldest_response_file()
+        if orphaned_response:
+            print(f"🔊 Found orphaned response file on startup: {orphaned_response}")
+            self.handle_voice_response()
+        else:
+            print("🔊 [DEBUG] No orphaned response files found on startup")
+
         while not self.shutdown_event.is_set():
             try:
                 # Check for trigger conditions
                 if self.check_trigger_condition():
                     self.handle_voice_response()
+
+                # Also check for orphaned response files every 5 seconds
+                # This handles cases where response files exist but no speech activity triggered them
+                current_time = time.time()
+                if not hasattr(self, '_last_orphan_check'):
+                    self._last_orphan_check = current_time
+
+                if current_time - self._last_orphan_check > 5.0:
+                    self._last_orphan_check = current_time
+                    print(f"🔊 [DEBUG] Checking for orphaned response files... (silence_triggered={self.silence_triggered})")
+                    response_file = self.get_oldest_response_file()
+                    if response_file:
+                        if self.interactive_mode and self.silence_triggered:
+                            print(f"🔊 Found response file during silence - processing: {response_file}")
+                            self.handle_voice_response()
+                        elif not self.interactive_mode:
+                            print(f"🔊 Found orphaned response file: {response_file}")
+                            self.handle_voice_response()
+                        else:
+                            print(f"🔊 [DEBUG] Response file {response_file} exists but waiting for silence trigger")
+                    else:
+                        print("🔊 [DEBUG] No orphaned response files found")
 
                 # Brief sleep to prevent busy waiting
                 time.sleep(0.1)
@@ -807,6 +893,9 @@ class HAConverseApp:
                             os.remove(response_file)
                             print(f"💾 Cleared {response_file} due to voice detection")
 
+                        # Reset silence trigger so next response can be triggered
+                        self.silence_triggered = False
+
                 except Exception as e:
                     print(f"❌ [TTS Thread] Error processing response file: {e}")
 
@@ -820,21 +909,35 @@ class HAConverseApp:
     def run(self):
         """Main application entry point"""
         print("🎤 HA_converse - Speech-to-Text Application Starting...")
+        print(f"🎤 [DEBUG] Interactive mode: {self.interactive_mode}, Test mode: {self.test_mode}")
+        print(f"🎤 [DEBUG] B4M enabled: {self.b4m_enabled}")
 
         # Cleanup old files
+        print("🎤 [DEBUG] Starting file cleanup...")
         self.cleanup_files()
+        print("🎤 [DEBUG] File cleanup complete")
 
         # Load Whisper model
+        print("🎤 [DEBUG] Loading Whisper model...")
         if not self.load_whisper_model():
+            print("❌ [DEBUG] Whisper model loading failed, exiting")
             return False
+        print("🎤 [DEBUG] Whisper model loaded successfully")
 
         # Load test sentences if in test mode
-        if self.test_mode and not self.load_test_sentences():
-            return False
+        if self.test_mode:
+            print("🎤 [DEBUG] Loading test sentences...")
+            if not self.load_test_sentences():
+                print("❌ [DEBUG] Test sentences loading failed, exiting")
+                return False
+            print("🎤 [DEBUG] Test sentences loaded successfully")
 
         # Initialize Piper TTS
+        print("🎤 [DEBUG] Initializing Piper TTS...")
         if not self.initialize_piper():
+            print("❌ [DEBUG] Piper TTS initialization failed, exiting")
             return False
+        print("🎤 [DEBUG] Piper TTS initialized successfully")
 
         # Start speech recognition thread
         self.speech_thread = threading.Thread(
@@ -894,6 +997,46 @@ class HAConverseApp:
         print(f"👋 HA_converse shutdown complete. Final word count: {len(self.word_buffer)}")
         return True
 
+    def run_tts_only(self):
+        """Run only TTS thread for testing orphaned response file detection"""
+        print("🔊 TTS-only mode - Testing orphaned response file detection")
+        print(f"🔊 [DEBUG] Interactive mode: {self.interactive_mode}, Test mode: {self.test_mode}")
+        print(f"🔊 [DEBUG] B4M enabled: {self.b4m_enabled}")
+
+        # Initialize Piper TTS only
+        print("🔊 [DEBUG] Initializing Piper TTS...")
+        if not self.initialize_piper():
+            print("❌ [DEBUG] Piper TTS initialization failed, exiting")
+            return False
+        print("🔊 [DEBUG] Piper TTS initialized successfully")
+
+        # Start only TTS thread
+        print("🔊 [DEBUG] Starting TTS thread...")
+        self.tts_thread = threading.Thread(
+            target=self.tts_thread_main,
+            daemon=True
+        )
+        self.tts_thread.start()
+        print("🔊 [DEBUG] TTS thread started successfully")
+
+        # Main loop - wait for shutdown
+        try:
+            print("🔊 [DEBUG] TTS-only mode running - press Ctrl+C to exit")
+            while not self.shutdown_event.is_set():
+                time.sleep(0.5)
+        except KeyboardInterrupt:
+            print("\n🛑 Keyboard interrupt received")
+
+        # Graceful shutdown
+        print("🔄 Shutting down gracefully...")
+        self.shutdown_event.set()
+
+        if self.tts_thread and self.tts_thread.is_alive():
+            self.tts_thread.join(timeout=2)
+
+        print("👋 TTS-only mode shutdown complete")
+        return True
+
 
 def main():
     """Main entry point"""
@@ -910,8 +1053,14 @@ def main():
         action="store_true",
         help="Use test mode with conversation_test.txt instead of microphone"
     )
+    parser.add_argument(
+        "--tts-only",
+        action="store_true",
+        help="Start only TTS thread to test orphaned response file detection (skip Whisper)"
+    )
 
     args = parser.parse_args()
+    print(f"🎤 [DEBUG] Command line args: interactive={args.interactive}, test={args.test}, tts_only={args.tts_only}")
 
     # Check required environment variables
     if not os.getenv('B4M_API_KEY'):
@@ -928,7 +1077,13 @@ def main():
         test_mode=args.test
     )
 
-    success = app.run()
+    # TTS-only mode for testing orphaned response detection
+    if args.tts_only:
+        print("🔊 [DEBUG] TTS-only mode: Starting only TTS thread to test orphaned file detection")
+        success = app.run_tts_only()
+    else:
+        success = app.run()
+
     sys.exit(0 if success else 1)
 
 
