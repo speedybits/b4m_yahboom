@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Secret keys
+Never use the actual value of environment variables located in the .bashrc in the code you write. Only use the environment variables themselves 
+
 ## Commits
 Never commit files automatically
 
@@ -28,6 +31,7 @@ Never commit files automatically
 
 ### No Placeholder Code
 **Never use placeholder code, mock implementations, or incomplete functionality in production code.**
+**Never mock elements of a unit test
 
 **Prohibited Examples:**
 - `# Real implementation would go here`

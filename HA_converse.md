@@ -45,27 +45,19 @@ Two modes are available for triggering voice response:
 When the trigger word "Rosie" is detected:
 1. **If --piper switch enabled**: Read and speak contents of `response.txt` using Piper TTS
 2. **Clear `response.txt` after speaking** to prevent repeated responses
-3. **Voice Interruption**: If user speaks while TTS is playing:
-   - Immediately stop TTS playback
-   - Clear `response.txt` to prevent re-triggering
-   - Resume normal speech recognition
-4. Continue normal operation (no archiving, no buffer clearing)
-5. **If `response.txt` doesn't exist or is empty**: Show info message but remain silent (no voice output)
+3. Continue normal operation (no archiving, no buffer clearing)
+4. **If `response.txt` doesn't exist or is empty**: Show info message but remain silent (no voice output)
 
 #### 4b. Interactive Mode (--interactive switch)
 When **--interactive switch enabled**:
 1. Monitor for 3 seconds of continuous silence
 2. **If silence detected and --piper enabled**: Read and speak contents of `response.txt` using Piper TTS
 3. **Clear `response.txt` after speaking** to prevent repeated responses
-4. **Voice Interruption**: If user speaks while TTS is playing:
-   - Immediately stop TTS playback
-   - Clear `response.txt` to prevent re-triggering
-   - Resume normal speech recognition
-5. Continue normal operation after speaking
-6. **If `response.txt` doesn't exist or is empty**: Remain silent (no voice output)
-7. Silence detection resets only when speech is detected (not after voice response)
-8. Timer displays after 0.5 seconds of silence, stops after trigger
-9. Prevents repeated triggers until speech resets the system
+4. Continue normal operation after speaking
+5. **If `response.txt` doesn't exist or is empty**: Remain silent (no voice output)
+6. Silence detection resets only when speech is detected (not after voice response)
+7. Timer displays after 0.5 seconds of silence, stops after trigger
+8. Prevents repeated triggers until speech resets the system
 
 **Note**: Interactive mode disables keyword ("Rosie") trigger detection. Only one trigger mode can be active at a time.
 
@@ -82,7 +74,6 @@ Handles all speech-to-text and B4M API communication:
 - B4M API processes oldest conversation file (asynchronous)
 - Writing responses to timestamped files
 - **File Cleanup**: Deletes conversation files after B4M processing
-- **Voice Activity Monitoring**: Detects when user is speaking for TTS interruption
 - **Continuous Operation**: Never pauses transcription, even during API calls
 
 #### 5b. Text-to-Speech Thread (Secondary Thread)
@@ -94,17 +85,12 @@ Handles all voice output and trigger detection:
 - **File Processing**: Searches for oldest `response_YYYY-MM-DD_HH-MM-SS__<integer>.txt` file by timestamp
 - Reads oldest response file when triggered (if exists)
 - Synthesizes and plays audio via Piper TTS
-- **Interruptible Playback**: Monitors voice activity flag from main thread
-- **Immediate Stop**: Halts audio playback when user voice detected
-- **File Cleanup**: Deletes the response file immediately after successful playback or interruption
+- **File Cleanup**: Deletes the response file immediately after successful playback
 - Manages trigger state to prevent repeated responses
 
 #### 5c. Thread Communication
-- **Shared Voice Activity Flag**: Main thread sets flag when speech detected
 - **Thread-Safe Operations**: File operations use locking to prevent conflicts
 - **Non-Blocking Design**: TTS thread never blocks speech recognition
-- **Real-Time Interruption**: Sub-100ms response time for voice interruption
-- **Voice Activity Discrimination**: VAD distinguishes user speech from TTS audio output
 - **Independent B4M Processing**: TTS operations continue during API calls
 - **Timestamped Response Files**: Multiple `response_<timestamp>__<integer>.txt` files for queue management with 1:1 mapping
 - **Sequential TTS Processing**: TTS thread processes response files in chronological order
@@ -146,7 +132,7 @@ Handles all voice output and trigger detection:
   5. **Piper Initialization Failure**: Exit application if TTS fails to initialize when --piper enabled
   6. **Startup Voice Test**: Speak "Hello World!" message (if --piper enabled)
   7. **Start TTS Thread** (secondary thread for voice output)
-  8. Begin continuous listening loop with voice activity detection
+  8. Begin continuous listening loop
 - **Runtime Behavior**:
   - Continuous audio capture in 10-second chunks
   - Remove exact consecutive duplicate phrases
@@ -160,7 +146,6 @@ Handles all voice output and trigger detection:
   - **Create timestamped response files** from B4M responses
   - **TTS thread processes response files sequentially** when triggered
   - Handle silence detection for interactive mode triggering
-  - **Voice activity discrimination** to prevent TTS self-interruption
 - **Shutdown Sequence** (Ctrl+C):
   1. **Signal Handling Setup**: Register SIGINT (Ctrl+C) and SIGTERM handlers on startup
   2. **Immediate Response**: Handler sets shutdown event within 100ms of Ctrl+C
@@ -176,8 +161,6 @@ Handles all voice output and trigger detection:
 - **Model Implementation**: `faster-whisper` with CPU optimization (int8 compute type)
 - **Model Selection**: Using `base` model (74M parameters) for optimal balance of accuracy and latency
 - **Language**: Fixed to English (`language='en'`) for best accuracy
-- **VAD**: Use Whisper's built-in VAD for voice activity detection
-- **VAD Purpose**: Distinguishes user speech from both background noise and TTS audio output
 - **Processing Strategy**:
   - **Interruptible Recording**: 500ms mini-chunks accumulated to 10-second segments
   - **Shutdown Response**: Respond to CTRL+C
@@ -252,8 +235,6 @@ Handles all voice output and trigger detection:
 - Voice output messages:
   - `🔊 Speaking AI response from response.txt`
   - `💾 Cleared response.txt after speaking`
-  - `⏹️  Speech interrupted - stopping playback` (when user speaks during TTS)
-  - `💾 Cleared response.txt due to voice detection` (when interrupted)
 - **Interactive Mode Timer**:
   - `⏳ Silence timer: X.Xs / 3.0s` (displays after 0.5s of silence)
   - Timer stops displaying after trigger to prevent confusion
@@ -287,7 +268,6 @@ Handles all voice output and trigger detection:
 - **Threading Audio Management**: Use separate audio streams for input (speech recognition) and output (TTS)
 - **Device Resource Management**: Proper audio device initialization and cleanup
 - **Platform-Specific Considerations**: Handle ASIO driver conflicts and threading limitations
-- **Voice Activity Discrimination**: Ensure TTS audio output doesn't trigger voice detection
 - **Audio Buffer Management**: Prevent audio stream conflicts between threads
 
 ## 9. Configuration Options
@@ -320,7 +300,7 @@ Handles all voice output and trigger detection:
 
 ### Runtime Controls
 - **Graceful Shutdown (Ctrl+C)**:
-  - Immediate response to interrupt signal
+  - Immediate response to shutdown signal
   - Saves current buffer before exit
   - Stops all threads cleanly
   - Returns control to terminal
@@ -360,7 +340,7 @@ Handles all voice output and trigger detection:
 - Chunked processing for continuous stream
 - Asynchronous transcription to prevent blocking
 - File updates every 10 seconds (or 50 words) for I/O efficiency
-- Quick archive creation without interrupting capture
+- Quick archive creation without blocking capture
 - Expected latency with base model:
   - ~2 seconds per 10-second chunk on CPU
   - Sub-second with GPU acceleration
@@ -390,6 +370,10 @@ Handles all voice output and trigger detection:
 - Real-time monitoring of transcription backlog
 
 ## 13. B4M API Integration
+
+### Important Implementation Note
+**See `development_notes/B4M_API_EXAMPLE.md` for the working B4M API implementation details.**
+The example shows the exact request structure needed, including the required `params` and `promptMeta` objects that are not obvious from the API documentation but are essential for successful communication.
 
 ### Command-Line Switch
 - **`--b4m`**: Enables B4M AI service integration
@@ -434,7 +418,7 @@ When `--b4m` is enabled and conversation files exist:
 - **Behavior**: New timestamped file created for each successful B4M response
 - **Encoding**: UTF-8 text file
 - **Processing**: TTS thread finds oldest file by timestamp and processes it
-- **Cleanup**: Each file deleted immediately after successful TTS playback or upon interruption
+- **Cleanup**: Each file deleted immediately after successful TTS playback
 - **Queue Management**:
   - Unlimited queuing - new files created as responses arrive
   - Queue processed in FIFO order (oldest timestamp first)
@@ -446,27 +430,45 @@ When `--b4m` is enabled and conversation files exist:
 - **Primary Endpoint**: `https://app.bike4mind.com/api/ai/llm`
 - **Polling Endpoint**: `https://app.bike4mind.com/api/sessions/{sessionId}/chat/{questId}`
 - **Authentication Method**: API key via `X-API-Key` header (not Bearer token)
+- **CRITICAL**: See `development_notes/B4M_API_EXAMPLE.md` for required `params` and `promptMeta` objects
 
 #### Environment Variables
 - **`B4M_API_KEY`**: Required API key for authentication (set in user's `.bashrc`)
 - **`B4M_ROSIE_ID`**: Session/Rosie ID for conversation context (set in user's `.bashrc`)
+  - Note: May also be called `B4M_SESSION_ID` in some implementations
 - **`B4M_USER_ID`**: Optional user ID (defaults to documented test user if not set)
 
 #### API Request Structure
+**IMPORTANT**: The request MUST include `params` and `promptMeta` objects.
+See `development_notes/B4M_API_EXAMPLE.md` for the complete working structure.
+
+Basic structure (incomplete - see B4M_API_EXAMPLE.md for full details):
 ```json
 {
-  "sessionId": "68d09269ca497a521d0d3231",  // From B4M_ROSIE_ID
+  "sessionId": "your_session_id_here",  // From B4M_ROSIE_ID or B4M_SESSION_ID
   "message": "conversation text content",
   "historyCount": 10,
   "fabFileIds": [],
-  "messageFileIds": []
+  "messageFileIds": [],
+  "params": {  // REQUIRED - see B4M_API_EXAMPLE.md
+    "model": "gpt-4o-mini",
+    "temperature": 0.3,
+    "max_tokens": 100,
+    "stream": false
+  },
+  "promptMeta": {  // REQUIRED - see B4M_API_EXAMPLE.md
+    "session": {
+      "id": "your_session_id_here",
+      "userId": "your_user_id_here"
+    }
+  }
 }
 ```
 
 #### Headers
 ```json
 {
-  "X-API-Key": "b4m_live_a1683f10f37fcfb1d530f61935d07a2a",  // From B4M_API_KEY
+  "X-API-Key": "your_api_key_here",  // From B4M_API_KEY environment variable
   "Content-Type": "application/json"
 }
 ```
@@ -566,10 +568,8 @@ When `--piper` is enabled:
    - Load Piper voice model (cached after first use)
    - **If oldest file exists with content**:
      - Synthesize and speak the text
-     - **Interruptible Playback**: Checks shutdown_event every 100ms
      - Delete the file after speaking completes
    - **If no response files exist**: Remain silent (no voice output)
-   - **If interrupted during playback**: Stop audio immediately and delete file
    - Stream audio directly to system speakers
    - Continue normal operation while audio plays
    - Handle audio errors gracefully (continue without TTS)
@@ -620,37 +620,27 @@ When `--piper` is enabled:
 ### Thread Architecture Implementation
 - **Threading Library**: Uses Python's `threading` module with daemon threads
 - **Startup Sequence**: Speech recognition thread starts first, then TTS thread
-- **Voice Activity Detection**: Main thread continuously monitors audio input for user speech
 - **Audio Device Management**: Separate audio streams for microphone input and speaker output
 - **Shared State Management**:
-  - `voice_activity_flag`: Thread-safe boolean indicating when user is speaking (excludes TTS audio)
-  - `tts_interrupt_flag`: Signal from main thread to stop TTS playback
   - `response_queue_lock`: File system lock for thread-safe timestamped response file operations
   - `shutdown_event`: Threading.Event() for coordinated shutdown across all threads
 - **Response Queue Management**:
   - B4M responses saved as `response_YYYY-MM-DD_HH-MM-SS__<integer>.txt` files (human-readable with 1:1 mapping)
   - TTS thread finds and processes oldest file by timestamp when triggered
-  - Each file deleted immediately after successful playback or interruption
+  - Each file deleted immediately after successful playback
   - Unlimited queue size - new files created as responses arrive
   - Queue naturally empties as TTS processes oldest files first
-- **Interruptible Audio Implementation**:
+- **Audio Implementation**:
   - **Recording**: 500ms mini-chunks checked between each recording segment
-  - **Playback**: Non-blocking `sd.play()` with 100ms polling of stream status
-  - **Simulation**: Replaced `time.sleep()` with 100ms polling loops
+  - **Playback**: Non-blocking `sd.play()` for audio output
   - **Shutdown Detection**: All blocking operations check `shutdown_event` frequently
-  - **Maximum Response Time**: 500ms for recording, 100ms for playback
-- **TTS Interruption Mechanism**:
-  - TTS thread checks voice activity flag every 50ms during playback
-  - Immediate audio stream termination when user voice detected
-  - Audio buffer flush to prevent delayed playback continuation
-  - File cleanup occurs in interrupted state
-  - `sd.stop()` immediately halts audio output on shutdown
+  - **Maximum Response Time**: 500ms for recording
+  - `sd.stop()` halts audio output on shutdown
 - **Error Handling**:
   - All thread errors output to Linux terminal with thread identification
   - Graceful error recovery without affecting other thread operations
 - **Performance Optimization**:
   - Non-blocking audio synthesis using streaming buffers
-  - Minimal latency voice detection (< 100ms interrupt response)
   - Efficient thread communication using threading Events and Locks
   - Asynchronous B4M API calls with continuous transcription
   - Independent thread operations with no blocking between threads
@@ -686,10 +676,6 @@ Buffer: 7/20 words
 🎯 Trigger word 'Rosie' detected - speaking AI response
 🔊 Speaking AI response from response_2024-01-15_14-30-20__001.txt
 💾 Cleared response_2024-01-15_14-30-20__001.txt after speaking
-
-[User speaks during TTS playback]
-⏹️  Speech interrupted - stopping playback
-💾 Cleared response_2024-01-15_14-30-28__002.txt due to voice detection
 Buffer: 8/20 words
 ```
 

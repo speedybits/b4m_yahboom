@@ -1,3 +1,40 @@
+// IMPORTANT: Working B4M API Integration (from b4m_ping_test.py which works successfully)
+//
+// Key differences from web example that make it work:
+// 1. Uses environment variable B4M_SESSION_ID or defaults to '68b1e0fcac3f77504fce09b5'
+// 2. Includes "params" object with model configuration
+// 3. Includes "promptMeta" with session and user information
+// 4. Initial response may have 'id' field (quest ID) instead of 'questId'
+// 5. Headers use "X-API-Key" not Bearer token
+//
+// Working Python implementation (from scripts/b4m_ping_test.py):
+/*
+headers = {
+    "X-API-Key": os.environ.get('B4M_API_KEY'),  // Required
+    "Content-Type": "application/json"
+}
+
+payload = {
+    "sessionId": "68b1e0fcac3f77504fce09b5",  // Must be valid existing session
+    "message": "Your message here",
+    "historyCount": 10,
+    "fabFileIds": [],
+    "messageFileIds": [],
+    "params": {                                 // IMPORTANT: Include this!
+        "model": "gpt-4o-mini",
+        "temperature": 0.3,
+        "max_tokens": 100,
+        "stream": false
+    },
+    "promptMeta": {                            // IMPORTANT: Include this!
+        "session": {
+            "id": "68b1e0fcac3f77504fce09b5", // Must match sessionId
+            "userId": "65563f622213b120cd1d9592"
+        }
+    }
+}
+*/
+
 // Start polling for AI chat responses
   const startPollingForChatResponse = (
     sessionId: string,
@@ -218,3 +255,67 @@
       pollingIntervalRef.current = null;
     }
   };
+
+// =================================================================
+// IMPORTANT: Working Configuration from b4m_ping_test.py
+// =================================================================
+//
+// Environment Variables Required (defined in ~/.bashrc):
+// - B4M_API_KEY: Your API key (stored in .bashrc)
+//   export B4M_API_KEY="your_api_key_here"
+// - B4M_ROSIE_ID or B4M_SESSION_ID: Session ID for the API
+//   Note: Your .bashrc may use B4M_ROSIE_ID instead of B4M_SESSION_ID
+//   export B4M_ROSIE_ID="your_session_id_here"
+//   export B4M_SESSION_ID="your_session_id_here"
+//   (Either variable name works - check your .bashrc to see which is defined)
+// - B4M_USER_ID: User ID (optional, defaults to test user)
+//
+// To load these variables in your terminal:
+// source ~/.bashrc
+//
+// Note: The actual API keys and session IDs are stored in ~/.bashrc
+// Do not commit actual keys to version control
+//
+// Common Error Codes:
+// - 500 Internal Server Error: Often means invalid session ID or missing params/promptMeta
+// - 401 Unauthorized: Invalid API key
+// - 429 Too Many Requests: Rate limited (parse "Try again in X seconds" from response)
+// - 404 Not Found: Invalid endpoint or quest ID
+//
+// Critical Differences from Web Example:
+// 1. Must include "params" object with model configuration
+// 2. Must include "promptMeta" object with session info
+// 3. Quest ID may be in 'id' field not 'questId' field
+// 4. Some sessions require specific user ID access
+//
+// Working Request Structure (Python):
+// response = requests.post(
+//     "https://app.bike4mind.com/api/ai/llm",
+//     headers={"X-API-Key": api_key, "Content-Type": "application/json"},
+//     json={
+//         "sessionId": session_id,
+//         "message": message,
+//         "historyCount": 10,
+//         "fabFileIds": [],
+//         "messageFileIds": [],
+//         "params": {
+//             "model": "gpt-4o-mini",
+//             "temperature": 0.3,
+//             "max_tokens": 100,
+//             "stream": False
+//         },
+//         "promptMeta": {
+//             "session": {
+//                 "id": session_id,  # Must match sessionId
+//                 "userId": user_id
+//             }
+//         }
+//     },
+//     timeout=10.0
+// )
+//
+// Polling Endpoint:
+// GET https://app.bike4mind.com/api/sessions/{sessionId}/chat/{questId}
+// - Poll every 7 seconds
+// - Maximum 15 attempts (105 seconds)
+// - Check for status == "done" or status == "stopped"
