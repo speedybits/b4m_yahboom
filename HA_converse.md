@@ -32,7 +32,7 @@ A speech-to-text application for Ubuntu Linux 22.04 LTS that uses Whisper models
 
 ### 3. Automatic B4M Processing
 When a conversation file is created (20 words accumulated):
-1. **If --b4m switch enabled**: Process oldest `conversation_<timestamp>__<integer>.txt` file
+1. Process oldest `conversation_<timestamp>__<integer>.txt` file
 2. Send file contents to B4M API
 3. Store AI response in `response_YYYY-MM-DD_HH-MM-SS__<integer>.txt` (matching the conversation file's integer)
 4. Delete the conversation file after successful API processing
@@ -43,21 +43,16 @@ Two modes are available for triggering voice response:
 
 #### 4a. Keyword Trigger Mode (Default)
 When the trigger word "Rosie" is detected:
-1. **If --piper switch enabled**: Read and speak contents of `response.txt` using Piper TTS
+1. Read and speak contents of `response.txt` using Piper TTS
 2. **Clear `response.txt` after speaking** to prevent repeated responses
 3. Continue normal operation (no archiving, no buffer clearing)
 4. **If `response.txt` doesn't exist or is empty**: Show info message but remain silent (no voice output)
 
 #### 4b. Interactive Mode (--interactive switch)
-When **--interactive switch enabled**:
-1. Monitor for 3 seconds of continuous silence
-2. **If silence detected and --piper enabled**: Read and speak contents of `response.txt` using Piper TTS
-3. **Clear `response.txt` after speaking** to prevent repeated responses
-4. Continue normal operation after speaking
-5. **If `response.txt` doesn't exist or is empty**: Remain silent (no voice output)
-6. Silence detection resets only when speech is detected (not after voice response)
-7. Timer displays after 0.5 seconds of silence, stops after trigger
-8. Prevents repeated triggers until speech resets the system
+1. **If response.txt file is available**: Read and speak contents of `response.txt` using Piper TTS
+2. **Clear `response.txt` after speaking** to prevent repeated responses
+3. Continue normal operation after speaking
+4. **If `response.txt` doesn't exist or is empty**: Remain silent (no voice output)
 
 **Note**: Interactive mode disables keyword ("Rosie") trigger detection. Only one trigger mode can be active at a time.
 
@@ -128,9 +123,9 @@ Handles all voice output and trigger detection:
   1. **Delete all existing `conversation_*.txt` and `response_*.txt` files** from previous sessions (preserves 1:1 mapping integrity)
   2. Load Whisper base model
   3. **Start Speech Recognition Thread** (main thread with audio capture)
-  4. Initialize Piper TTS (if --piper enabled)
-  5. **Piper Initialization Failure**: Exit application if TTS fails to initialize when --piper enabled
-  6. **Startup Voice Test**: Speak "Hello World!" message (if --piper enabled)
+  4. Initialize Piper TTS
+  5. **Piper Initialization Failure**: Exit application if TTS fails to initialize
+  6. **Startup Voice Test**: Speak "Hello World!" message
   7. **Start TTS Thread** (secondary thread for voice output)
   8. Begin continuous listening loop
 - **Runtime Behavior**:
@@ -138,15 +133,13 @@ Handles all voice output and trigger detection:
   - Remove exact consecutive duplicate phrases
   - **Trigger Detection**:
     - **Default Mode**: Monitor for trigger word "Rosie" in transcriptions
-    - **Interactive Mode** (--interactive): Monitor for 3 seconds of silence
   - Update terminal with word count
   - **Create conversation file when buffer reaches 20 words**
-  - **Process oldest conversation file with B4M API** (if --b4m enabled)
+  - **Process oldest conversation file with B4M API**
   - **Delete conversation file after successful B4M processing**
   - **Create timestamped response files** from B4M responses
   - **TTS thread processes response files sequentially** when triggered
-  - Handle silence detection for interactive mode triggering
-- **Shutdown Sequence** (Ctrl+C):
+  - **Shutdown Sequence** (Ctrl+C):
   1. **Signal Handling Setup**: Register SIGINT (Ctrl+C) and SIGTERM handlers on startup
   2. **Immediate Response**: Handler sets shutdown event within 100ms of Ctrl+C
   3. **Thread Notification**: Signal termination to both STT and TTS threads via shutdown_event
@@ -183,7 +176,7 @@ Handles all voice output and trigger detection:
 - When buffer reaches 20 words:
   - **Create** `conversation_YYYY-MM-DD_HH-MM-SS_N.txt` with buffer contents (N = counter for same-second files)
   - **Reset buffer to 0/20 words** and start fresh immediately
-  - **Queue for B4M**: File waits in queue for processing (if --b4m enabled)
+  - **Queue for B4M**: File waits in queue for processing
 - **Queue Processing**:
   - Process one B4M API call at a time (sequential, not parallel)
   - Wait for each API response before processing next conversation file
@@ -192,7 +185,6 @@ Handles all voice output and trigger detection:
   - **Failed API calls**: Keep conversation file for retry
 - **Trigger Behavior**:
   - **Default Mode**: When trigger word "Rosie" detected → speak oldest response file
-  - **Interactive Mode** (--interactive): When 3 seconds of silence → speak oldest response file
 - **Startup cleanup**: Delete all existing `conversation_*.txt` and `response_*.txt` files (maintains 1:1 mapping integrity)
 
 ### File Operations
@@ -230,15 +222,10 @@ Handles all voice output and trigger detection:
 - **Trigger Detection Messages**:
   - **Default Mode with response**: `🎯 Trigger word 'Rosie' detected - speaking AI response`
   - **Default Mode without response**: `ℹ️ response.txt not found (no AI response to speak)`
-  - **Interactive Mode with response**: `🤫 3 seconds of silence detected - speaking AI response`
-  - **Interactive Mode without response**: `🤫 3 seconds of silence detected` (silent)
+  - **Interactive Mode with response**: `🤫 Speaking AI response`
 - Voice output messages:
   - `🔊 Speaking AI response from response.txt`
   - `💾 Cleared response.txt after speaking`
-- **Interactive Mode Timer**:
-  - `⏳ Silence timer: X.Xs / 3.0s` (displays after 0.5s of silence)
-  - Timer stops displaying after trigger to prevent confusion
-  - Resets only when speech is detected
 - Output to stdout for logging and monitoring
 - Word count updates after each transcription
 
@@ -286,9 +273,6 @@ Handles all voice output and trigger detection:
   - Audio chunk duration: 10 seconds (configurable)
   - Chunk overlap: 0.5 seconds
   - VAD sensitivity threshold
-- **Interactive Mode Specific**:
-  - Silence detection threshold (dB level for "silence")
-  - Silence timer resolution (default: 0.1 seconds)
 - **B4M API Configuration**:
   - Polling interval (default: 7 seconds, standard B4M interval)
   - Polling timeout (default: 15 attempts, 105 seconds total)
@@ -310,14 +294,9 @@ Handles all voice output and trigger detection:
   - Thread-safe shutdown event propagation
 - Automatic startup with system default microphone
 - No manual configuration required for basic operation
-- **Command-Line Switches**:
-  - `--b4m`: Enable B4M API integration
-  - `--piper`: Enable text-to-speech for AI responses
-  - `--interactive`: Enable silence-based triggering (replaces "Rosie" keyword detection)
 - **Usage Combinations**:
-  - `--b4m --piper`: Full voice interaction with keyword trigger
-  - `--b4m --piper --interactive`: Full voice interaction with silence trigger
-  - `--interactive --piper`: Silence-triggered voice without B4M (speaks existing response.txt)
+  - No switches: Full voice interaction with responses spoken with keyword "Rosie" trigger
+  - `--interactive`: Full voice interaction
 
 ## 10. Performance Considerations
 
@@ -331,7 +310,6 @@ Handles all voice output and trigger detection:
 - **Processing Optimization**:
   - GPU acceleration when available (10-50x speedup)
   - CPU with multiple threads for parallel processing
-  - VAD to skip silence and reduce processing load
 - Efficient memory management for buffer storage
 - Optimize file I/O operations
 
@@ -375,14 +353,14 @@ Handles all voice output and trigger detection:
 **See `development_notes/B4M_API_EXAMPLE.md` for the working B4M API implementation details.**
 The example shows the exact request structure needed, including the required `params` and `promptMeta` objects that are not obvious from the API documentation but are essential for successful communication.
 
-### Command-Line Switch
-- **`--b4m`**: Enables B4M AI service integration
+### Default mode (no switches)
+- Enables B4M AI service integration
   - When enabled, conversation buffer is sent to B4M API when it reaches 20 words
   - Response is stored in `response.txt` (overwrites previous response)
   - Requires B4M_API_KEY environment variable
 
 ### B4M Communication Flow
-When `--b4m` is enabled and conversation files exist:
+When conversation files exist:
 1. **Find oldest** `conversation_YYYY-MM-DD_HH-MM-SS__<integer>.txt` file by timestamp
 2. **Submit quest to B4M API** (one at a time, not parallel):
    - Send file contents with session metadata (Rosie ID, User ID)
@@ -516,12 +494,6 @@ Basic structure (incomplete - see B4M_API_EXAMPLE.md for full details):
 
 ## 14. Piper TTS Integration
 
-### Command-Line Switch
-- **`--piper`**: Enables Piper TTS for speaking B4M AI responses
-  - Requires Piper TTS installation and voice model
-  - Automatically speaks AI responses after display
-  - Works in combination with `--b4m` switch
-
 ### Piper Configuration
 - **Installation**: `pip install piper-tts` or system package manager
 - **Voice Models**: ONNX-based neural voice models
@@ -558,12 +530,10 @@ source ~/.bashrc
 **Fallback**: If no voice model is configured, the system uses simulation mode
 
 ### Piper Audio Pipeline
-When `--piper` is enabled:
 1. **Startup Test**: On application start, speaks "Hello World! Piper text-to-speech is working correctly."
 2. **Voice Response Triggering**:
    - **Default Mode**: When "Rosie" keyword is detected
-   - **Interactive Mode** (--interactive): When 3 seconds of silence is detected
-3. **Voice Response Process**:
+ 3. **Voice Response Process**:
    - **Search for oldest** `response_YYYY-MM-DD_HH-MM-SS__<integer>.txt` file by timestamp
    - Load Piper voice model (cached after first use)
    - **If oldest file exists with content**:
@@ -573,12 +543,6 @@ When `--piper` is enabled:
    - Stream audio directly to system speakers
    - Continue normal operation while audio plays
    - Handle audio errors gracefully (continue without TTS)
-4. **Interactive Mode Specific**:
-   - Monitor silence duration during audio capture
-   - Display timer after 0.5 seconds of silence
-   - Stop timer display after trigger fires
-   - Reset silence detection only when speech is detected
-   - Prevent repeated triggers with state management
 
 ### Piper System Requirements
 - **CPU**: Modern x64 processor (optimized for efficiency)
@@ -596,7 +560,6 @@ When `--piper` is enabled:
 - **Core Workflow**: 20-word buffer → B4M API → response.txt → trigger activation → voice output
 - **Trigger Options**:
   - **Default**: "Rosie" keyword detection (case-insensitive)
-  - **Interactive Mode**: 3-second silence detection with visual timer display
 - Trigger activation controls voice response only (no archiving)
 - Continuous circular buffer operation (no automatic archiving)
 - AI responses stored in `response.txt` (overwritten with each new response)
@@ -607,15 +570,8 @@ When `--piper` is enabled:
 - Piper TTS integration speaks `response.txt` only when content exists
 - **Complete Workflows**:
   - **Keyword Mode**: Speech → 20-word buffer → AI → response.txt → "Rosie" → voice (if content exists)
-  - **Interactive Mode**: Speech → 20-word buffer → AI → response.txt → 3-sec silence → voice (if content exists)
+  - **Interactive Mode**: Speech → 20-word buffer → AI → response.txt → voice (if content exists)
 
-### Interactive Mode Implementation Details
-- **Silence Detection**: Tracks time since last detected speech
-- **Timer Display**: Shows countdown after 0.5s of silence (`⏳ X.Xs / 3.0s`)
-- **Single Trigger**: Prevents repeated triggers until speech resets the system
-- **State Management**: Uses `silence_triggered` flag to control behavior
-- **Timer Reset**: Updates `last_speech_time` after trigger and when speech detected
-- **No Annoying Voice**: Remains silent when no AI response is available
 
 ### Thread Architecture Implementation
 - **Threading Library**: Uses Python's `threading` module with daemon threads
@@ -646,14 +602,13 @@ When `--piper` is enabled:
   - Independent thread operations with no blocking between threads
 - **Trigger Detection Responsibility**:
   - TTS thread monitors transcriptions from main thread for keywords
-  - TTS thread tracks silence duration for interactive mode
   - Main thread only provides transcription data and timestamps
 
 ## 16. Example Output
 
 ### Terminal Output During Operation
 
-#### Standard Operation (--b4m --piper)
+#### Standard Operation (no switches)
 ```
 🎤 Initializing Whisper base model...
 ✅ Whisper model loaded successfully
@@ -679,7 +634,7 @@ Buffer: 7/20 words
 Buffer: 8/20 words
 ```
 
-#### Interactive Mode (--b4m --piper --interactive)
+#### Interactive Mode (--interactive)
 ```
 🎤 Initializing Whisper base model...
 ✅ Whisper model loaded successfully
@@ -701,7 +656,6 @@ Buffer: 20/20 words
 ⏳ Silence timer: 1.2s / 3.0s
 ⏳ Silence timer: 2.4s / 3.0s
 ⏳ Silence timer: 3.0s / 3.0s
-🤫 3 seconds of silence detected - speaking AI response
 🔊 Speaking AI response from response_2024-01-15_14-32-15__001.txt
 💾 Cleared response_2024-01-15_14-32-15__001.txt after speaking
 Buffer: 18/20 words
@@ -725,7 +679,7 @@ Buffer: 12/20 words
 
 #### Error Scenarios
 ```
-# Missing response file (--piper only)
+# Missing response file
 [User says "Hey Rosie"]
 🎯 Trigger word 'Rosie' detected - speaking AI response
 ℹ️ response.txt not found (no AI response to speak)
@@ -789,7 +743,7 @@ Based on the context, it sounds like you're preparing for an important meeting. 
 3. **User continues**: "and I need help understanding neural networks"
 4. **Buffer full**: Reaches 20 words, sends to B4M
 5. **B4M responds**: Creates response_2024-01-15_14-35-42__001.txt
-6. **User triggers**: Says "Hey Rosie" or waits 3 seconds (interactive mode)
+6. **User triggers**: Says "Hey Rosie"
 7. **TTS speaks**: Reads AI response aloud
 8. **File cleanup**: Deletes response file after speaking
 9. **Cycle continues**: Buffer keeps rolling, ready for next interaction
@@ -818,9 +772,7 @@ Based on the context, it sounds like you're preparing for an important meeting. 
 ### Test Mode Behavior
 - **Sentence Processing**: Read one sentence every 3 seconds (configurable)
 - **Word Counting**: Same 20-word buffer logic as live mode
-- **Trigger Simulation**:
-  - **Default Mode**: "Rosie" keyword detection works normally
-  - **Interactive Mode**: Simulate 3-second silence gaps between sentences
+- **Trigger Simulation**: "Rosie" keyword detection works normally
 - **B4M Integration**: Full API integration with real requests
 - **TTS Integration**: Full Piper TTS functionality
 - **File Management**: Same conversation/response file handling
@@ -835,21 +787,21 @@ The test file should contain diverse sentence types:
 
 ### Test Mode Configuration
 - **Sentence Interval**: Default 3 seconds, configurable via parameter
-- **Interactive Silence**: Default 3 seconds between sentences when --interactive enabled
 - **Trigger Word Inclusion**: Some sentences contain "Rosie" for testing keyword detection
 - **Buffer Testing**: Sentences designed to test 20-word buffer boundaries
 
 ### Test Mode Terminal Output
 ```
 🧪 Test Mode: Reading from conversation_test.txt
-📄 Loaded 100 test sentences
-🎤 Processing sentence 1/100: "What time is the meeting..."
+📄 Loaded 10 test sentences
+🎤 Processing sentence 1/10: "What time is the meeting..."
 Buffer: 7/20 words
-🎤 Processing sentence 2/100: "I think we should prepare..."
-Buffer: 15/20 words
-🎤 Processing sentence 3/100: "The presentation materials need..."
+🎤 Processing sentence 2/10: "I think we should review..."
 Buffer: 20/20 words
-💾 Conversation saved to conversation_2024-01-15_14-30-20.txt
+💾 Conversation saved to conversation_2024-01-15_14-30-20__001.txt
+🤖 Processing conversation file with B4M AI...
+💾 AI response saved to response_2024-01-15_14-30-20__001.txt
+🗑️ Deleted conversation_2024-01-15_14-30-20__001.txt after processing
 ```
 
 ## 17. Running the Application
@@ -862,8 +814,8 @@ cd /home/mike/projects/b4m_yahboom
 # Run with default mode (keyword trigger "Rosie")
 python3 ha_converse.py
 
-# Run with interactive mode (3-second silence trigger instead of "Rosie" keyword)
-python3 ha_converse.py --interactive
+# Run with test mode (uses conversation_test.txt instead of microphone)
+python3 ha_converse.py --test
 ```
 
 ### Prerequisites
@@ -896,7 +848,7 @@ python3 ha_converse.py --interactive
    ```
 
 ### Command-Line Options
-- `--interactive`: Use 3-second silence trigger instead of "Rosie" keyword (default uses "Rosie" keyword)
+- `--test`: Use conversation_test.txt file instead of microphone input (for testing without hardware)
 
 ### Operation Modes
 
@@ -908,18 +860,12 @@ python3 ha_converse.py --interactive
 - Saves AI responses to timestamped files
 - Speaks responses via Piper TTS when triggered
 
-#### Interactive Mode (--interactive)
-- Complete voice interaction system
-- Speech → AI processing → Voice response
-- 3 seconds of silence triggers voice response
-- All other features identical to default mode
 
 #### Test Mode (--test)
 - Simulated speech input for testing and development
 - Reads sentences from conversation_test.txt instead of microphone
 - Processes sentences at configurable intervals (default: every 3 seconds)
 - All other features identical to default mode (B4M API, Piper TTS)
-- Can be combined with --interactive for silence-triggered testing
 
 ### Stopping the Application
 Press `Ctrl+C` to gracefully shutdown:
