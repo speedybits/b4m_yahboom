@@ -30,13 +30,17 @@ A speech-to-text application for Ubuntu Linux 22.04 LTS that uses Whisper models
 - Files processed in FIFO order (oldest timestamp first)
 - Integer counter ensures 1:1 mapping with response files
 
-### 3. Automatic B4M Processing
+### 3. Automatic AI Processing
 When a conversation file is created (20 words accumulated):
 1. Process oldest `conversation_<timestamp>__<integer>.txt` file
-2. Send file contents to B4M API
+2. Send file contents to AI backend (B4M API by default, or Ollama with --ollama switch)
 3. Store AI response in `response_YYYY-MM-DD_HH-MM-SS__<integer>.txt` (matching the conversation file's integer)
 4. Delete the conversation file after successful API processing
 5. Continue processing next oldest conversation file if queue exists
+
+**AI Backend Options:**
+- **Default (B4M API)**: Uses B4M quest-based polling system with full session context
+- **Ollama Mode (--ollama switch)**: Uses local Ollama server for completely offline AI processing
 
 ### 4. Voice Response Triggering
 Two modes are available for triggering voice response:
@@ -60,15 +64,15 @@ When the trigger word "Rosie" is detected:
 The application operates with two independent threads for simultaneous processing:
 
 #### 5a. Speech Recognition Thread (Main Thread)
-Handles all speech-to-text and B4M API communication:
+Handles all speech-to-text and AI API communication:
 - Continuous audio capture from microphone
 - Whisper model transcription
 - Word accumulation in temporary buffer (20-word maximum)
 - **File Creation**: Creates `conversation_YYYY-MM-DD_HH-MM-SS.txt` at 20 words
-- **Non-blocking B4M API calls**: Continues transcription during API requests
-- B4M API processes oldest conversation file (asynchronous)
+- **Non-blocking AI API calls**: Continues transcription during API requests
+- AI backend (B4M or Ollama) processes oldest conversation file (asynchronous)
 - Writing responses to timestamped files
-- **File Cleanup**: Deletes conversation files after B4M processing
+- **File Cleanup**: Deletes conversation files after AI processing
 - **Continuous Operation**: Never pauses transcription, even during API calls
 
 #### 5b. Text-to-Speech Thread (Secondary Thread)
@@ -86,7 +90,7 @@ Handles all voice output and trigger detection:
 #### 5c. Thread Communication
 - **Thread-Safe Operations**: File operations use locking to prevent conflicts
 - **Non-Blocking Design**: TTS thread never blocks speech recognition
-- **Independent B4M Processing**: TTS operations continue during API calls
+- **Independent AI Processing**: TTS operations continue during API calls
 - **Timestamped Response Files**: Multiple `response_<timestamp>__<integer>.txt` files for queue management with 1:1 mapping
 - **Sequential TTS Processing**: TTS thread processes response files in chronological order
 - **Shutdown Event**: Threading.Event() shared between threads for clean termination
@@ -102,18 +106,18 @@ Handles all voice output and trigger detection:
 - **Whisper**: `faster-whisper` - Optimized STT engine (preferred) or `openai-whisper` as fallback
 - **Audio Capture**: `sounddevice` - Microphone input
 - **Audio Processing**: `numpy` - Audio data manipulation
-- **Text-to-Speech**: `piper-tts` - Local neural TTS for speaking B4M responses (optional)
-- **HTTP Requests**: `requests` - For B4M API communication (optional)
+- **Text-to-Speech**: `piper-tts` - Local neural TTS for speaking AI responses (optional)
+- **HTTP Requests**: `requests` - For B4M API communication (default mode) or Ollama API (--ollama mode)
 - **Threading**: `threading` - For concurrent speech recognition and TTS operations
 - **Signal Handling**: `signal` - For clean Ctrl+C shutdown and termination handling
 - Standard Python libraries for file I/O and datetime
 
 ### File Management
-- **Conversation files**: `conversation_YYYY-MM-DD_HH-MM-SS__<integer>.txt` - Each contains 20 words ready for B4M processing
-- **Response files**: `response_YYYY-MM-DD_HH-MM-SS__<integer>.txt` - Contains B4M AI responses with matching integer for 1:1 mapping
+- **Conversation files**: `conversation_YYYY-MM-DD_HH-MM-SS__<integer>.txt` - Each contains 20 words ready for AI processing
+- **Response files**: `response_YYYY-MM-DD_HH-MM-SS__<integer>.txt` - Contains AI responses (B4M or Ollama) with matching integer for 1:1 mapping
 - **File queues**: Both conversation and response files accumulate until processed
 - **1:1 Relationship**: Each conversation file has exactly one corresponding response file with the same integer counter
-- **Cleanup**: Conversation files deleted after B4M processing, response files deleted after TTS playback
+- **Cleanup**: Conversation files deleted after AI processing, response files deleted after TTS playback
 - **No archiving**: All files are temporary and deleted after processing
 
 ## 7. Implementation Details
@@ -204,21 +208,28 @@ Handles all voice output and trigger detection:
 ### Terminal Output
 - Running word count display: `Buffer: XX/20 words`
 - Conversation file created: `💾 Conversation saved to conversation_YYYY-MM-DD_HH-MM-SS__<integer>.txt`
-- B4M processing message: `🤖 Processing conversation file with B4M AI...`
-- **B4M Polling Messages**:
+- **B4M Mode Processing Messages** (default):
+  - `🤖 Processing conversation file with B4M AI...`
   - `📡 Polling B4M quest status (attempt 1/15)...`
   - `⏳ Quest still running, polling again in 7s...`
   - `✅ Quest complete - extracting AI response`
-- **Rate Limiting Messages** (only when 429 errors occur):
-  - `⚠️ B4M API: Rate limit exceeded. Try again in 59s`
-  - `⏱️ Rate limited - waiting 59s before retry (attempt 1/3)`
-  - `✅ Rate limit wait complete - retrying B4M request`
-- B4M response saved: `💾 AI response saved to response_YYYY-MM-DD_HH-MM-SS__<integer>.txt`
+  - **Rate Limiting** (only when 429 errors occur):
+    - `⚠️ B4M API: Rate limit exceeded. Try again in 59s`
+    - `⏱️ Rate limited - waiting 59s before retry (attempt 1/3)`
+    - `✅ Rate limit wait complete - retrying B4M request`
+  - **API failures**:
+    - `⚠️ B4M API failed for conversation_YYYY-MM-DD_HH-MM-SS__<integer>.txt - will retry`
+    - `❌ B4M API failed after 3 attempts - keeping conversation file for manual retry`
+    - `⚠️ B4M API: HTTP 429 - Rate limit exceeded`
+- **Ollama Mode Processing Messages** (--ollama):
+  - `🦙 Processing conversation file with Ollama...`
+  - `🦙 Ollama response received`
+  - **API failures**:
+    - `⚠️ Ollama API failed for conversation_YYYY-MM-DD_HH-MM-SS__<integer>.txt - will retry`
+    - `❌ Ollama API failed after 3 attempts - keeping conversation file for manual retry`
+    - `⚠️ Ollama server not available at http://localhost:11434`
+- AI response saved: `💾 AI response saved to response_YYYY-MM-DD_HH-MM-SS__<integer>.txt`
 - File deletion: `🗑️ Deleted conversation_YYYY-MM-DD_HH-MM-SS__<integer>.txt after processing`
-- **API failures**:
-  - `⚠️ B4M API failed for conversation_YYYY-MM-DD_HH-MM-SS__<integer>.txt - will retry`
-  - `❌ B4M API failed after 3 attempts - keeping conversation file for manual retry`
-  - `⚠️ B4M API: HTTP 429 - Rate limit exceeded`
 - **Trigger Detection Messages**:
   - **Default Mode with response**: `🎯 Trigger word 'Rosie' detected - speaking AI response`
   - **Default Mode without response**: `ℹ️ response.txt not found (no AI response to speak)`
@@ -273,12 +284,17 @@ Handles all voice output and trigger detection:
   - Audio chunk duration: 10 seconds (configurable)
   - Chunk overlap: 0.5 seconds
   - VAD sensitivity threshold
-- **B4M API Configuration**:
+- **B4M API Configuration** (default mode):
   - Polling interval (default: 7 seconds, standard B4M interval)
   - Polling timeout (default: 15 attempts, 105 seconds total)
   - Rate limit retry attempts (default: 3, configurable)
   - Exponential backoff base (default: 2x for 429 errors)
   - Maximum wait time per retry (default: 240 seconds)
+- **Ollama Configuration** (--ollama mode):
+  - Model selection (default: llama3.2:latest, configurable)
+  - Server URL (default: http://localhost:11434, configurable)
+  - Request timeout (default: 30 seconds)
+  - Retry attempts (default: 3, configurable)
 - Microphone device selection (default: system default)
 - Initial prompt for context (optional)
 
@@ -295,8 +311,10 @@ Handles all voice output and trigger detection:
 - Automatic startup with system default microphone
 - No manual configuration required for basic operation
 - **Usage Combinations**:
-  - No switches: Full voice interaction with responses spoken with keyword "Rosie" trigger
-  - `--interactive`: Full voice interaction
+  - No switches: Full voice interaction with B4M API and keyword "Rosie" trigger
+  - `--ollama`: Full voice interaction with local Ollama AI and keyword "Rosie" trigger
+  - `--test`: Testing mode with simulated speech input and B4M API
+  - `--test --ollama`: Testing mode with simulated speech input and local Ollama AI
 
 ## 10. Performance Considerations
 
@@ -492,7 +510,149 @@ Basic structure (incomplete - see B4M_API_EXAMPLE.md for full details):
 - **Status Display**: Visual feedback during polling and rate limit waits
 - **Graceful Degradation**: Continue speech recognition during all API operations
 
-## 14. Piper TTS Integration
+## 14. Ollama Integration
+
+### Overview
+The `--ollama` switch enables completely offline AI processing using a local Ollama server instead of the B4M API. This provides privacy, eliminates external API dependencies, and allows customization of AI models.
+
+### Ollama Mode (--ollama switch)
+- Enables local Ollama AI service integration
+  - When enabled, conversation buffer is sent to Ollama API when it reaches 20 words
+  - Response is stored in timestamped `response_YYYY-MM-DD_HH-MM-SS__<integer>.txt` files
+  - Requires Ollama server running on localhost:11434 (default port)
+  - No external API keys required
+
+### Ollama Communication Flow
+When conversation files exist:
+1. **Find oldest** `conversation_YYYY-MM-DD_HH-MM-SS__<integer>.txt` file by timestamp
+2. **Submit request to Ollama API** (one at a time, not parallel):
+   - Send file contents as a simple chat message
+   - POST request to `/api/chat` endpoint
+   - Synchronous response (no polling required)
+3. **Receive AI response**:
+   - Response returned directly in single HTTP response
+   - Extract message content from response JSON
+4. **Handle connection errors**:
+   - Check if Ollama server is running
+   - Maximum 3 retry attempts per conversation file
+   - Display status: `⚠️ Ollama server not available at http://localhost:11434`
+5. **If successful**: Save AI response to `response_YYYY-MM-DD_HH-MM-SS__<integer>.txt` (matching conversation file's integer) and delete conversation file
+6. **If failed after retries**: Keep conversation file for manual retry, display error message
+7. Display processing status in terminal
+8. **Process next oldest conversation file** if queue exists
+
+### Ollama Configuration
+
+#### API Endpoint
+- **Default Endpoint**: `http://localhost:11434/api/chat`
+- **Alternative Endpoint**: Configurable via `OLLAMA_HOST` environment variable
+- **Authentication**: None required for local server
+
+#### Environment Variables
+- **`OLLAMA_HOST`**: Optional custom Ollama server URL (default: `http://localhost:11434`)
+- **`OLLAMA_MODEL`**: Model to use (default: `llama3.2:latest`)
+- **Note**: B4M environment variables (B4M_API_KEY, B4M_ROSIE_ID) are ignored in Ollama mode
+
+#### API Request Structure
+Simple chat-based request format:
+```json
+{
+  "model": "llama3.2:latest",
+  "messages": [
+    {
+      "role": "user",
+      "content": "conversation text content"
+    }
+  ],
+  "stream": false
+}
+```
+
+#### Headers
+```json
+{
+  "Content-Type": "application/json"
+}
+```
+
+#### Response Structure
+```json
+{
+  "model": "llama3.2:latest",
+  "created_at": "2024-01-15T14:30:20.123Z",
+  "message": {
+    "role": "assistant",
+    "content": "AI response text here"
+  },
+  "done": true
+}
+```
+
+#### Configuration Values
+- **Model**: Configurable via OLLAMA_MODEL (default: llama3.2:latest)
+- **Stream**: False (synchronous response)
+- **Timeout**: 30 seconds for API request (longer than B4M due to local processing)
+- **Retry Attempts**: 3 maximum per conversation file
+
+#### Error Handling
+- **Connection Errors**:
+  - Check if Ollama server is running: `ollama serve`
+  - Verify port availability: `curl http://localhost:11434/api/tags`
+  - Display clear error messages with troubleshooting steps
+- **Model Not Found**:
+  - Check if model is pulled: `ollama list`
+  - Suggest pulling model: `ollama pull llama3.2`
+- **Processing Errors**:
+  - Keep conversation files that fail after max retries
+  - Continue processing other queued files
+  - Display clear error messages with retry information
+- **Status Display**: Visual feedback during processing
+- **Graceful Degradation**: Continue speech recognition during all API operations
+
+### Ollama Setup Instructions
+
+#### Installation
+```bash
+# Install Ollama
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Start Ollama service
+ollama serve
+
+# Pull recommended model
+ollama pull llama3.2
+```
+
+#### Recommended Models
+- **llama3.2:latest** (3B parameters): Fast, efficient, good for conversation (recommended)
+- **llama3.2:1b**: Smallest, fastest response time, lower quality
+- **mistral:latest** (7B parameters): Higher quality, slower response
+- **qwen2.5:latest** (7B parameters): Good balance of speed and quality
+
+#### Performance Considerations
+- **Model Size vs Speed**: Smaller models (1B-3B) respond in 1-3 seconds, larger models (7B+) may take 5-10 seconds
+- **Hardware Requirements**:
+  - Minimum: 4GB RAM for 3B models
+  - Recommended: 8GB RAM for 7B models
+  - GPU acceleration supported (NVIDIA, AMD, Apple Silicon)
+- **First Request**: Initial model loading may take 5-10 seconds
+- **Subsequent Requests**: Faster due to model caching in memory
+
+#### Advantages of Ollama Mode
+- **Complete Privacy**: All processing happens locally, no data sent to external servers
+- **No API Costs**: No API keys, no rate limits, unlimited usage
+- **Offline Operation**: Works without internet connection
+- **Model Customization**: Choose from dozens of open-source models
+- **No Rate Limiting**: Process conversations as fast as hardware allows
+- **Simpler Architecture**: No polling, no quest management, synchronous responses
+
+#### Limitations
+- **Slower Processing**: Local AI processing typically slower than cloud APIs
+- **No Context Persistence**: Each conversation is independent (no session history like B4M)
+- **Hardware Dependent**: Performance varies greatly based on CPU/GPU
+- **Model Quality**: Open-source models may not match GPT-4 quality
+
+## 15. Piper TTS Integration
 
 ### Piper Configuration
 - **Installation**: `pip install piper-tts` or system package manager
@@ -551,26 +711,28 @@ source ~/.bashrc
 - **Storage**: 50-200MB per voice model
 - **Dependencies**: espeak-ng (for phonemization)
 
-## 15. Implementation Notes
+## 16. Implementation Notes
 
 ### Actual Implementation
 - Uses `faster-whisper` library for 10x smaller model size
 - Supports fallback to `openai-whisper` if faster-whisper unavailable
 - Buffer size set to 20 words (configurable)
-- **Core Workflow**: 20-word buffer → B4M API → response.txt → trigger activation → voice output
+- **Core Workflow**: 20-word buffer → AI backend → timestamped response files → trigger activation → voice output
+- **AI Backend Options**:
+  - **Default**: B4M API with quest-based polling system
+  - **Ollama (--ollama)**: Local Ollama server for offline operation
 - **Trigger Options**:
   - **Default**: "Rosie" keyword detection (case-insensitive)
 - Trigger activation controls voice response only (no archiving)
 - Continuous circular buffer operation (no automatic archiving)
-- AI responses stored in `response.txt` (overwritten with each new response)
-- **Silent Operation**: No voice output when `response.txt` is missing or empty
-- Files `conversation.txt`, `response.txt`, and `prompts/` directory are gitignored
-- Setup via `setup_ha_converse_minimal.sh` for minimal disk usage
-- B4M API integration processes every 20-word buffer automatically
-- Piper TTS integration speaks `response.txt` only when content exists
+- AI responses stored in timestamped files `response_YYYY-MM-DD_HH-MM-SS__<integer>.txt`
+- **Silent Operation**: No voice output when no response files exist
+- Files `conversation_*.txt` and `response_*.txt` are gitignored
+- B4M or Ollama API integration processes every 20-word buffer automatically
+- Piper TTS integration speaks oldest response file when triggered
 - **Complete Workflows**:
-  - **Keyword Mode**: Speech → 20-word buffer → AI → response.txt → "Rosie" → voice (if content exists)
-  - **Interactive Mode**: Speech → 20-word buffer → AI → response.txt → voice (if content exists)
+  - **B4M Mode**: Speech → 20-word buffer → B4M API → timestamped response → "Rosie" → voice
+  - **Ollama Mode**: Speech → 20-word buffer → Ollama → timestamped response → "Rosie" → voice
 
 
 ### Thread Architecture Implementation
@@ -604,7 +766,7 @@ source ~/.bashrc
   - TTS thread monitors transcriptions from main thread for keywords
   - Main thread only provides transcription data and timestamps
 
-## 16. Example Output
+## 17. Example Output
 
 ### Terminal Output During Operation
 
@@ -634,31 +796,31 @@ Buffer: 7/20 words
 Buffer: 8/20 words
 ```
 
-#### Interactive Mode (--interactive)
+#### Ollama Mode (--ollama)
 ```
 🎤 Initializing Whisper base model...
 ✅ Whisper model loaded successfully
 🔊 Piper TTS initialized
 🔊 Speaking: "Hello World! Piper text-to-speech is working correctly."
-🎙️ Starting speech recognition (Interactive Mode)...
+🎙️ Starting speech recognition (Ollama Mode)...
 
 Buffer: 0/20 words
-Buffer: 7/20 words
-Buffer: 14/20 words
-Buffer: 20/20 words
-💾 Conversation saved to conversation_2024-01-15_14-32-15__001.txt
-🤖 Processing conversation file with B4M AI...
-💾 AI response saved to response_2024-01-15_14-32-15__001.txt
-🗑️ Deleted conversation_2024-01-15_14-32-15__001.txt after processing
-
-[User stops speaking]
-⏳ Silence timer: 0.5s / 3.0s
-⏳ Silence timer: 1.2s / 3.0s
-⏳ Silence timer: 2.4s / 3.0s
-⏳ Silence timer: 3.0s / 3.0s
-🔊 Speaking AI response from response_2024-01-15_14-32-15__001.txt
-💾 Cleared response_2024-01-15_14-32-15__001.txt after speaking
+Buffer: 5/20 words
+Buffer: 12/20 words
 Buffer: 18/20 words
+Buffer: 20/20 words
+💾 Conversation saved to conversation_2024-01-15_14-30-20__001.txt
+🦙 Processing conversation file with Ollama...
+🦙 Ollama response received
+💾 AI response saved to response_2024-01-15_14-30-20__001.txt
+🗑️ Deleted conversation_2024-01-15_14-30-20__001.txt after processing
+Buffer: 7/20 words
+
+[User says "Hey Rosie"]
+🎯 Trigger word 'Rosie' detected - speaking AI response
+🔊 Speaking AI response from response_2024-01-15_14-30-20__001.txt
+💾 Cleared response_2024-01-15_14-30-20__001.txt after speaking
+Buffer: 8/20 words
 ```
 
 #### Speech Recognition Only (no switches)
@@ -719,6 +881,14 @@ Buffer: 12/20 words
 🔄 Attempting to reconnect to microphone...
 ✅ Microphone reconnected successfully
 
+# Ollama API failure (server not running)
+💾 Conversation saved to conversation_2024-01-15_14-38-10__005.txt
+🦙 Processing conversation file with Ollama...
+⚠️ Ollama server not available at http://localhost:11434
+⚠️ Ollama API failed for conversation_2024-01-15_14-38-10__005.txt - will retry
+[After retry attempts]
+❌ Ollama API failed after 3 attempts - keeping conversation file for manual retry
+
 # TTS synthesis error
 ❌ [TTS Thread] Error: Failed to synthesize audio - voice model not found
 ⚠️ Continuing without TTS capabilities
@@ -736,8 +906,14 @@ what time is the meeting tomorrow and do we need to prepare any specific documen
 Based on the context, it sounds like you're preparing for an important meeting. To help you better, I'd need to know which specific meeting you're referring to. Generally for presentations, it's good to prepare an agenda, any relevant data or reports, and visual aids if needed. Would you like me to help you create a preparation checklist?
 ```
 
+#### response_2024-01-15_14-30-20__001.txt (Ollama AI response)
+```
+It sounds like you're getting ready for a meeting. To prepare properly, you'll want to confirm the meeting time with your calendar or the person who organized it. For documents, consider preparing: the meeting agenda, any relevant reports or data, presentation slides if you're presenting, and notes on discussion points. Would you like help organizing these materials?
+```
+
 ### Example Conversation Flow
 
+#### B4M Mode (Default)
 1. **User speaks**: "I'm working on a new project for machine learning"
 2. **Buffer updates**: Shows 8/20 words
 3. **User continues**: "and I need help understanding neural networks"
@@ -748,19 +924,30 @@ Based on the context, it sounds like you're preparing for an important meeting. 
 8. **File cleanup**: Deletes response file after speaking
 9. **Cycle continues**: Buffer keeps rolling, ready for next interaction
 
+#### Ollama Mode (--ollama)
+1. **User speaks**: "I'm working on a new project for machine learning"
+2. **Buffer updates**: Shows 8/20 words
+3. **User continues**: "and I need help understanding neural networks"
+4. **Buffer full**: Reaches 20 words, sends to Ollama
+5. **Ollama responds**: Creates response_2024-01-15_14-35-42__001.txt
+6. **User triggers**: Says "Hey Rosie"
+7. **TTS speaks**: Reads AI response aloud
+8. **File cleanup**: Deletes response file after speaking
+9. **Cycle continues**: Buffer keeps rolling, ready for next interaction
+
 ### Directory Structure During Operation
 ```
 .
-├── conversation_2024-01-15_14-30-25__001.txt  # Queued for B4M processing
+├── conversation_2024-01-15_14-30-25__001.txt  # Queued for AI processing (B4M or Ollama)
 ├── conversation_2024-01-15_14-30-30__002.txt  # Another queued conversation
 ├── response_2024-01-15_14-30-20__001.txt      # Ready for TTS (oldest)
 ├── response_2024-01-15_14-30-25__002.txt      # Queued for TTS (1:1 mapping)
 └── ha_converse.py                             # Main application
 ```
 
-**Note**: Files are temporary and deleted after processing. During normal operation, the directory may be empty or contain only a few pending files.
+**Note**: Files are temporary and deleted after processing. During normal operation, the directory may be empty or contain only a few pending files. The AI backend (B4M or Ollama) is transparent to the file structure.
 
-## 16. Test Mode Implementation
+## 18. Test Mode Implementation
 
 ### Test File Structure
 - **File**: `conversation_test.txt` in the working directory
@@ -773,7 +960,7 @@ Based on the context, it sounds like you're preparing for an important meeting. 
 - **Sentence Processing**: Read one sentence every 3 seconds (configurable)
 - **Word Counting**: Same 20-word buffer logic as live mode
 - **Trigger Simulation**: "Rosie" keyword detection works normally
-- **B4M Integration**: Full API integration with real requests
+- **AI Integration**: Full API integration with real requests (B4M by default, Ollama with --ollama switch)
 - **TTS Integration**: Full Piper TTS functionality
 - **File Management**: Same conversation/response file handling
 
@@ -804,18 +991,24 @@ Buffer: 20/20 words
 🗑️ Deleted conversation_2024-01-15_14-30-20__001.txt after processing
 ```
 
-## 17. Running the Application
+## 19. Running the Application
 
 ### Basic Usage
 ```bash
 # Navigate to the project directory
 cd /home/mike/projects/b4m_yahboom
 
-# Run with default mode (keyword trigger "Rosie")
+# Run with default mode (B4M API, keyword trigger "Rosie")
 python3 ha_converse.py
+
+# Run with Ollama (local AI, keyword trigger "Rosie")
+python3 ha_converse.py --ollama
 
 # Run with test mode (uses conversation_test.txt instead of microphone)
 python3 ha_converse.py --test
+
+# Combine switches (test mode with Ollama)
+python3 ha_converse.py --test --ollama
 ```
 
 ### Prerequisites
@@ -824,14 +1017,20 @@ python3 ha_converse.py --test
    pip install faster-whisper sounddevice numpy requests piper-tts
    ```
 
-2. **Set environment variables** (required):
+2. **Set environment variables**:
    ```bash
    # Add to ~/.bashrc
+
+   # For B4M API mode (default, required unless using --ollama)
    export B4M_API_KEY="your_api_key_here"
    export B4M_ROSIE_ID="your_rosie_id_here"
    export B4M_USER_ID="your_user_id_here"  # Optional
 
-   # For Piper TTS (optional)
+   # For Ollama mode (--ollama switch, optional)
+   export OLLAMA_HOST="http://localhost:11434"  # Optional, defaults to localhost
+   export OLLAMA_MODEL="llama3.2:latest"  # Optional, defaults to llama3.2:latest
+
+   # For Piper TTS (optional, recommended)
    export PIPER_MODEL_PATH="$HOME/.local/share/piper-voices/en_US-lessac-medium.onnx"
    export PIPER_CONFIG_PATH="$HOME/.local/share/piper-voices/en_US-lessac-medium.onnx.json"
 
@@ -839,7 +1038,7 @@ python3 ha_converse.py --test
    source ~/.bashrc
    ```
 
-3. **Download Piper voice model** (required):
+3. **Download Piper voice model** (recommended):
    ```bash
    mkdir -p ~/.local/share/piper-voices
    cd ~/.local/share/piper-voices
@@ -847,25 +1046,47 @@ python3 ha_converse.py --test
    wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json
    ```
 
+4. **Install Ollama** (only if using --ollama switch):
+   ```bash
+   # Install Ollama
+   curl -fsSL https://ollama.com/install.sh | sh
+
+   # Pull recommended model
+   ollama pull llama3.2
+
+   # Start Ollama service (run in separate terminal or as systemd service)
+   ollama serve
+   ```
+
 ### Command-Line Options
 - `--test`: Use conversation_test.txt file instead of microphone input (for testing without hardware)
+- `--ollama`: Use local Ollama server instead of B4M API for AI processing (requires Ollama installation)
 
 ### Operation Modes
 
 #### Default Mode (no switches)
-- Complete voice interaction system
-- Speech → AI processing → Voice response
+- Complete voice interaction system with B4M API
+- Speech → B4M AI processing → Voice response
 - Say "Rosie" to hear the latest AI response
 - Continuously transcribes speech and sends to B4M AI every 20 words
 - Saves AI responses to timestamped files
 - Speaks responses via Piper TTS when triggered
 
+#### Ollama Mode (--ollama)
+- Complete voice interaction system with local Ollama AI
+- Speech → Ollama AI processing → Voice response
+- Say "Rosie" to hear the latest AI response
+- Continuously transcribes speech and sends to Ollama every 20 words
+- Completely offline operation (no external API required)
+- Saves AI responses to timestamped files
+- Speaks responses via Piper TTS when triggered
 
 #### Test Mode (--test)
 - Simulated speech input for testing and development
 - Reads sentences from conversation_test.txt instead of microphone
 - Processes sentences at configurable intervals (default: every 3 seconds)
-- All other features identical to default mode (B4M API, Piper TTS)
+- Works with both B4M API (default) and Ollama (--ollama) modes
+- All other features identical to live microphone mode
 
 ### Stopping the Application
 Press `Ctrl+C` to gracefully shutdown:
@@ -891,6 +1112,21 @@ python3 -c "import sounddevice as sd; print(sd.query_devices())"
 - Verify B4M_API_KEY is set correctly
 - Check network connectivity
 - Ensure B4M_ROSIE_ID is valid
+
+#### Ollama errors
+```bash
+# Check if Ollama is running
+curl http://localhost:11434/api/tags
+
+# Start Ollama if not running
+ollama serve
+
+# Check if model is available
+ollama list
+
+# Pull model if needed
+ollama pull llama3.2
+```
 
 #### Piper TTS not working
 - Verify voice model files exist in specified path

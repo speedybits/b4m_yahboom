@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-HA_converse - Speech-to-Text Conversation System with B4M AI Integration
+HA_converse - Speech-to-Text Conversation System with AI Integration
 
-A two-thread application that captures speech, sends 20-word segments to B4M API,
-and speaks AI responses via Piper TTS when triggered by "Rosie" keyword.
+A two-thread application that captures speech, sends 20-word segments to AI backend
+(B4M API or Ollama), and speaks AI responses via Piper TTS when triggered by "Rosie" keyword.
 """
 
 import os
@@ -54,10 +54,16 @@ clear_buffer_event = threading.Event()  # Set when buffer should be cleared afte
 conversation_counter = 0
 conversation_counter_lock = threading.Lock()
 
-# Environment variables
+# Environment variables - B4M API
 B4M_API_KEY = os.environ.get('B4M_API_KEY', '')
 B4M_SESSION_ID = os.environ.get('B4M_ROSIE_ID', os.environ.get('B4M_SESSION_ID', ''))
 B4M_USER_ID = os.environ.get('B4M_USER_ID', '65563f622213b120cd1d9592')
+
+# Environment variables - Ollama
+OLLAMA_HOST = os.environ.get('OLLAMA_HOST', 'http://localhost:11434')
+OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL', 'llama3.2:latest')
+
+# Environment variables - Piper TTS
 PIPER_MODEL_PATH = os.environ.get('PIPER_MODEL_PATH', '')
 PIPER_CONFIG_PATH = os.environ.get('PIPER_CONFIG_PATH', '')
 
@@ -283,8 +289,74 @@ def send_to_b4m_api(message_text, file_counter):
     return None
 
 
-def process_conversation_queue():
-    """Process oldest conversation file with B4M API (called by STT thread)"""
+def send_to_ollama_api(message_text, file_counter):
+    """
+    Send conversation to Ollama API
+    Returns: AI response text or None on failure
+    """
+    headers = {
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "model": OLLAMA_MODEL,
+        "messages": [
+            {
+                "role": "user",
+                "content": f"Please respond in a single sentence.: {message_text}"
+            }
+        ],
+        "stream": False
+    }
+
+    # Retry loop for connection errors
+    for retry_attempt in range(1, B4M_RATE_LIMIT_RETRIES + 1):
+        try:
+            response = requests.post(
+                f"{OLLAMA_HOST}/api/chat",
+                headers=headers,
+                json=payload,
+                timeout=30.0  # Longer timeout for local processing
+            )
+
+            response.raise_for_status()
+            response_data = response.json()
+
+            # Extract message content from Ollama response
+            if 'message' in response_data and 'content' in response_data['message']:
+                ai_response = response_data['message']['content']
+                print("🦙 Ollama response received")
+                return ai_response
+            else:
+                print("⚠️ Unexpected Ollama response format")
+                print(f"Debug: Response keys: {list(response_data.keys())}")
+                return None
+
+        except requests.exceptions.ConnectionError as e:
+            print(f"⚠️ Ollama server not available at {OLLAMA_HOST}")
+            if retry_attempt < B4M_RATE_LIMIT_RETRIES:
+                wait_time = 5 * retry_attempt  # Linear backoff: 5s, 10s, 15s
+                print(f"⏱️ Waiting {wait_time}s before retry (attempt {retry_attempt}/{B4M_RATE_LIMIT_RETRIES})")
+                time.sleep(wait_time)
+            else:
+                print(f"❌ Ollama API failed after {B4M_RATE_LIMIT_RETRIES} attempts - keeping conversation file for manual retry")
+                return None
+
+        except requests.exceptions.RequestException as e:
+            print(f"⚠️ Ollama API error (attempt {retry_attempt}/{B4M_RATE_LIMIT_RETRIES}): {e}")
+            if retry_attempt < B4M_RATE_LIMIT_RETRIES:
+                wait_time = 5 * retry_attempt
+                print(f"⏱️ Waiting {wait_time}s before retry...")
+                time.sleep(wait_time)
+            else:
+                print(f"❌ Ollama API failed after {B4M_RATE_LIMIT_RETRIES} attempts")
+                return None
+
+    return None
+
+
+def process_conversation_queue(use_ollama=False):
+    """Process oldest conversation file with AI backend (called by STT thread)"""
     # Use lock to prevent multiple threads from processing same file
     with conversation_queue_lock:
         conversation_file = find_oldest_file('conversation_*.txt')
@@ -310,10 +382,15 @@ def process_conversation_queue():
         match = re.search(r'__(\d+)\.txt$', conversation_file)
         file_counter = int(match.group(1)) if match else 0
 
-        print(f"🤖 Processing conversation file with B4M AI...")
-
-        # Send to B4M API (blocking but doesn't stop speech recognition due to threading)
-        ai_response = send_to_b4m_api(message_text, file_counter)
+        # Choose AI backend based on mode
+        if use_ollama:
+            print(f"🦙 Processing conversation file with Ollama...")
+            ai_response = send_to_ollama_api(message_text, file_counter)
+            backend_name = "Ollama"
+        else:
+            print(f"🤖 Processing conversation file with B4M AI...")
+            ai_response = send_to_b4m_api(message_text, file_counter)
+            backend_name = "B4M"
 
         if ai_response:
             # Create response file with matching counter
@@ -330,14 +407,14 @@ def process_conversation_queue():
             os.remove(conversation_file)
             print(f"🗑️ Deleted {conversation_file} after processing")
         else:
-            print(f"⚠️ B4M API failed for {conversation_file} - will retry")
+            print(f"⚠️ {backend_name} API failed for {conversation_file} - will retry")
 
     except Exception as e:
         print(f"❌ Error processing conversation queue: {e}")
 
 
 def speech_recognition_thread(args):
-    """Main thread: Speech recognition + B4M API processing"""
+    """Main thread: Speech recognition + AI backend processing"""
     print("🎤 Initializing Whisper base model...")
 
     # Load Whisper model
@@ -355,6 +432,18 @@ def speech_recognition_thread(args):
     # Initialize word buffer
     word_buffer = []
     last_phrase = ""  # For duplicate detection
+
+    # Display AI backend mode
+    if args.ollama:
+        print("🦙 AI Backend: Ollama (local)")
+        print(f"   Model: {OLLAMA_MODEL}")
+        print(f"   Host: {OLLAMA_HOST}")
+    else:
+        print("🤖 AI Backend: B4M API (cloud)")
+        if B4M_API_KEY and B4M_SESSION_ID:
+            print(f"   Session: {B4M_SESSION_ID[:8]}...")
+        else:
+            print("   ⚠️ Warning: B4M credentials not configured")
 
     if args.test:
         # Test mode: Read from conversation_test.txt
@@ -401,8 +490,12 @@ def speech_recognition_thread(args):
 
                 print(f"💾 Conversation saved to {conversation_filename}")
 
-                # Process with B4M API (non-blocking - run in separate thread)
-                threading.Thread(target=process_conversation_queue, daemon=True).start()
+                # Process with AI backend (non-blocking - run in separate thread)
+                threading.Thread(
+                    target=process_conversation_queue,
+                    args=(args.ollama,),
+                    daemon=True
+                ).start()
 
             # Wait before next sentence
             time.sleep(TEST_MODE_INTERVAL)
@@ -510,8 +603,12 @@ def speech_recognition_thread(args):
 
                     print(f"💾 Conversation saved to {conversation_filename}")
 
-                    # Process with B4M API (non-blocking - run in separate thread)
-                    threading.Thread(target=process_conversation_queue, daemon=True).start()
+                    # Process with AI backend (non-blocking - run in separate thread)
+                    threading.Thread(
+                        target=process_conversation_queue,
+                        args=(args.ollama,),
+                        daemon=True
+                    ).start()
 
             except Exception as e:
                 if not shutdown_event.is_set():
@@ -674,9 +771,10 @@ def tts_thread(args, voice):
 
 def main():
     """Main application entry point"""
-    parser = argparse.ArgumentParser(description='HA_converse - Speech-to-Text with B4M AI')
+    parser = argparse.ArgumentParser(description='HA_converse - Speech-to-Text with AI Integration')
     parser.add_argument('--test', action='store_true', help='Use conversation_test.txt instead of microphone')
     parser.add_argument('--interactive', action='store_true', help='Interactive mode (auto-speak responses)')
+    parser.add_argument('--ollama', action='store_true', help='Use local Ollama server instead of B4M API')
     args = parser.parse_args()
 
     # Register signal handlers
