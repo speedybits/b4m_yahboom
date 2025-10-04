@@ -50,6 +50,7 @@ shutdown_event = threading.Event()
 response_queue_lock = threading.Lock()
 conversation_queue_lock = threading.Lock()  # Prevents multiple threads from processing same file
 tts_speaking_event = threading.Event()  # Set when TTS is speaking to pause recording
+clear_buffer_event = threading.Event()  # Set when buffer should be cleared after TTS
 conversation_counter = 0
 conversation_counter_lock = threading.Lock()
 
@@ -173,7 +174,7 @@ def send_to_b4m_api(message_text, file_counter):
 
     payload = {
         "sessionId": B4M_SESSION_ID,
-        "message": f"Please respond in a single sentence, in a conversational way. {message_text}",
+        "message": f"Please respond in a single sentence.: {message_text}",
         "historyCount": 10,
         "fabFileIds": [],
         "messageFileIds": [],
@@ -418,6 +419,13 @@ def speech_recognition_thread(args):
 
         while not shutdown_event.is_set():
             try:
+                # Check if buffer should be cleared (after TTS)
+                if clear_buffer_event.is_set():
+                    word_buffer = []
+                    last_phrase = ""
+                    print(f"🗑️ Cleared speech buffer after TTS")
+                    clear_buffer_event.clear()
+
                 # Pause recording during TTS playback
                 if tts_speaking_event.is_set():
                     time.sleep(0.1)
@@ -438,11 +446,28 @@ def speech_recognition_thread(args):
                         channels=1,
                         dtype='float32'
                     )
-                    sd.wait()
-                    audio_chunks.append(audio_chunk)
+
+                    # Wait for recording, but check for interruptions
+                    start_time = time.time()
+                    while sd.get_stream().active:
+                        if tts_speaking_event.is_set() or shutdown_event.is_set():
+                            sd.stop()
+                            break
+                        time.sleep(0.01)
+                        # Timeout after expected duration + 1 second
+                        if time.time() - start_time > MINI_CHUNK_DURATION + 1.0:
+                            break
+
+                    # Only append if recording completed successfully
+                    if not tts_speaking_event.is_set() and not shutdown_event.is_set():
+                        audio_chunks.append(audio_chunk)
 
                 if shutdown_event.is_set():
                     break
+
+                # Skip if no audio chunks collected (interrupted by TTS)
+                if not audio_chunks:
+                    continue
 
                 # Combine chunks
                 audio = np.concatenate(audio_chunks).flatten()
@@ -521,7 +546,7 @@ def initialize_piper_tts():
         print("🔊 Piper TTS initialized")
 
         # Startup voice test
-        test_message = "Hello World! Piper text-to-speech is working correctly."
+        test_message = "Hi!"
         print(f"🔊 Speaking: \"{test_message}\"")
 
         # Synthesize audio
@@ -529,9 +554,10 @@ def initialize_piper_tts():
         for audio_chunk in voice.synthesize(test_message):
             audio_data.extend(audio_chunk.audio_int16_array)
 
-        # Play audio (blocking to ensure initialization completes)
+        # Play audio (wait to ensure initialization completes)
         audio_array = np.array(audio_data, dtype=np.int16)
-        sd.play(audio_array, samplerate=voice.config.sample_rate, blocking=True)
+        sd.play(audio_array, samplerate=voice.config.sample_rate)
+        sd.wait()
 
         return voice
 
@@ -559,6 +585,12 @@ def speak_response_file(voice, response_file):
         # Set speaking flag to pause recording
         tts_speaking_event.set()
 
+        # Give recording thread time to check the flag and pause
+        time.sleep(0.2)
+
+        # Stop any ongoing recording to avoid conflicts
+        sd.stop()
+
         try:
             # Synthesize audio
             audio_data = []
@@ -567,7 +599,8 @@ def speak_response_file(voice, response_file):
 
             # Play audio
             audio_array = np.array(audio_data, dtype=np.int16)
-            sd.play(audio_array, samplerate=voice.config.sample_rate, blocking=True)
+            sd.play(audio_array, samplerate=voice.config.sample_rate)
+            sd.wait()  # Wait for playback to complete
         finally:
             # Clear speaking flag to resume recording
             tts_speaking_event.clear()
@@ -577,6 +610,9 @@ def speak_response_file(voice, response_file):
             if os.path.exists(response_file):
                 os.remove(response_file)
                 print(f"💾 Cleared {response_file} after speaking")
+
+        # Signal STT thread to clear the speech buffer
+        clear_buffer_event.set()
 
         return True
 
