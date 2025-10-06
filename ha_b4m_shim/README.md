@@ -35,14 +35,33 @@ Home Assistant Extended OpenAI Conversation
 
 ## Installation
 
-### Option 1: Home Assistant Add-on (Recommended)
+### Prerequisites
+
+**Extended OpenAI Conversation Integration** is required. Install it first:
+
+**Option A: Via HACS (Recommended)**
+1. Install HACS if you don't have it: https://hacs.xyz/docs/setup/download
+2. Go to **HACS → Integrations**
+3. Click **⋮** menu → **Custom repositories**
+4. Add repository: `https://github.com/jekalmin/extended_openai_conversation`
+5. Category: Integration → Click **Add**
+6. Search for "Extended OpenAI Conversation" and click **Download**
+7. Restart Home Assistant
+
+**Option B: Manual Installation**
+1. Download from: https://github.com/jekalmin/extended_openai_conversation
+2. Copy `custom_components/extended_openai_conversation` to your HA config
+3. Restart Home Assistant
+
+### Step 1: Install bike4mind Shim Add-on
 
 1. **Add this repository** to Home Assistant:
    - Go to **Settings → Add-ons → Add-on Store → ⋮ (menu) → Repositories**
-   - Add URL: `https://github.com/YOUR_USERNAME/YOUR_REPO`
+   - Add URL: `https://github.com/speedybits/ha-b4m-addon`
    - Click **Add**
 
 2. **Install the add-on**:
+   - Refresh the add-on store page
    - Find "bike4mind OpenAI Shim" in the add-on store
    - Click **Install**
 
@@ -50,9 +69,11 @@ Home Assistant Extended OpenAI Conversation
    - `b4m_api_key`: Your bike4mind API key
    - `ha_b4m_session_id`: bike4mind session ID
    - `b4m_user_id`: bike4mind user ID
-   - `shim_api_key` (optional): API key for shim authentication
+   - `shim_api_key` (optional but recommended): API key for shim authentication
 
-4. **Start the add-on**
+4. **Start the add-on**:
+   - Go to **Info** tab → Click **Start**
+   - Check **Log** tab to verify: "Uvicorn running on http://0.0.0.0:3000"
 
 ### Option 2: Standalone Docker (Development/Testing)
 
@@ -96,23 +117,35 @@ docker run -p 3000:3000 \
 
 ## Home Assistant Integration
 
-After installing the add-on:
+### Step 2: Configure Extended OpenAI Conversation
 
-1. **Install Extended OpenAI Conversation** integration:
+After installing the add-on and Extended OpenAI Conversation:
+
+1. **Find your Home Assistant IP**:
+   - Go to **Settings → System → Network**
+   - Note your IPv4 address (e.g., `192.168.68.105`)
+   - Or run: `hostname -I | awk '{print $1}'` in terminal
+
+2. **Add Extended OpenAI Conversation**:
    - Go to **Settings → Devices & Services → Add Integration**
    - Search for "Extended OpenAI Conversation"
-   - Install it
+   - Click to add it
 
-2. **Configure the integration**:
+3. **Configure the integration**:
    - **Name**: "bike4mind"
    - **Base URL**: `http://YOUR_HA_IP:3000/v1`
-     - Replace `YOUR_HA_IP` with your Home Assistant's LAN IP (e.g., `192.168.1.100`)
-     - **Do NOT use `localhost`** - add-ons run in isolated containers
-   - **API Key**: Enter the `shim_api_key` you configured
-   - **Model**: "bike4mind"
+     - Example: `http://192.168.68.105:3000/v1`
+     - **IMPORTANT**: Use your LAN IP, NOT `localhost` (add-ons run in isolated containers)
+   - **API Key**: Enter the `shim_api_key` you configured in the add-on
+   - **Model**: `bike4mind`
    - **DO NOT** set as default conversation agent
+   - ✅ Enable **"Control Home Assistant"** (for device control via tool-calling)
 
-3. **Set up conversation routing** (see Conversation Routing section below)
+4. **Test the connection**:
+   - The integration should show as "Connected"
+   - If it fails, check the add-on logs and verify your IP address
+
+5. **Set up conversation routing** (see Conversation Routing section below)
 
 ## Conversation Routing
 
