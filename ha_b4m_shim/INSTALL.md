@@ -13,7 +13,7 @@ Complete step-by-step guide to integrate bike4mind AI with Home Assistant.
 You'll need three pieces of information from bike4mind:
 
 1. **API Key** (`B4M_API_KEY`)
-2. **Session ID** (`B4M_SESSION_ID`)
+2. **Session ID** (`HA_B4M_SESSION_ID`)
 3. **User ID** (`B4M_USER_ID`)
 
 **Finding your credentials**:
@@ -50,7 +50,7 @@ You'll need three pieces of information from bike4mind:
 
 ```yaml
 b4m_api_key: "YOUR_B4M_API_KEY_HERE"
-b4m_session_id: "YOUR_B4M_SESSION_ID_HERE"
+ha_b4m_session_id: "YOUR_HA_B4M_SESSION_ID_HERE"
 b4m_user_id: "YOUR_B4M_USER_ID_HERE"
 shim_api_key: "create_a_secure_random_key"  # Generate with: openssl rand -hex 32
 ```
@@ -312,7 +312,7 @@ mode: single
 ### Add-on Won't Start
 
 **Check logs** (Add-on → Log tab):
-- Missing credentials: Ensure `b4m_api_key`, `b4m_session_id`, `b4m_user_id` are set
+- Missing credentials: Ensure `b4m_api_key`, `ha_b4m_session_id`, `b4m_user_id` are set
 - Port conflict: Ensure port 3000 is not in use by another service
 
 ### Extended OpenAI Conversation Won't Connect

@@ -48,7 +48,7 @@ Home Assistant Extended OpenAI Conversation
 
 3. **Configure** via add-on configuration tab:
    - `b4m_api_key`: Your bike4mind API key
-   - `b4m_session_id`: bike4mind session ID
+   - `ha_b4m_session_id`: bike4mind session ID
    - `b4m_user_id`: bike4mind user ID
    - `shim_api_key` (optional): API key for shim authentication
 
@@ -61,7 +61,7 @@ cd ha_b4m_shim
 
 # Set environment variables
 export B4M_API_KEY="your_api_key"
-export B4M_SESSION_ID="your_session_id"
+export HA_B4M_SESSION_ID="your_session_id"
 export B4M_USER_ID="your_user_id"
 export SHIM_API_KEY="your_shim_key"  # optional
 
@@ -69,7 +69,7 @@ export SHIM_API_KEY="your_shim_key"  # optional
 docker build -t b4m-shim .
 docker run -p 3000:3000 \
   -e B4M_API_KEY \
-  -e B4M_SESSION_ID \
+  -e HA_B4M_SESSION_ID \
   -e B4M_USER_ID \
   -e SHIM_API_KEY \
   b4m-shim
@@ -80,7 +80,7 @@ docker run -p 3000:3000 \
 ### Required Settings
 
 - **b4m_api_key**: bike4mind API key
-- **b4m_session_id**: bike4mind session ID (all users share this session)
+- **ha_b4m_session_id**: bike4mind session ID (all users share this session)
 - **b4m_user_id**: bike4mind user ID
 
 ### Optional Settings

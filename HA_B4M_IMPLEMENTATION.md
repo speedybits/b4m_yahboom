@@ -92,7 +92,7 @@ HA_B4M_IMPLEMENTATION.md # This file
 
 ### Required
 - `B4M_API_KEY` - bike4mind API key
-- `B4M_SESSION_ID` - bike4mind session ID
+- `HA_B4M_SESSION_ID` - bike4mind session ID
 - `B4M_USER_ID` - bike4mind user ID
 
 ### Optional Security
@@ -255,7 +255,7 @@ All requirements from `HA_B4M_SPEC.md` have been implemented:
 ### Session Management
 Two separate session layers:
 1. **Shim internal**: Tracks TTL and turns for cleanup
-2. **bike4mind API**: Single shared session (B4M_SESSION_ID)
+2. **bike4mind API**: Single shared session (HA_B4M_SESSION_ID)
 
 This prevents unbounded context growth while maintaining bike4mind conversation continuity.
 

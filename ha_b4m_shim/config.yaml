@@ -11,7 +11,7 @@ ports:
   3000/tcp: 3000
 options:
   b4m_api_key: ""
-  b4m_session_id: ""
+  ha_b4m_session_id: ""
   b4m_user_id: ""
   shim_api_key: ""
   session_ttl_sec: 600
@@ -23,7 +23,7 @@ options:
   ha_tool_function_name: "homeassistant.call_service"
 schema:
   b4m_api_key: str
-  b4m_session_id: str
+  ha_b4m_session_id: str
   b4m_user_id: str
   shim_api_key: str?
   session_ttl_sec: int(1,3600)?

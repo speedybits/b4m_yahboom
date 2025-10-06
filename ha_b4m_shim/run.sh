@@ -2,7 +2,7 @@
 
 # Read configuration from Home Assistant add-on options
 export B4M_API_KEY=$(bashio::config 'b4m_api_key')
-export B4M_SESSION_ID=$(bashio::config 'b4m_session_id')
+export HA_B4M_SESSION_ID=$(bashio::config 'ha_b4m_session_id')
 export B4M_USER_ID=$(bashio::config 'b4m_user_id')
 export SHIM_API_KEY=$(bashio::config 'shim_api_key')
 export SESSION_TTL_SEC=$(bashio::config 'session_ttl_sec')
@@ -19,8 +19,8 @@ if [ -z "$B4M_API_KEY" ]; then
     exit 1
 fi
 
-if [ -z "$B4M_SESSION_ID" ]; then
-    bashio::log.fatal "b4m_session_id is required"
+if [ -z "$HA_B4M_SESSION_ID" ]; then
+    bashio::log.fatal "ha_b4m_session_id is required"
     exit 1
 fi
 

@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 # Configuration from environment variables
 B4M_API_KEY = os.environ.get('B4M_API_KEY')
-B4M_SESSION_ID = os.environ.get('B4M_SESSION_ID')
+HA_B4M_SESSION_ID = os.environ.get('HA_B4M_SESSION_ID')
 B4M_USER_ID = os.environ.get('B4M_USER_ID')
 B4M_BASE = os.environ.get('B4M_BASE', 'https://app.bike4mind.com/api')
 SHIM_API_KEY = os.environ.get('SHIM_API_KEY')
@@ -67,7 +67,7 @@ async def startup_event():
     http_client = httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=5.0))
     print(f"🚀 bike4mind OpenAI Shim started")
     print(f"   B4M Base: {B4M_BASE}")
-    print(f"   Session ID: {B4M_SESSION_ID[:8]}..." if B4M_SESSION_ID else "   ⚠️ No session ID configured")
+    print(f"   Session ID: {HA_B4M_SESSION_ID[:8]}..." if HA_B4M_SESSION_ID else "   ⚠️ No session ID configured")
     print(f"   Auth: {'Enabled' if SHIM_API_KEY else 'Disabled (not recommended)'}")
 
 
@@ -132,11 +132,11 @@ def get_or_create_shim_session(user_id: Optional[str]) -> Dict[str, Any]:
 
 async def create_b4m_quest(message: str) -> Optional[str]:
     """Create bike4mind quest and return quest ID"""
-    if not B4M_API_KEY or not B4M_SESSION_ID or not B4M_USER_ID:
+    if not B4M_API_KEY or not HA_B4M_SESSION_ID or not B4M_USER_ID:
         raise HTTPException(status_code=500, detail="bike4mind credentials not configured")
 
     payload = {
-        "sessionId": B4M_SESSION_ID,
+        "sessionId": HA_B4M_SESSION_ID,
         "message": message,
         "historyCount": 10,
         "fabFileIds": [],
@@ -149,7 +149,7 @@ async def create_b4m_quest(message: str) -> Optional[str]:
         },
         "promptMeta": {
             "session": {
-                "id": B4M_SESSION_ID,
+                "id": HA_B4M_SESSION_ID,
                 "userId": B4M_USER_ID
             }
         }
@@ -202,7 +202,7 @@ async def poll_b4m_quest(quest_id: str) -> Optional[str]:
 
         try:
             response = await http_client.get(
-                f"{B4M_BASE}/sessions/{B4M_SESSION_ID}/chat/{quest_id}",
+                f"{B4M_BASE}/sessions/{HA_B4M_SESSION_ID}/chat/{quest_id}",
                 headers=headers
             )
             response.raise_for_status()
