@@ -11,10 +11,11 @@ A voice-controlled conversational AI system that combines local Ollama for real-
 
 ### 1. Speech Input (Whisper)
 - **Purpose**: Capture spoken audio and convert to text
-- **Output**: `listen.txt` file containing transcribed speech
+- **Output**: `listen.txt` file containing transcribed speech with "Human said:" prefix
 - **Technology**: Whisper speech-to-text
 - **Behavior**:
   - Continuously transcribes while in LISTENING state
+  - Appends to `listen.txt` with "Human said:" prefix
   - Pauses during RESPONDING and SPEAKING states (natural turn-taking)
   - Resumes after robot finishes speaking
 
@@ -140,8 +141,11 @@ Background Intelligence Loop (Independent, 5-10 seconds):
 
 ### listen.txt
 - **Purpose**: Accumulating conversation transcript (both user and robot)
+- **Format**: All entries prefixed with speaker attribution
+  - Human speech: "Human said: [transcribed text]"
+  - Robot speech: "Robot said: [response text]"
 - **Lifecycle**:
-  - Created/updated by Whisper
+  - Created/updated by Whisper (appends with "Human said:" prefix)
   - Read and modified by wake word detection
   - Read by Ollama and bike4mind processing
   - Appended with robot responses prefixed by "Robot said:"
@@ -204,11 +208,11 @@ Background Intelligence Loop (Independent, 5-10 seconds):
 ### Wake Word Detection (State 1: LISTENING)
 1. Active only while in LISTENING state
 2. Continuously monitor `listen.txt` for changes
-3. Check if "Rosie" appears in the text
+3. Check if "Rosie" appears in the text (within "Human said:" lines)
 4. If found:
    - Transition to RESPONDING state
    - Pause Whisper transcription
-   - Remove "Rosie" from the text
+   - Remove "Rosie" from the text (keep "Human said:" prefix)
    - Save modified text back to `listen.txt`
    - Trigger immediate Ollama response (do NOT wait for bike4mind)
 
@@ -253,9 +257,28 @@ Background Intelligence Loop (Independent, 5-10 seconds):
 
 ## Implementation Considerations
 
+### Implementation Architecture
+- **Language**: Python with multiple threads
+- **File Location**: All files stored in `/tmp` directory
+  - `/tmp/listen.txt` - Conversation transcript
+  - `/tmp/summary.txt` - bike4mind intelligence
+  - `/tmp/speak.txt` - TTS output
+- **Speech Recognition**: Whisper (already installed, use existing installation)
+- **LLM**: Ollama (already installed, use existing installation)
+- **Text-to-Speech**: Piper (existing installation)
+
+### State Machine Implementation
+- **State Storage**: Thread-safe Python object using `threading.Lock`
+- **State Enum**: `LISTENING`, `RESPONDING`, `SPEAKING`
+- **Thread Coordination**: Single state machine with background bike4mind thread
+- **No File Locking Needed**: State machine guarantees prevent conflicts
+  - `listen.txt`: State machine ensures only one writer per state
+  - `speak.txt`: State machine ensures sequential access (RESPONDING → SPEAKING)
+  - `summary.txt`: Single writer (bike4mind only), multiple readers (Ollama)
+
 ### State Machine Benefits
 - **Atomic operations**: Only one state active at a time
-- **No file conflicts**: Clear ownership of file operations per state
+- **No file conflicts**: State machine prevents concurrent writes, standard file I/O sufficient
 - **Predictable flow**: Easy to debug and reason about
 - **Natural turn-taking**: Whisper pauses during robot response
 - **Non-blocking**: Background worker operates independently
@@ -266,6 +289,7 @@ Background Intelligence Loop (Independent, 5-10 seconds):
 - **Background operation**: Operates independently, never blocks conversation
 - **Enhanced intelligence**: Provides data and insights that Ollama (local) cannot access
 - **Progressive enhancement**: Updates available for future turns
+- **API Documentation**: Complete bike4mind API implementation details available in `development_notes/B4M_API_HOWTO.md`
 
 ### Temporal Behavior
 - **Ollama response**: <1 second (immediate)
@@ -326,18 +350,18 @@ This example demonstrates the non-blocking architecture with progressive intelli
 
 **Step 1 - Whisper creates listen.txt:**
 ```
-listen.txt: "Rosie, what's the weather like today?"
+listen.txt: "Human said: Rosie, what's the weather like today?"
 summary.txt: [does not exist yet]
 speak.txt: [empty]
 ```
 
 **Step 2 - Wake word detection removes "Rosie":**
 ```
-listen.txt: "what's the weather like today?"
+listen.txt: "Human said: what's the weather like today?"
 ```
 
 **Step 3 - Ollama processes (listen.txt + summary.txt):**
-- Input to Ollama: "what's the weather like today?" (no summary available)
+- Input to Ollama: "Human said: what's the weather like today?" (no summary available)
 - Ollama doesn't know the answer (no real-time data access)
 - Following the prompt instruction: "If you don't know the answer, please tell them that you are thinking about it"
 - Ollama response: "I am thinking about it."
@@ -352,7 +376,7 @@ speak.txt: "I am thinking about it."
 - System returns to LISTENING state
 
 ```
-listen.txt: "what's the weather like today? Robot said: I am thinking about it."
+listen.txt: "Human said: what's the weather like today? Robot said: I am thinking about it."
 speak.txt: [cleared after speaking]
 summary.txt: [does not exist yet]
 ```
@@ -380,12 +404,12 @@ summary.txt: "User asked about current weather. Real-time data (user's city): Cu
 
 **Step 1 - Whisper appends to listen.txt:**
 ```
-listen.txt: "what's the weather like today? Robot said: I am thinking about it. Rosie, okay then, can you tell me what time it is?"
+listen.txt: "Human said: what's the weather like today? Robot said: I am thinking about it. Human said: Rosie, okay then, can you tell me what time it is?"
 ```
 
 **Step 2 - Wake word detection removes "Rosie":**
 ```
-listen.txt: "what's the weather like today? Robot said: I am thinking about it. okay then, can you tell me what time it is?"
+listen.txt: "Human said: what's the weather like today? Robot said: I am thinking about it. Human said: okay then, can you tell me what time it is?"
 ```
 
 **Step 3 - Ollama processes IMMEDIATELY (State 2: RESPONDING):**
@@ -404,7 +428,7 @@ summary.txt: [still doesn't exist]
 - **Piper speaks:** "I don't have access to the current time. Is there something I can help you with?" (<1 second response)
 
 ```
-listen.txt: "what's the weather like today? Robot said: I am thinking about it. okay then, can you tell me what time it is? Robot said: I don't have access to the current time. Is there something I can help you with?"
+listen.txt: "Human said: what's the weather like today? Robot said: I am thinking about it. Human said: okay then, can you tell me what time it is? Robot said: I don't have access to the current time. Is there something I can help you with?"
 speak.txt: [cleared]
 summary.txt: [still doesn't exist - bike4mind still working on Turn 1]
 ```
@@ -433,12 +457,12 @@ summary.txt: "User asked about current weather. Real-time data (user's city): Cu
 
 **Step 1 - Whisper appends to listen.txt:**
 ```
-listen.txt: "[previous conversation]... Rosie, what about that weather?"
+listen.txt: "[previous conversation]... Human said: Rosie, what about that weather?"
 ```
 
 **Step 2 - Wake word detection removes "Rosie":**
 ```
-listen.txt: "[previous conversation]... what about that weather?"
+listen.txt: "[previous conversation]... Human said: what about that weather?"
 ```
 
 **Step 3 - Ollama processes with enriched context:**
@@ -456,7 +480,7 @@ speak.txt: "Based on current conditions, it's 72°F and partly cloudy, with 15mp
 - **Piper speaks:** "Based on current conditions, it's 72°F and partly cloudy, with 15mph winds. However, rain is likely this evening..." (<1 second response)
 
 ```
-listen.txt: "[previous conversation]... what about that weather? Robot said: Based on current conditions, it's 72°F and partly cloudy, with 15mph winds. However, rain is likely this evening, so if you're planning outdoor activities, you might want to schedule them for earlier in the day. Would you like me to help you plan something?"
+listen.txt: "[previous conversation]... Human said: what about that weather? Robot said: Based on current conditions, it's 72°F and partly cloudy, with 15mph winds. However, rain is likely this evening, so if you're planning outdoor activities, you might want to schedule them for earlier in the day. Would you like me to help you plan something?"
 speak.txt: [cleared]
 ```
 
