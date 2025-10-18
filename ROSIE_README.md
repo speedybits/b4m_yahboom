@@ -112,15 +112,24 @@ Background: bike4mind worker (independent, asynchronous)
 
 ### Start the System
 
+**Recommended method (ensures .bashrc variables are loaded):**
 ```bash
-# Run ROSIE (environment variables from ~/.bashrc are automatically loaded)
-./rosie_conversation.py
+./rosie_launch.sh
+```
 
-# Or with Python directly
+**Alternative methods:**
+```bash
+# Method 1: Source .bashrc first, then run
+bash -c "source ~/.bashrc && python3 rosie_conversation.py"
+
+# Method 2: Run directly (may not load bike4mind variables from .bashrc)
 python3 rosie_conversation.py
 ```
 
-**Note**: ROSIE clears all conversation files (listen.txt, summary.txt, speak.txt) on startup to begin with a fresh session.
+**Note**:
+- ROSIE clears all conversation files (listen.txt, summary.txt, speak.txt) on startup to begin with a fresh session
+- If bike4mind is not working, ensure you're using `rosie_launch.sh` or sourcing `.bashrc` before running
+- The system will show warnings if bike4mind API keys are not found
 
 ### Interaction
 
