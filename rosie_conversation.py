@@ -28,8 +28,11 @@ import numpy as np
 import sounddevice as sd
 from dotenv import load_dotenv
 
-# Load environment configuration (environment variables take precedence over .env file)
-load_dotenv('/home/mike/projects/b4m_yahboom/.env.rosie.example', override=False)
+# Load optional configuration from .env file (only if variables not already set)
+# Environment variables from .bashrc always take precedence
+env_file = Path(__file__).parent / '.env.rosie.example'
+if env_file.exists():
+    load_dotenv(env_file, override=False)
 
 
 class ConversationState(Enum):

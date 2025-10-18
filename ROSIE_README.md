@@ -112,24 +112,27 @@ Background: bike4mind worker (independent, asynchronous)
 
 ### Start the System
 
-**Recommended method (ensures .bashrc variables are loaded):**
 ```bash
-./rosie_launch.sh
+# Run ROSIE directly (environment variables from .bashrc are loaded automatically)
+python3 rosie_conversation.py
+
+# Or make it executable and run
+chmod +x rosie_conversation.py
+./rosie_conversation.py
 ```
 
-**Alternative methods:**
+**Important**: Ensure your environment variables are exported in `.bashrc` **before** the interactive shell check:
 ```bash
-# Method 1: Source .bashrc first, then run
-bash -c "source ~/.bashrc && python3 rosie_conversation.py"
-
-# Method 2: Run directly (may not load bike4mind variables from .bashrc)
-python3 rosie_conversation.py
+# In ~/.bashrc, place these BEFORE the "If not running interactively" section:
+export B4M_API_KEY="your_api_key"
+export B4M_OLLAMA_CONVERSATION_ID="your_conversation_id"
+export PIPER_MODEL_PATH="/path/to/model.onnx"
 ```
 
 **Note**:
-- ROSIE clears all conversation files (listen.txt, summary.txt, speak.txt) on startup to begin with a fresh session
-- If bike4mind is not working, ensure you're using `rosie_launch.sh` or sourcing `.bashrc` before running
+- ROSIE clears all conversation files (listen.txt, summary.txt, speak.txt) on startup for a fresh session
 - The system will show warnings if bike4mind API keys are not found
+- Check the console output to verify bike4mind is enabled (look for "[BIKE4MIND]" messages)
 
 ### Interaction
 
