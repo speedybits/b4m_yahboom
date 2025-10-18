@@ -14,9 +14,19 @@ ROSIE (based on the CONVERSE_B4M_OLLAMA_HYBRID specification) combines:
 ## Architecture
 
 **Non-Blocking Progressive Intelligence Enhancement:**
-- User says "Rosie" → Immediate response from Ollama
-- bike4mind analyzes in background, enriching future responses
+- User says "Rosie" → Activates conversation mode
+- Ollama provides immediate response (<1 second)
+- bike4mind activates and analyzes in background (5-10 seconds)
+- Future responses enriched with bike4mind insights
 - Robot "gets smarter" during conversation without blocking
+
+**Conversation Lifecycle:**
+- **Before wake word**: Whisper transcribes to listen.txt, bike4mind dormant
+- **"Rosie" detected**: Conversation activates, Ollama responds, bike4mind processes
+- **After robot speaks**: Conversation deactivates automatically
+- **Next conversation**: Requires saying "Rosie" again to reactivate
+
+This ensures bike4mind only processes during active conversations, providing both privacy and efficiency.
 
 ### State Machine
 ```
@@ -28,9 +38,16 @@ Background: bike4mind worker (independent, asynchronous)
 ```
 
 ### File-Based Communication
-- `/tmp/listen.txt` - Conversation transcript with speaker attribution
+- `/tmp/listen.txt` - Conversation transcript with speaker attribution (auto-pruned)
 - `/tmp/summary.txt` - bike4mind's intelligent insights (updated asynchronously)
 - `/tmp/speak.txt` - Temporary TTS output buffer
+
+### Automatic Conversation Pruning
+- **Purpose**: Prevent listen.txt from growing unbounded during long conversations
+- **Limit**: Keep only last 100 words in listen.txt
+- **Action**: After each robot response, trim to last 100 words if exceeded
+- **Impact**: Bounded memory usage, faster processing, no loss of context (summary.txt retains insights)
+- **Configurable**: Adjust MAX_WORDS in code or .env.rosie
 
 ## Installation
 
@@ -103,25 +120,37 @@ Background: bike4mind worker (independent, asynchronous)
 python3 rosie_conversation.py
 ```
 
+**Note**: ROSIE clears all conversation files (listen.txt, summary.txt, speak.txt) on startup to begin with a fresh session.
+
 ### Interaction
 
 1. **System starts** and begins listening
 2. **Say "Rosie"** to activate conversation
 3. **Speak your question** (wake word is automatically removed)
 4. **Rosie responds immediately** with Ollama
-5. **bike4mind enriches** context in background for future turns
+5. **bike4mind enriches** context in background during active conversation
+6. **Conversation deactivates** after Rosie finishes speaking
+7. **Repeat step 2** - Say "Rosie" again for next conversation turn
+
+**Note**: Each conversation turn requires saying "Rosie" to activate. Speech without the wake word is transcribed to listen.txt but not processed by bike4mind.
 
 ### Example Conversation
 
 ```
 User: "Rosie, what's the weather like today?"
+[Conversation activates]
 Rosie: "I am thinking about it." [<1 second, Ollama]
-
 [Background: bike4mind fetches real weather data... 5-10 seconds]
+[Conversation deactivates after Rosie speaks]
+
+User: "What about that weather?" [Transcribed but ignored - no "Rosie"]
+[bike4mind dormant, no processing]
 
 User: "Rosie, what about that weather?"
+[Conversation activates again]
 Rosie: "Based on current conditions, it's 72°F and partly cloudy,
        with rain expected this evening." [<1 second, now with bike4mind data]
+[Conversation deactivates]
 ```
 
 ### Shutdown
@@ -169,10 +198,10 @@ development_notes/B4M_API_HOWTO.md  # bike4mind API details
 ### Worker Threads
 
 1. **WhisperWorker** - Continuous speech-to-text (pauses during robot speech)
-2. **WakeWordDetector** - Monitors for "Rosie" trigger
+2. **WakeWordDetector** - Monitors for "Rosie" trigger and activates conversation
 3. **OllamaResponder** - Generates immediate responses
 4. **PiperSpeaker** - Text-to-speech output
-5. **Bike4mindWorker** - Background intelligence (non-blocking)
+5. **Bike4mindWorker** - Background intelligence (activates only after wake word detected)
 
 ### Conversation Flow
 
@@ -181,18 +210,24 @@ Human speaks → Whisper → "Human said: [text]" → listen.txt
                                 ↓
                          "Rosie" detected?
                                 ↓ YES
-                         Ollama reads:
-                         - listen.txt (conversation)
-                         - summary.txt (if available)
+                         1. Activate conversation flag (conversation_active = True)
+                         2. Ollama reads:
+                            - listen.txt (conversation)
+                            - summary.txt (if available)
                                 ↓
                          Generate response → speak.txt
                                 ↓
                          Piper speaks → "Robot said: [response]" → listen.txt
                                 ↓
-                         Resume listening
+                         Deactivate conversation (conversation_active = False)
+                                ↓
+                         Resume listening (requires "Rosie" for next turn)
 
-Background (independent):
+Background (only while conversation_active = True):
   listen.txt changes → bike4mind API → summary.txt (5-10s later)
+
+After deactivation:
+  Human speech transcribed but bike4mind dormant until next "Rosie"
 ```
 
 ## Troubleshooting

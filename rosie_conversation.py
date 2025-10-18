@@ -1,738 +1,670 @@
 #!/usr/bin/env python3
 """
 ROSIE Conversational AI System
-Based on CONVERSE_B4M_OLLAMA_HYBRID specification
+Implements CONVERSE_B4M_OLLAMA_HYBRID specification
 
-Combines:
-- Whisper (speech-to-text)
-- Ollama (local LLM for immediate responses)
-- bike4mind API (background intelligence with internet access)
-- Piper (text-to-speech)
+A voice-controlled conversational AI that combines:
+- Local Ollama for immediate responses (<1 second)
+- bike4mind API for background intelligence (5-10 seconds)
+- Whisper for speech-to-text
+- Piper for text-to-speech
 
-Architecture: Non-blocking with progressive intelligence enhancement
+Architecture: State machine with three states (LISTENING, RESPONDING, SPEAKING)
+Wake word: "Rosie"
 """
 
 import os
 import sys
-import time
 import signal
 import threading
+import time
 import json
-import requests
+import re
 from enum import Enum
 from pathlib import Path
-from typing import Optional
-import subprocess
+import requests
+import whisper
 import numpy as np
 import sounddevice as sd
-from faster_whisper import WhisperModel
+from dotenv import load_dotenv
+
+# Load environment configuration
+load_dotenv('/home/mike/projects/b4m_yahboom/.env.rosie.example')
 
 
-# File paths
-LISTEN_FILE = "/tmp/listen.txt"
-SUMMARY_FILE = "/tmp/summary.txt"
-SPEAK_FILE = "/tmp/speak.txt"
-
-
-class State(Enum):
+class ConversationState(Enum):
     """State machine states"""
-    LISTENING = "listening"
-    RESPONDING = "responding"
-    SPEAKING = "speaking"
+    LISTENING = 1
+    RESPONDING = 2
+    SPEAKING = 3
 
 
-class StateMachine:
-    """Thread-safe state machine for conversation flow"""
+class RosieConversation:
+    """
+    Main ROSIE Conversational AI System
+
+    Implements a state machine architecture with asynchronous background intelligence.
+    """
 
     def __init__(self):
-        self.state = State.LISTENING
-        self.lock = threading.Lock()
+        """Initialize ROSIE system with configuration from environment"""
+
+        # Load configuration from environment
+        self.whisper_model_name = os.getenv('WHISPER_MODEL', 'base')
+        self.whisper_chunk_duration = int(os.getenv('WHISPER_CHUNK_DURATION', '3'))
+
+        self.ollama_model = os.getenv('OLLAMA_MODEL', 'qwen2.5:0.5b')
+        self.ollama_temperature = float(os.getenv('OLLAMA_TEMPERATURE', '0.7'))
+        self.ollama_max_tokens = int(os.getenv('OLLAMA_MAX_TOKENS', '100'))
+        self.ollama_url = 'http://localhost:11434/api/generate'
+
+        # bike4mind API configuration (from .bashrc)
+        self.b4m_api_key = os.getenv('B4M_API_KEY')
+        self.b4m_conversation_id = os.getenv('B4M_OLLAMA_CONVERSATION_ID')
+        self.b4m_user_id = os.getenv('B4M_USER_ID', '65563f622213b120cd1d9592')
+        self.b4m_url = 'https://www.bike4mind.com/api/v1/conversation'
+
+        # Piper TTS configuration (from .bashrc)
+        self.piper_model_path = os.getenv('PIPER_MODEL_PATH')
+        self.piper_config_path = os.getenv('PIPER_CONFIG_PATH')
+
+        # File paths
+        self.listen_file = Path(os.getenv('LISTEN_FILE', '/tmp/listen.txt'))
+        self.summary_file = Path(os.getenv('SUMMARY_FILE', '/tmp/summary.txt'))
+        self.speak_file = Path(os.getenv('SPEAK_FILE', '/tmp/speak.txt'))
+
+        # Conversation settings
+        self.max_words = int(os.getenv('MAX_WORDS', '100'))
+        self.debug = int(os.getenv('DEBUG', '0')) == 1
+
+        # State machine
+        self.state = ConversationState.LISTENING
+        self.state_lock = threading.Lock()
+
+        # Conversation activation flag (for edge detection)
+        self.conversation_active = False
+        self.conversation_lock = threading.Lock()
+
+        # Shutdown event for graceful termination
         self.shutdown_event = threading.Event()
 
-    def get_state(self) -> State:
-        """Get current state (thread-safe)"""
-        with self.lock:
-            return self.state
+        # Threads
+        self.whisper_thread = None
+        self.wake_word_thread = None
+        self.b4m_worker_thread = None
 
-    def set_state(self, new_state: State):
-        """Set new state (thread-safe)"""
-        with self.lock:
-            print(f"[STATE] {self.state.value} → {new_state.value}")
-            self.state = new_state
-
-    def is_shutdown(self) -> bool:
-        """Check if shutdown requested"""
-        return self.shutdown_event.is_set()
-
-    def request_shutdown(self):
-        """Request graceful shutdown"""
-        print("\n[SHUTDOWN] Shutdown requested...")
-        self.shutdown_event.set()
-
-
-class WhisperWorker:
-    """Handles speech-to-text using faster-whisper"""
-
-    def __init__(self, state_machine: StateMachine):
-        self.state_machine = state_machine
-        self.thread = None
-        self.model = None
+        # Audio configuration for continuous streaming
         self.sample_rate = 16000
-        self.chunk_duration = 3  # Record 3 second chunks
-        self.is_recording = False
 
-    def start(self):
-        """Start Whisper worker thread"""
-        print("[WHISPER] Loading model...")
-        # Use base model for good balance of speed and accuracy
-        self.model = WhisperModel("base", device="cpu", compute_type="int8")
-        print("[WHISPER] Model loaded")
+        # Continuous audio buffer - collects audio while Whisper processes
+        self.audio_queue = []  # List of numpy arrays (chunks)
+        self.audio_lock = threading.Lock()
+        self.audio_stream = None  # sounddevice InputStream
 
-        self.thread = threading.Thread(target=self._run, daemon=True)
-        self.thread.start()
-        print("[WHISPER] Worker started")
-
-    def _run(self):
-        """Main Whisper worker loop"""
-        while not self.state_machine.is_shutdown():
-            # Only transcribe when in LISTENING state
-            if self.state_machine.get_state() == State.LISTENING:
-                self._transcribe()
-            else:
-                # Pause during RESPONDING and SPEAKING states
-                time.sleep(0.1)
-
-    def _transcribe(self):
-        """
-        Capture audio and transcribe to listen.txt with 'Human said:' prefix
-        """
-        try:
-            # Record audio chunk
-            duration = self.chunk_duration
-
-            audio_data = sd.rec(
-                int(duration * self.sample_rate),
-                samplerate=self.sample_rate,
-                channels=1,
-                dtype='float32'
-            )
-            sd.wait()  # Wait for recording to complete
-
-            # Convert to format expected by faster-whisper
-            audio_np = audio_data.flatten()
-
-            # Transcribe with error handling for empty segments
-            try:
-                segments, info = self.model.transcribe(
-                    audio_np,
-                    beam_size=5,
-                    vad_filter=True,  # Use voice activity detection
-                    vad_parameters=dict(min_silence_duration_ms=500)
-                )
-
-                # Extract text from segments
-                transcribed_text = ""
-                segment_count = 0
-                for segment in segments:
-                    transcribed_text += segment.text + " "
-                    segment_count += 1
-
-                transcribed_text = transcribed_text.strip()
-
-                if transcribed_text:
-                    print(f"[WHISPER] Transcribed: {transcribed_text}")
-
-                    # Append to listen.txt with "Human said:" prefix
-                    human_said = f"Human said: {transcribed_text}"
-
-                    if os.path.exists(LISTEN_FILE):
-                        with open(LISTEN_FILE, 'a') as f:
-                            f.write(f" {human_said}")
-                    else:
-                        with open(LISTEN_FILE, 'w') as f:
-                            f.write(human_said)
-                # else: silence, no transcription needed
-
-            except ValueError as e:
-                # Handle "max() arg is an empty sequence" - means no speech detected
-                # This is normal when there's silence, just skip this chunk
-                pass
-            except Exception as e:
-                print(f"[WHISPER] Transcription error: {e}")
-
-        except Exception as e:
-            print(f"[WHISPER] Recording error: {e}")
-            time.sleep(0.5)
-
-    def stop(self):
-        """Stop Whisper worker"""
-        print("[WHISPER] Worker stopped")
-
-
-class WakeWordDetector:
-    """Detects 'Rosie' wake word and triggers response"""
-
-    def __init__(self, state_machine: StateMachine):
-        self.state_machine = state_machine
-        self.thread = None
-        self.last_check_time = 0
-
-    def start(self):
-        """Start wake word detector thread"""
-        self.thread = threading.Thread(target=self._run, daemon=True)
-        self.thread.start()
-        print("[WAKEWORD] Detector started")
-
-    def _run(self):
-        """Monitor listen.txt for 'Rosie' wake word"""
-        while not self.state_machine.is_shutdown():
-            # Only detect wake word when LISTENING
-            if self.state_machine.get_state() == State.LISTENING:
-                self._check_for_wake_word()
-            time.sleep(0.1)
-
-    def _check_for_wake_word(self):
-        """Check if 'Rosie' appears in listen.txt"""
-        if not os.path.exists(LISTEN_FILE):
-            return
-
-        try:
-            # Check if file was modified since last check
-            mtime = os.path.getmtime(LISTEN_FILE)
-            if mtime <= self.last_check_time:
-                return
-            self.last_check_time = mtime
-
-            with open(LISTEN_FILE, 'r') as f:
-                content = f.read()
-
-            # Check if "Rosie" appears (case-insensitive)
-            if "rosie" in content.lower():
-                print("[WAKEWORD] Detected 'Rosie'!")
-
-                # Remove "Rosie" from the text (keep "Human said:" prefix)
-                # Remove case-insensitive, preserve formatting
-                import re
-                updated_content = re.sub(r'\bRosie\b', '', content, flags=re.IGNORECASE)
-                updated_content = re.sub(r'\s+', ' ', updated_content).strip()
-
-                # Write back to listen.txt
-                with open(LISTEN_FILE, 'w') as f:
-                    f.write(updated_content)
-
-                # Transition to RESPONDING state
-                self.state_machine.set_state(State.RESPONDING)
-
-        except Exception as e:
-            print(f"[WAKEWORD] Error: {e}")
-
-
-class OllamaResponder:
-    """Generates immediate responses using local Ollama"""
-
-    def __init__(self, state_machine: StateMachine):
-        self.state_machine = state_machine
-        self.thread = None
-
-    def start(self):
-        """Start Ollama responder thread"""
-        self.thread = threading.Thread(target=self._run, daemon=True)
-        self.thread.start()
-        print("[OLLAMA] Responder started")
-
-    def _run(self):
-        """Monitor for RESPONDING state and generate response"""
-        while not self.state_machine.is_shutdown():
-            if self.state_machine.get_state() == State.RESPONDING:
-                self._generate_response()
-            time.sleep(0.1)
-
-    def _generate_response(self):
-        """Generate Ollama response from listen.txt and summary.txt"""
-        try:
-            # Read conversation history
-            conversation = ""
-            if os.path.exists(LISTEN_FILE):
-                with open(LISTEN_FILE, 'r') as f:
-                    conversation = f.read().strip()
-
-            # Read summary if available
-            summary = ""
-            if os.path.exists(SUMMARY_FILE):
-                with open(SUMMARY_FILE, 'r') as f:
-                    summary = f.read().strip()
-
-            # Build prompt for Ollama
-            context = f"Conversation:\n{conversation}\n"
-            if summary:
-                context += f"\nContext and insights:\n{summary}\n"
-
-            prompt = f"{context}\nPlease respond to this question in only words (no symbols or emojis). If you don't know the answer, please tell them that you are thinking about it."
-
-            # Call Ollama API
-            response_text = self._call_ollama(prompt)
-
-            # Write to speak.txt
-            with open(SPEAK_FILE, 'w') as f:
-                f.write(response_text)
-
-            print(f"[OLLAMA] Response generated: {response_text[:50]}...")
-
-            # Transition to SPEAKING state
-            self.state_machine.set_state(State.SPEAKING)
-
-        except Exception as e:
-            print(f"[OLLAMA] Error: {e}")
-            # Fallback response
-            with open(SPEAK_FILE, 'w') as f:
-                f.write("I'm having trouble processing that right now.")
-            self.state_machine.set_state(State.SPEAKING)
-
-    def _call_ollama(self, prompt: str) -> str:
-        """
-        Call local Ollama API
-        """
-        try:
-            url = "http://localhost:11434/api/generate"
-            payload = {
-                "model": "qwen2.5:0.5b",  # Use available model
-                "prompt": prompt,
-                "stream": False,
-                "options": {
-                    "temperature": 0.7,
-                    "num_predict": 100  # Limit tokens for quick response
-                }
-            }
-
-            response = requests.post(url, json=payload, timeout=10.0)
-
-            if response.status_code == 200:
-                result = response.json()
-                return result.get('response', 'I am thinking about it.').strip()
-            else:
-                print(f"[OLLAMA] API error: {response.status_code}")
-                return "I am thinking about it."
-
-        except requests.Timeout:
-            print("[OLLAMA] Request timeout")
-            return "I am thinking about it."
-        except Exception as e:
-            print(f"[OLLAMA] Error: {e}")
-            return "I am thinking about it."
-
-
-class PiperSpeaker:
-    """Handles text-to-speech using Piper"""
-
-    def __init__(self, state_machine: StateMachine):
-        self.state_machine = state_machine
-        self.thread = None
-
-    def start(self):
-        """Start Piper speaker thread"""
-        self.thread = threading.Thread(target=self._run, daemon=True)
-        self.thread.start()
-        print("[PIPER] Speaker started")
-
-    def _run(self):
-        """Monitor for SPEAKING state and play audio"""
-        while not self.state_machine.is_shutdown():
-            if self.state_machine.get_state() == State.SPEAKING:
-                self._speak()
-            time.sleep(0.1)
-
-    def _speak(self):
-        """Read speak.txt, play audio, append to listen.txt"""
-        try:
-            if not os.path.exists(SPEAK_FILE):
-                self.state_machine.set_state(State.LISTENING)
-                return
-
-            # Read text to speak
-            with open(SPEAK_FILE, 'r') as f:
-                text = f.read().strip()
-
-            if not text:
-                self.state_machine.set_state(State.LISTENING)
-                return
-
-            print(f"[PIPER] Speaking: {text}")
-
-            # Call Piper TTS
-            self._call_piper(text)
-
-            # Append to listen.txt with "Robot said:" prefix
-            robot_said = f"Robot said: {text}"
-            if os.path.exists(LISTEN_FILE):
-                with open(LISTEN_FILE, 'a') as f:
-                    f.write(f" {robot_said}")
-            else:
-                with open(LISTEN_FILE, 'w') as f:
-                    f.write(robot_said)
-
-            # Clear speak.txt
-            if os.path.exists(SPEAK_FILE):
-                os.remove(SPEAK_FILE)
-
-            print("[PIPER] Finished speaking")
-
-            # Transition back to LISTENING
-            self.state_machine.set_state(State.LISTENING)
-
-        except Exception as e:
-            print(f"[PIPER] Error: {e}")
-            self.state_machine.set_state(State.LISTENING)
-
-    def _call_piper(self, text: str):
-        """
-        Call Piper TTS to generate and play audio
-        """
-        piper_process = None
-        play_process = None
-
-        try:
-            # Use environment variables from .bashrc, with fallback to jenny voice
-            piper_cmd = "/home/mike/.local/bin/piper"
-            voice_model = os.environ.get('PIPER_MODEL_PATH',
-                                        "/home/mike/.local/share/piper/voices/en_GB-jenny_dioco-medium.onnx")
-
-            # Generate audio and play directly
-            # Piper outputs WAV to stdout, pipe to aplay for playback
-            piper_process = subprocess.Popen(
-                [piper_cmd, "--model", voice_model, "--output-raw"],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            )
-
-            # Send text to Piper and capture audio
-            audio_output, error = piper_process.communicate(input=text.encode('utf-8'), timeout=10)
-
-            if error:
-                error_text = error.decode('utf-8').strip()
-                if error_text:  # Only print non-empty errors
-                    print(f"[PIPER] stderr: {error_text}")
-
-            # Play audio using aplay
-            if audio_output:
-                play_process = subprocess.Popen(
-                    ["aplay", "-r", "22050", "-f", "S16_LE", "-t", "raw", "-", "-q"],  # -q for quiet
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.PIPE
-                )
-                _, play_error = play_process.communicate(input=audio_output, timeout=30)
-
-                if play_error:
-                    play_error_text = play_error.decode('utf-8').strip()
-                    if play_error_text and "no soundcards found" not in play_error_text.lower():
-                        print(f"[PIPER] Audio playback: {play_error_text}")
-
-        except subprocess.TimeoutExpired as e:
-            print(f"[PIPER] Timeout: {e}")
-            if piper_process:
-                piper_process.kill()
-            if play_process:
-                play_process.kill()
-        except FileNotFoundError as e:
-            print(f"[PIPER] Command not found: {e}")
-        except Exception as e:
-            print(f"[PIPER] Error: {e}")
-        finally:
-            # Ensure processes are cleaned up
-            for proc in [piper_process, play_process]:
-                if proc and proc.poll() is None:
-                    try:
-                        proc.kill()
-                    except:
-                        pass
-
-
-class Bike4mindWorker:
-    """Background worker for bike4mind API intelligence"""
-
-    def __init__(self, state_machine: StateMachine):
-        self.state_machine = state_machine
-        self.thread = None
-        self.last_processed_content = ""
-        self.api_key = os.environ.get('B4M_API_KEY')
-        self.session_id = os.environ.get('B4M_OLLAMA_CONVERSATION_ID')
-        self.user_id = os.environ.get('B4M_USER_ID', '65563f622213b120cd1d9592')
-
-    def start(self):
-        """Start bike4mind background worker"""
-        if not self.api_key or not self.session_id:
-            print("[BIKE4MIND] WARNING: B4M_API_KEY or B4M_OLLAMA_CONVERSATION_ID not set - worker disabled")
-            return
-
-        self.thread = threading.Thread(target=self._run, daemon=True)
-        self.thread.start()
-        print("[BIKE4MIND] Worker started")
-
-    def _run(self):
-        """Monitor listen.txt and update summary.txt asynchronously"""
-        while not self.state_machine.is_shutdown():
-            self._check_for_updates()
-
-            # Use interruptible sleep
-            for _ in range(20):  # 20 * 0.1s = 2 seconds
-                if self.state_machine.is_shutdown():
-                    print("[BIKE4MIND] Worker stopping...")
-                    return
-                time.sleep(0.1)
-
-    def _check_for_updates(self):
-        """Check if listen.txt has new content and process"""
-        if not os.path.exists(LISTEN_FILE):
-            return
-
-        try:
-            with open(LISTEN_FILE, 'r') as f:
-                content = f.read().strip()
-
-            # Only process if content has changed
-            if content and content != self.last_processed_content:
-                print("[BIKE4MIND] New conversation detected, analyzing...")
-                self.last_processed_content = content
-
-                # Process in background (don't block)
-                summary = self._analyze_conversation(content)
-
-                if summary:
-                    # Write to summary.txt
-                    with open(SUMMARY_FILE, 'w') as f:
-                        f.write(summary)
-                    print(f"[BIKE4MIND] Summary updated: {summary[:50]}...")
-
-        except Exception as e:
-            print(f"[BIKE4MIND] Error: {e}")
-
-    def _analyze_conversation(self, conversation: str) -> Optional[str]:
-        """
-        Send conversation to bike4mind API for analysis
-        Implements quest-based polling system from B4M_API_HOWTO.md
-        """
-        try:
-            # Step 1: Submit quest to bike4mind API
-            api_url = "https://app.bike4mind.com/api/ai/llm"
-            headers = {
-                "X-API-Key": self.api_key,
-                "Content-Type": "application/json"
-            }
-
-            payload = {
-                "sessionId": self.session_id,
-                "message": f"Please summarize this conversation into 3 sentences with only words, including intelligent insights:\n\n{conversation}",
-                "historyCount": 10,
-                "fabFileIds": [],
-                "messageFileIds": [],
-                "params": {
-                    "model": "gpt-4o-mini",
-                    "temperature": 0.7,
-                    "max_tokens": 500,
-                    "stream": False
-                },
-                "promptMeta": {
-                    "session": {
-                        "id": self.session_id,
-                        "userId": self.user_id
-                    }
-                }
-            }
-
-            print("[BIKE4MIND] Submitting quest...")
-            response = requests.post(api_url, headers=headers, json=payload, timeout=10.0)
-
-            if response.status_code != 200:
-                print(f"[BIKE4MIND] API error: {response.status_code}")
-                return None
-
-            quest_data = response.json()
-            quest_id = quest_data.get('id')  # Note: 'id' not 'questId'
-
-            if not quest_id:
-                print("[BIKE4MIND] No quest ID in response")
-                return None
-
-            print(f"[BIKE4MIND] Quest submitted: {quest_id}")
-
-            # Step 2: Poll for completion (7 second intervals, max 15 attempts)
-            return self._poll_for_completion(quest_id)
-
-        except requests.Timeout:
-            print("[BIKE4MIND] Request timeout")
-            return None
-        except Exception as e:
-            print(f"[BIKE4MIND] Error: {e}")
-            return None
-
-    def _poll_for_completion(self, quest_id: str) -> Optional[str]:
-        """Poll quest until completion or timeout (based on B4M_API_HOWTO.md)"""
-        poll_url = f"https://app.bike4mind.com/api/sessions/{self.session_id}/chat/{quest_id}"
-        headers = {"X-API-Key": self.api_key}
-
-        for attempt in range(15):  # 15 attempts = 105 seconds max
-            # Check for shutdown before sleeping
-            if self.state_machine.is_shutdown():
-                print("[BIKE4MIND] Shutdown detected, stopping poll")
-                return None
-
-            # Use interruptible sleep
-            for _ in range(70):  # 70 * 0.1s = 7 seconds
-                if self.state_machine.is_shutdown():
-                    return None
-                time.sleep(0.1)
-
-            try:
-                response = requests.get(poll_url, headers=headers, timeout=5.0)
-
-                if response.status_code == 200:
-                    quest_data = response.json()
-                    status = quest_data.get('status')
-
-                    if status == 'done':
-                        print(f"[BIKE4MIND] Quest completed (attempt {attempt + 1})")
-                        return self._extract_ai_response(quest_data)
-
-                    elif status == 'stopped':
-                        print("[BIKE4MIND] Quest was stopped")
-                        return None
-
-                    # Status is 'running', continue polling
-                    print(f"[BIKE4MIND] Polling... (attempt {attempt + 1}/15)")
-
-            except requests.Timeout:
-                continue  # Continue polling on timeout
-
-        print("[BIKE4MIND] Timeout: No response after 105 seconds")
-        return None
-
-    def _extract_ai_response(self, quest_data: dict) -> Optional[str]:
-        """
-        Extract AI response with multiple fallback methods
-        Based on B4M_API_HOWTO.md
-        """
-        # Primary: check replies array (current B4M structure)
-        if (quest_data.get('replies') and
-            isinstance(quest_data['replies'], list) and
-            len(quest_data['replies']) > 0):
-            return '\n'.join(quest_data['replies'])
-
-        # Fallback 1: check single reply field (legacy)
-        elif quest_data.get('reply'):
-            return quest_data['reply']
-
-        # Fallback 2: check questMasterReply
-        elif quest_data.get('questMasterReply'):
-            return quest_data['questMasterReply']
-
-        # Fallback 3: check Research Mode results
-        elif (quest_data.get('researchModeResults') and
-              isinstance(quest_data['researchModeResults'], list)):
-            results = [r['response'] for r in quest_data['researchModeResults']
-                      if r.get('response')]
-            if results:
-                return '\n\n'.join(results)
-
-        return None
-
-
-class RosieConversationSystem:
-    """Main application controller"""
-
-    def __init__(self):
-        self.state_machine = StateMachine()
-        self.whisper_worker = WhisperWorker(self.state_machine)
-        self.wake_word_detector = WakeWordDetector(self.state_machine)
-        self.ollama_responder = OllamaResponder(self.state_machine)
-        self.piper_speaker = PiperSpeaker(self.state_machine)
-        self.bike4mind_worker = Bike4mindWorker(self.state_machine)
-
-        # Setup signal handlers for graceful shutdown
-        signal.signal(signal.SIGINT, self._signal_handler)
-        signal.signal(signal.SIGTERM, self._signal_handler)
-
-    def _signal_handler(self, signum, frame):
-        """Handle CTRL+C and SIGTERM for graceful shutdown"""
-        self.state_machine.request_shutdown()
-
-    def start(self):
-        """Start all workers"""
-        print("=" * 60)
-        print("ROSIE Conversational AI System")
-        print("Based on CONVERSE_B4M_OLLAMA_HYBRID specification")
-        print("=" * 60)
-        print("\nInitializing file-based communication...")
+        # Whisper model (loaded lazily)
+        self.whisper_model = None
 
         # Initialize files
         self._initialize_files()
 
-        print("\nStarting workers...")
-        self.whisper_worker.start()
-        self.wake_word_detector.start()
-        self.ollama_responder.start()
-        self.piper_speaker.start()
-        self.bike4mind_worker.start()
+        # Validate configuration
+        self._validate_configuration()
 
-        print("\n" + "=" * 60)
-        print("System ready! Say 'Rosie' to activate conversation.")
-        print("Press CTRL+C to shutdown gracefully.")
-        print("=" * 60 + "\n")
+        self._log("ROSIE Conversational AI System initialized")
 
-        # Main loop - just monitor shutdown
-        try:
-            while not self.state_machine.is_shutdown():
-                time.sleep(0.5)
-        except KeyboardInterrupt:
-            self.state_machine.request_shutdown()
-
-        self._cleanup()
+    def _log(self, message):
+        """Log messages with timestamp"""
+        if self.debug:
+            print(f"[{time.strftime('%H:%M:%S')}] {message}")
 
     def _initialize_files(self):
-        """Initialize conversation files"""
-        # Clear speak.txt if exists
-        if os.path.exists(SPEAK_FILE):
-            os.remove(SPEAK_FILE)
+        """Initialize conversation files - clear all temp files at startup"""
+        # Clear all conversation files for fresh start
+        for file_path in [self.listen_file, self.summary_file, self.speak_file]:
+            file_path.write_text('')
 
-        # Create listen.txt if doesn't exist
-        if not os.path.exists(LISTEN_FILE):
-            Path(LISTEN_FILE).touch()
+        print("Conversation files cleared and ready for new session.")
 
-        print(f"  listen.txt:  {LISTEN_FILE}")
-        print(f"  summary.txt: {SUMMARY_FILE}")
-        print(f"  speak.txt:   {SPEAK_FILE}")
+    def _validate_configuration(self):
+        """Validate required configuration"""
+        if not self.b4m_api_key:
+            print("WARNING: B4M_API_KEY not set in environment. bike4mind features will be disabled.")
 
-    def _cleanup(self):
-        """Cleanup on shutdown"""
-        print("\n[SHUTDOWN] Cleaning up...")
+        if not self.b4m_conversation_id:
+            print("WARNING: B4M_OLLAMA_CONVERSATION_ID not set in environment. bike4mind features will be disabled.")
 
-        # Stop workers
-        self.whisper_worker.stop()
+        if not self.piper_model_path or not Path(self.piper_model_path).exists():
+            print(f"ERROR: PIPER_MODEL_PATH not found: {self.piper_model_path}")
+            print("Please set PIPER_MODEL_PATH in ~/.bashrc")
+            sys.exit(1)
 
-        # Wait for threads to finish (with shorter timeout for faster shutdown)
-        threads = [
-            self.whisper_worker.thread,
-            self.wake_word_detector.thread,
-            self.ollama_responder.thread,
-            self.piper_speaker.thread,
-            self.bike4mind_worker.thread
-        ]
+    def _get_state(self):
+        """Thread-safe state getter"""
+        with self.state_lock:
+            return self.state
 
+    def _set_state(self, new_state):
+        """Thread-safe state setter"""
+        with self.state_lock:
+            old_state = self.state
+            self.state = new_state
+            # Always print state transitions to console
+            print(f"\n[STATE] {old_state.name} → {new_state.name}")
+            self._log(f"State transition: {old_state.name} -> {new_state.name}")
+
+    def _get_conversation_active(self):
+        """Thread-safe conversation_active getter"""
+        with self.conversation_lock:
+            return self.conversation_active
+
+    def _set_conversation_active(self, value):
+        """Thread-safe conversation_active setter with edge detection"""
+        with self.conversation_lock:
+            old_value = self.conversation_active
+            self.conversation_active = value
+            edge_detected = (old_value != value)
+            self._log(f"Conversation active: {old_value} -> {value} (edge: {edge_detected})")
+            return edge_detected, old_value, value
+
+    # =====================================================================
+    # STATE 1: LISTENING - Whisper STT and Wake Word Detection
+    # =====================================================================
+
+    def _load_whisper_model(self):
+        """Load Whisper model (lazy loading)"""
+        if self.whisper_model is None:
+            self._log(f"Loading Whisper model: {self.whisper_model_name}")
+            self.whisper_model = whisper.load_model(self.whisper_model_name)
+            self._log("Whisper model loaded")
+
+    def _audio_callback(self, indata, frames, time_info, status):
+        """
+        Audio input callback - continuously captures audio
+
+        This runs in a separate thread managed by sounddevice.
+        Captures ALL audio without gaps.
+        """
+        if status:
+            self._log(f"Audio callback status: {status}")
+
+        # Only capture during LISTENING state
+        if self._get_state() == ConversationState.LISTENING:
+            # Append audio to queue (thread-safe)
+            with self.audio_lock:
+                self.audio_queue.append(indata.copy().flatten())
+
+    def _whisper_worker(self):
+        """
+        Whisper speech-to-text worker thread
+
+        Processes audio from continuous stream and appends to listen.txt.
+        Audio capture continues in background via callback - NO GAPS.
+        """
+        self._log("Whisper worker started")
+        self._load_whisper_model()
+
+        # Start continuous audio stream
+        self._start_audio_stream()
+
+        # Process audio buffer every 2 seconds
+        process_interval = 2.0  # seconds
+
+        while not self.shutdown_event.is_set():
+            current_state = self._get_state()
+
+            # Only process in LISTENING state
+            if current_state == ConversationState.LISTENING:
+                try:
+                    # Wait for audio to accumulate
+                    time.sleep(process_interval)
+
+                    # Get accumulated audio from queue
+                    with self.audio_lock:
+                        if len(self.audio_queue) == 0:
+                            continue
+
+                        # Concatenate all queued audio chunks
+                        audio_data = np.concatenate(self.audio_queue)
+
+                        # Clear queue (we've grabbed it all)
+                        self.audio_queue.clear()
+
+                    # Check if there's actual speech
+                    audio_level = np.abs(audio_data).max()
+                    if audio_level < 0.01:
+                        continue  # Skip silence
+
+                    # Transcribe with Whisper
+                    result = self.whisper_model.transcribe(
+                        audio_data,
+                        fp16=False,
+                        language='en'
+                    )
+
+                    transcription = result['text'].strip()
+
+                    if transcription:
+                        # Append to listen.txt with "Human said:" prefix
+                        self._append_to_listen_file(f"Human said: {transcription}")
+                        # Always print transcriptions to console
+                        print(f"[WHISPER] Human said: {transcription}")
+                        self._log(f"Transcribed: {transcription}")
+
+                except Exception as e:
+                    self._log(f"Whisper error: {e}")
+
+            else:
+                # Clear queue during RESPONDING/SPEAKING (don't transcribe robot speech)
+                with self.audio_lock:
+                    self.audio_queue.clear()
+                time.sleep(0.1)
+
+        # Stop audio stream
+        self._stop_audio_stream()
+        self._log("Whisper worker stopped")
+
+    def _start_audio_stream(self):
+        """Start continuous audio capture stream"""
+        if self.audio_stream is None:
+            self._log("Starting continuous audio stream")
+            self.audio_stream = sd.InputStream(
+                samplerate=self.sample_rate,
+                channels=1,
+                dtype='float32',
+                callback=self._audio_callback,
+                blocksize=int(self.sample_rate * 0.1)  # 100ms blocks
+            )
+            self.audio_stream.start()
+            self._log("Audio stream started")
+
+    def _stop_audio_stream(self):
+        """Stop continuous audio capture stream"""
+        if self.audio_stream is not None:
+            self._log("Stopping audio stream")
+            self.audio_stream.stop()
+            self.audio_stream.close()
+            self.audio_stream = None
+            self._log("Audio stream stopped")
+
+    def _append_to_listen_file(self, text):
+        """Append text to listen.txt (thread-safe)"""
+        try:
+            with open(self.listen_file, 'a') as f:
+                f.write(text + ' ')
+        except Exception as e:
+            self._log(f"Error writing to listen.txt: {e}")
+
+    def _wake_word_detector(self):
+        """
+        Wake word detection worker thread
+
+        Monitors listen.txt for "Rosie" and activates conversation mode.
+        Active only during LISTENING state.
+        """
+        self._log("Wake word detector started")
+
+        while not self.shutdown_event.is_set():
+            current_state = self._get_state()
+
+            # Only active in LISTENING state
+            if current_state == ConversationState.LISTENING:
+                try:
+                    # Read listen.txt
+                    content = self.listen_file.read_text()
+
+                    # Check if "Rosie" appears (case-insensitive)
+                    if re.search(r'\brosie\b', content, re.IGNORECASE):
+                        # Always print wake word detection to console
+                        print(f"\n[WAKE WORD] 'Rosie' detected! Activating conversation...")
+                        self._log("Wake word 'Rosie' detected!")
+
+                        # Activate conversation (edge detection)
+                        edge_detected, _, _ = self._set_conversation_active(True)
+
+                        # Transition to RESPONDING state
+                        self._set_state(ConversationState.RESPONDING)
+
+                        # Remove "Rosie" from listen.txt
+                        cleaned_content = re.sub(r'\brosie\b', '', content, flags=re.IGNORECASE)
+                        self.listen_file.write_text(cleaned_content)
+
+                        # Trigger Ollama response (in new thread to avoid blocking)
+                        threading.Thread(target=self._ollama_response, daemon=True).start()
+
+                except Exception as e:
+                    self._log(f"Wake word detection error: {e}")
+
+            # Check every 100ms
+            time.sleep(0.1)
+
+        self._log("Wake word detector stopped")
+
+    # =====================================================================
+    # STATE 2: RESPONDING - Ollama Immediate Response
+    # =====================================================================
+
+    def _ollama_response(self):
+        """
+        Ollama immediate response generation
+
+        Generates response in <1 second using local Ollama.
+        Primary goal: Keep the human engaged and talking.
+        """
+        self._log("Ollama processing started")
+
+        try:
+            # Read listen.txt (conversation history)
+            listen_content = self.listen_file.read_text()
+
+            # Read summary.txt if it exists (may be stale)
+            summary_content = ""
+            if self.summary_file.exists():
+                summary_content = self.summary_file.read_text()
+
+            # Combine context
+            context = f"Conversation history:\n{listen_content}\n\n"
+            if summary_content:
+                context += f"Intelligence summary:\n{summary_content}\n\n"
+
+            # Ollama prompt focused on engagement
+            prompt = (
+                f"{context}"
+                "Please respond to this conversation. Your primary goal is to keep the human "
+                "engaged and talking. Ask follow-up questions, express curiosity, and maintain "
+                "natural dialogue. If you don't have complete information, acknowledge what was "
+                "asked and encourage them to tell you more about it. Keep the conversation "
+                "flowingbike4mind will provide deeper insights soon."
+            )
+
+            # Call Ollama API
+            response = requests.post(
+                self.ollama_url,
+                json={
+                    'model': self.ollama_model,
+                    'prompt': prompt,
+                    'temperature': self.ollama_temperature,
+                    'max_tokens': self.ollama_max_tokens,
+                    'stream': False
+                },
+                timeout=5
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                ollama_text = result.get('response', '').strip()
+
+                if ollama_text:
+                    # Write to speak.txt
+                    self.speak_file.write_text(ollama_text)
+                    # Always print Ollama response to console
+                    print(f"[OLLAMA] Robot will say: {ollama_text}")
+                    self._log(f"Ollama response: {ollama_text}")
+
+                    # Transition to SPEAKING state
+                    self._set_state(ConversationState.SPEAKING)
+
+                    # Trigger speech output
+                    threading.Thread(target=self._piper_speak, daemon=True).start()
+                else:
+                    self._log("Ollama returned empty response")
+                    self._set_state(ConversationState.LISTENING)
+            else:
+                self._log(f"Ollama API error: {response.status_code}")
+                self._set_state(ConversationState.LISTENING)
+
+        except Exception as e:
+            self._log(f"Ollama error: {e}")
+            self._set_state(ConversationState.LISTENING)
+
+    # =====================================================================
+    # BACKGROUND: bike4mind Intelligent Analysis
+    # =====================================================================
+
+    def _b4m_worker(self):
+        """
+        bike4mind background worker with edge detection
+
+        Monitors conversation_active flag for state changes.
+        Processes conversation once per activation (False -> True edge).
+        Operates independently, never blocks main conversation loop.
+        """
+        self._log("bike4mind worker started")
+
+        # Check if bike4mind is configured
+        if not self.b4m_api_key or not self.b4m_conversation_id:
+            self._log("bike4mind not configured, worker disabled")
+            return
+
+        last_state = False
+
+        while not self.shutdown_event.is_set():
+            current_state = self._get_conversation_active()
+
+            # Edge detection: False -> True transition
+            if not last_state and current_state:
+                # Always print bike4mind activation to console
+                print(f"\n[BIKE4MIND] Background analysis triggered...")
+                self._log("bike4mind activation edge detected!")
+
+                # Process conversation (one-shot per activation)
+                threading.Thread(target=self._b4m_process, daemon=True).start()
+
+            last_state = current_state
+
+            # Check every 100ms
+            time.sleep(0.1)
+
+        self._log("bike4mind worker stopped")
+
+    def _b4m_process(self):
+        """
+        bike4mind API processing (background, asynchronous)
+
+        Leverages powerful LLM with real-time internet access.
+        Updates summary.txt for future Ollama responses.
+        """
+        self._log("bike4mind processing started")
+
+        try:
+            # Read current listen.txt content
+            listen_content = self.listen_file.read_text()
+
+            if not listen_content.strip():
+                self._log("bike4mind: Empty listen.txt, skipping")
+                return
+
+            # Always print what's being sent to bike4mind
+            print(f"[BIKE4MIND] Analyzing conversation: {listen_content[:80]}{'...' if len(listen_content) > 80 else ''}")
+
+            # Prepare bike4mind API request
+            headers = {
+                'X-API-Key': self.b4m_api_key,
+                'Content-Type': 'application/json'
+            }
+
+            payload = {
+                'conversationId': self.b4m_conversation_id,
+                'userId': self.b4m_user_id,
+                'message': (
+                    f"Please summarize this conversation, including intelligent insights:\n\n"
+                    f"{listen_content}"
+                )
+            }
+
+            # Call bike4mind API (5-10 seconds latency expected)
+            response = requests.post(
+                self.b4m_url,
+                headers=headers,
+                json=payload,
+                timeout=15
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+
+                # Extract response (API structure may vary)
+                b4m_response = result.get('response', result.get('message', ''))
+
+                if b4m_response:
+                    # Write enriched summary to summary.txt (atomic overwrite)
+                    self.summary_file.write_text(b4m_response)
+                    # Always print bike4mind completion to console
+                    print(f"[BIKE4MIND] Analysis complete! Summary updated ({len(b4m_response)} chars)")
+                    print(f"[BIKE4MIND] Preview: {b4m_response[:100]}{'...' if len(b4m_response) > 100 else ''}")
+                    self._log(f"bike4mind summary updated: {len(b4m_response)} chars")
+                else:
+                    print(f"[BIKE4MIND] Warning: Empty response received")
+                    self._log("bike4mind returned empty response")
+            else:
+                print(f"[BIKE4MIND] Error: API returned status {response.status_code}")
+                self._log(f"bike4mind API error: {response.status_code}")
+
+        except Exception as e:
+            print(f"[BIKE4MIND] Error: {e}")
+            self._log(f"bike4mind error: {e}")
+
+    # =====================================================================
+    # STATE 3: SPEAKING - Piper TTS Output
+    # =====================================================================
+
+    def _piper_speak(self):
+        """
+        Piper text-to-speech output
+
+        Converts speak.txt to speech, plays audio, and deactivates conversation.
+        """
+        self._log("Piper TTS started")
+
+        try:
+            # Read speak.txt
+            text = self.speak_file.read_text().strip()
+
+            if not text:
+                self._log("speak.txt is empty, skipping TTS")
+                self._set_state(ConversationState.LISTENING)
+                return
+
+            # Generate audio with Piper
+            import subprocess
+
+            # Piper command: echo text | piper --model path --output-raw | aplay
+            piper_cmd = f'echo "{text}" | piper --model {self.piper_model_path} --output-raw | aplay -r 22050 -f S16_LE -t raw -'
+
+            subprocess.run(piper_cmd, shell=True, check=True)
+
+            self._log(f"Piper spoke: {text}")
+
+            # Append to listen.txt with "Robot said:" prefix
+            self._append_to_listen_file(f"Robot said: {text}")
+
+            # Clear speak.txt
+            self.speak_file.write_text('')
+
+            # Prune listen.txt if needed
+            self._prune_listen_file()
+
+            # Deactivate conversation (edge: True -> False)
+            self._set_conversation_active(False)
+
+            # Transition back to LISTENING state
+            self._set_state(ConversationState.LISTENING)
+
+        except Exception as e:
+            self._log(f"Piper error: {e}")
+            self._set_state(ConversationState.LISTENING)
+
+    def _prune_listen_file(self):
+        """Prune listen.txt to keep last MAX_WORDS words"""
+        try:
+            content = self.listen_file.read_text()
+            words = content.split()
+
+            if len(words) > self.max_words:
+                pruned = ' '.join(words[-self.max_words:])
+                self.listen_file.write_text(pruned)
+                self._log(f"Pruned listen.txt to {self.max_words} words")
+
+        except Exception as e:
+            self._log(f"Pruning error: {e}")
+
+    # =====================================================================
+    # System Control
+    # =====================================================================
+
+    def start(self):
+        """Start ROSIE system (all threads)"""
+        self._log("Starting ROSIE Conversational AI System...")
+
+        # Start Whisper worker
+        self.whisper_thread = threading.Thread(target=self._whisper_worker, daemon=True)
+        self.whisper_thread.start()
+
+        # Start wake word detector
+        self.wake_word_thread = threading.Thread(target=self._wake_word_detector, daemon=True)
+        self.wake_word_thread.start()
+
+        # Start bike4mind background worker
+        self.b4m_worker_thread = threading.Thread(target=self._b4m_worker, daemon=True)
+        self.b4m_worker_thread.start()
+
+        # Always print startup message and instructions
+        print("\n" + "="*70)
+        print("ROSIE Conversational AI System - READY")
+        print("="*70)
+        print(f"Current State: {self._get_state().name}")
+        print("\nSay 'Rosie' followed by your question to start a conversation.")
+        print("Press CTRL+C to exit.")
+        print("="*70 + "\n")
+
+        self._log("ROSIE system started. Say 'Rosie' to activate conversation.")
+
+        # Main loop (keep alive)
+        try:
+            while not self.shutdown_event.is_set():
+                time.sleep(0.5)
+        except KeyboardInterrupt:
+            self.shutdown()
+
+    def shutdown(self):
+        """Graceful shutdown with SIGINT handling"""
+        self._log("Shutting down ROSIE system...")
+
+        # Signal all threads to stop
+        self.shutdown_event.set()
+
+        # Wait for threads to finish (with timeout)
+        threads = [self.whisper_thread, self.wake_word_thread, self.b4m_worker_thread]
         for thread in threads:
             if thread and thread.is_alive():
-                thread.join(timeout=0.5)
+                thread.join(timeout=2)
 
-        # Force exit if threads still running
-        import sys
-        print("[SHUTDOWN] Complete. Goodbye!")
+        self._log("ROSIE system stopped")
+        sys.exit(0)
+
+
+def signal_handler(sig, frame):
+    """Handle CTRL+C for graceful shutdown"""
+    print("\nReceived shutdown signal (CTRL+C)")
+    if hasattr(signal_handler, 'rosie_instance'):
+        signal_handler.rosie_instance.shutdown()
+    else:
         sys.exit(0)
 
 
 def main():
     """Main entry point"""
-    system = RosieConversationSystem()
-    system.start()
+    # Register signal handler for graceful shutdown
+    signal.signal(signal.SIGINT, signal_handler)
+
+    # Create ROSIE instance
+    rosie = RosieConversation()
+
+    # Store instance for signal handler
+    signal_handler.rosie_instance = rosie
+
+    # Start system
+    rosie.start()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

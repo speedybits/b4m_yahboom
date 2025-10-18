@@ -1,0 +1,21 @@
+# ROSIE Conversational AI System Dependencies
+
+# Speech Recognition
+openai-whisper>=20230314
+sounddevice>=0.4.6
+numpy>=1.24.0
+
+# HTTP/API
+requests>=2.31.0
+
+# Configuration
+python-dotenv>=1.0.0
+
+# Piper TTS is installed separately as a system binary
+# Installation: https://github.com/rhasspy/piper
+
+# Ollama is installed separately as a system service
+# Installation: https://ollama.ai/
+
+# Optional: For better audio handling
+pyaudio>=0.2.13
