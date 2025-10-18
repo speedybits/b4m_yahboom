@@ -139,3 +139,4 @@ prompts/
 
 # Unused/temporary files directory
 unused/
+.env.rosie

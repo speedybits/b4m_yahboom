@@ -9,7 +9,10 @@ Set these environment variables before using the API:
 
 ```bash
 export B4M_API_KEY="your_api_key_here"
-export B4M_SESSION_ID="your_session_id_here"  # or B4M_ROSIE_ID
+export B4M_SESSION_ID="your_session_id_here"  # Generic session ID
+# Or use specific variable names for different purposes:
+# export B4M_OLLAMA_CONVERSATION_ID="..."  # For Ollama/ROSIE conversations
+# export HA_B4M_SESSION_ID="..."           # For Home Assistant integration
 export B4M_USER_ID="your_user_id_here"        # Optional, has default
 ```
 
