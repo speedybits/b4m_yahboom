@@ -365,11 +365,16 @@ class RosieConversation:
                     # Read listen.txt
                     content = self.listen_file.read_text()
 
-                    # Check if "Rosie" appears (case-insensitive)
-                    if re.search(r'\brosie\b', content, re.IGNORECASE):
+                    # Check if "Rosie" or common variations appear (case-insensitive)
+                    # Whisper may transcribe as: Rosie, Rose, Rosy, Rosee
+                    wake_word_pattern = r'\b(rosie|rose|rosy|rosee)\b'
+                    match = re.search(wake_word_pattern, content, re.IGNORECASE)
+
+                    if match:
+                        detected_word = match.group(0)
                         # Always print wake word detection to console
-                        print(f"\n[WAKE WORD] 'Rosie' detected! Activating conversation...")
-                        self._log("Wake word 'Rosie' detected!")
+                        print(f"\n[WAKE WORD] '{detected_word}' detected! Activating conversation...")
+                        self._log(f"Wake word '{detected_word}' detected!")
 
                         # Activate conversation (edge detection)
                         edge_detected, _, _ = self._set_conversation_active(True)
@@ -377,8 +382,8 @@ class RosieConversation:
                         # Transition to RESPONDING state
                         self._set_state(ConversationState.RESPONDING)
 
-                        # Remove "Rosie" from listen.txt
-                        cleaned_content = re.sub(r'\brosie\b', '', content, flags=re.IGNORECASE)
+                        # Remove wake word from listen.txt (all variations)
+                        cleaned_content = re.sub(wake_word_pattern, '', content, flags=re.IGNORECASE)
                         self.listen_file.write_text(cleaned_content)
 
                         # Trigger Ollama response (in new thread to avoid blocking)
@@ -403,31 +408,40 @@ class RosieConversation:
         Generates response in <1 second using local Ollama.
         Primary goal: Keep the human engaged and talking.
         """
+        print(f"[OLLAMA] Processing started...")
         self._log("Ollama processing started")
 
         try:
             # Read listen.txt (conversation history)
             listen_content = self.listen_file.read_text()
+            print(f"[OLLAMA] Read listen.txt: {len(listen_content)} chars")
 
             # Read summary.txt if it exists (may be stale)
             summary_content = ""
             if self.summary_file.exists():
                 summary_content = self.summary_file.read_text()
+                print(f"[OLLAMA] Read summary.txt: {len(summary_content)} chars")
+            else:
+                print(f"[OLLAMA] No summary.txt found")
 
             # Combine context
             context = f"Conversation history:\n{listen_content}\n\n"
             if summary_content:
                 context += f"Intelligence summary:\n{summary_content}\n\n"
+                print(f"[OLLAMA] Using bike4mind summary in context")
+            else:
+                print(f"[OLLAMA] No bike4mind summary available yet")
 
             # Ollama prompt focused on engagement
             prompt = (
                 f"{context}"
-                "Please respond to this conversation. Your primary goal is to keep the human "
-                "engaged and talking. Ask follow-up questions, express curiosity, and maintain "
-                "natural dialogue. If you don't have complete information, acknowledge what was "
-                "asked and encourage them to tell you more about it. Keep the conversation "
-                "flowing. bike4mind will provide deeper insights soon."
+                "You are Rosie, a friendly conversational robot. Based on the conversation history and intelligence summary above, "
+                "respond naturally in 2-3 short sentences. Use the insights from the intelligence summary to inform your response and make it more contextual. "
+                "Speak directly to the human using 'I' statements. Keep the conversation flowing naturally."
             )
+
+            print(f"[OLLAMA] Total prompt length: {len(prompt)} chars")
+            print(f"[OLLAMA] Sending request to Ollama...")
 
             # Call Ollama API
             response = requests.post(
@@ -468,6 +482,8 @@ class RosieConversation:
 
         except Exception as e:
             print(f"[OLLAMA] Error: {e}")
+            import traceback
+            traceback.print_exc()
             self._log(f"Ollama error: {e}")
             self._set_state(ConversationState.LISTENING)
 
@@ -538,10 +554,11 @@ class RosieConversation:
                 'Content-Type': 'application/json'
             }
 
+            # Prompt
             payload = {
                 'sessionId': self.b4m_conversation_id,
                 'message': (
-                    f"Please summarize this conversation, including intelligent insights:\n\n"
+                    f"Please summarize this conversation in 2 sentences or less with intelligent insights. Text only...no symbols.\n\n"
                     f"{listen_content}"
                 ),
                 'historyCount': 10,
