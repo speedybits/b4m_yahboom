@@ -231,8 +231,39 @@ development_notes/B4M_API_HOWTO.md  # bike4mind API details
 
 **Optional (can be set in .env.rosie or environment):**
 - `B4M_USER_ID` - bike4mind user ID (default: 65563f622213b120cd1d9592)
-- `WHISPER_MODEL` - Model size (default: base)
-- `OLLAMA_MODEL` - Ollama model to use (default: qwen2.5:0.5b)
+- `WHISPER_MODEL` - Model size (default: base, options: tiny, base, small, medium, large)
+- `OLLAMA_MODEL` - Ollama model to use (default: qwen2.5:1.5b, see model recommendations below)
+
+### Ollama Model Recommendations
+
+ROSIE's conversational intelligence depends heavily on the Ollama model size. Larger models better understand context from bike4mind summaries.
+
+**Recommended: qwen2.5:1.5b** (default)
+- Size: 986 MB
+- Latency: 0.4-2s (still conversational)
+- Quality: Good context understanding, uses bike4mind insights effectively
+- Best balance of speed and intelligence
+
+**Minimum: qwen2.5:0.5b**
+- Size: 397 MB
+- Latency: 0.2-1s (very fast)
+- Quality: Basic responses, often ignores context
+- Use only if latency is critical
+
+**Better Quality: qwen2.5:3b**
+- Size: ~2GB
+- Latency: 1-3s (slower but acceptable)
+- Quality: Excellent context understanding
+- Best for rich, intelligent conversations
+
+**To install a different model:**
+```bash
+ollama pull qwen2.5:1.5b  # Recommended
+ollama pull qwen2.5:3b    # Better quality
+ollama pull llama3.2:3b   # Alternative, also good
+```
+
+**To switch models:** Update `OLLAMA_MODEL` in `.env.rosie` or `~/.bashrc`
 
 ### Audio Configuration
 

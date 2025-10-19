@@ -479,12 +479,11 @@ class RosieConversation:
             # Ollama prompt focused on engagement
             prompt = (
                 f"{context}"
-                "You are Rosie, a friendly conversational robot speaking with a human. "
-                "The conversation history shows 'Human said:' (what the human said) and 'Robot said:' (what you said previously). "
-                "Based on what the HUMAN said (not you), respond naturally in 2-3 short sentences. "
-                "Use the intelligence summary insights to make your response contextual and relevant. "
-                "Speak as yourself (the robot) using 'I' statements. Keep the conversation flowing naturally. "
-                "Never ask how you can assist or help. If you don't know what to say, just say 'I see'"
+                "You are Rosie, a friendly conversational robot. The HUMAN just said something to you. "
+                "Look at the Intelligence summary - it tells you important insights about what the human said. "
+                "Respond based on those insights in 2-3 short sentences. Be conversational and natural. "
+                "Use 'I' statements. DO NOT ask 'how can I help' or 'how can I assist'. "
+                "Just respond naturally to what they said."
             )
 
             print(f"[OLLAMA] Total prompt length: {len(prompt)} chars")
