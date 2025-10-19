@@ -173,6 +173,46 @@ class RosieConversation:
     # STATE 1: LISTENING - Whisper STT and Wake Word Detection
     # =====================================================================
 
+    def _is_hallucination(self, text):
+        """
+        Detect common Whisper hallucinations
+
+        Returns True if text appears to be a hallucination
+        """
+        hallucination_patterns = [
+            r'subscribe',
+            r'youtube',
+            r'channel',
+            r'like.*comment',
+            r'bell icon',
+            r'thank you for watching',
+            r'幕',  # Chinese characters (common in training data)
+            r'字幕',
+            r'CC',
+            r'\[.*?\]',  # Brackets like [Music], [Applause]
+            r'♪',  # Music notes
+            r'www\.',
+            r'\.com',
+            r'http',
+        ]
+
+        text_lower = text.lower()
+
+        # Check for hallucination patterns
+        for pattern in hallucination_patterns:
+            if re.search(pattern, text_lower):
+                return True
+
+        # Check for very short transcriptions with non-alphabetic characters
+        if len(text) < 5 and not text.isalpha():
+            return True
+
+        # Check for repeated punctuation (often hallucination)
+        if re.search(r'[.!?]{3,}', text):
+            return True
+
+        return False
+
     def _load_whisper_model(self):
         """Load Whisper model (lazy loading) with GPU auto-detection and CPU fallback"""
         if self.whisper_model is None:
@@ -296,12 +336,16 @@ class RosieConversation:
 
                     transcription = result['text'].strip()
 
-                    if transcription:
+                    # Filter out common Whisper hallucinations
+                    if transcription and not self._is_hallucination(transcription):
                         # Append to listen.txt with "Human said:" prefix
                         self._append_to_listen_file(f"Human said: {transcription}")
                         # Always print transcriptions to console
                         print(f"[WHISPER] Human said: {transcription}")
                         self._log(f"Transcribed: {transcription}")
+                    elif transcription:
+                        # Log filtered hallucinations in debug mode
+                        self._log(f"Filtered hallucination: {transcription}")
 
                 except Exception as e:
                     self._log(f"Whisper error: {e}")
@@ -435,9 +479,12 @@ class RosieConversation:
             # Ollama prompt focused on engagement
             prompt = (
                 f"{context}"
-                "You are Rosie, a friendly conversational robot. Based on the conversation history and intelligence summary above, "
-                "respond naturally in 2-3 short sentences. Use the insights from the intelligence summary to inform your response and make it more contextual. "
-                "Speak directly to the human using 'I' statements. Keep the conversation flowing naturally."
+                "You are Rosie, a friendly conversational robot speaking with a human. "
+                "The conversation history shows 'Human said:' (what the human said) and 'Robot said:' (what you said previously). "
+                "Based on what the HUMAN said (not you), respond naturally in 2-3 short sentences. "
+                "Use the intelligence summary insights to make your response contextual and relevant. "
+                "Speak as yourself (the robot) using 'I' statements. Keep the conversation flowing naturally. "
+                "Never ask how you can assist or help. If you don't know what to say, just say 'I see'"
             )
 
             print(f"[OLLAMA] Total prompt length: {len(prompt)} chars")
