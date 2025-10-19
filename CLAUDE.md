@@ -3,7 +3,21 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Secret keys
-Never use the actual value of environment variables located in the .bashrc in the code you write. Only use the environment variables themselves 
+Never use the actual value of environment variables located in the .bashrc in the code you write. Only use the environment variables themselves
+
+## System File Modifications
+**NEVER modify system files (like ~/.bashrc, ~/.bash_profile, /etc files) without explicit user permission.**
+
+**Requirements:**
+- Always create a timestamped backup BEFORE modifying any system file
+- Ask for user permission before modifying files outside the git repository
+- Document what changes will be made and why
+- Provide clear restoration instructions if changes are made
+
+**Backup naming convention:**
+```bash
+cp ~/.bashrc ~/.bashrc.backup.$(date +%Y%m%d_%H%M%S)
+```
 
 ## Commits
 Never commit files automatically

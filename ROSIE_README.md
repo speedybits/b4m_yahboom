@@ -49,32 +49,69 @@ Background: bike4mind worker (independent, asynchronous)
 - **Impact**: Bounded memory usage, faster processing, no loss of context (summary.txt retains insights)
 - **Configurable**: Adjust MAX_WORDS in code or .env.rosie
 
+## Hardware Requirements
+
+### GPU Support (Recommended)
+
+ROSIE supports GPU acceleration for significantly improved performance:
+
+- **Whisper (Speech-to-Text)**: 2-3x faster with GPU
+- **Ollama (LLM)**: 3-5x faster response times with GPU
+- **Recommended**: NVIDIA GPU with 4GB+ VRAM
+- **Automatic Fallback**: CPU if GPU unavailable
+
+**GPU Status Check**:
+```bash
+# Verify GPU is detected and working
+python3 verify_gpu_setup.py
+```
+
+Expected output with GPU:
+```
+✓ nvidia_driver       : PASS
+✓ pytorch_cuda        : PASS
+✓ ollama              : PASS
+✓ whisper_rosie       : PASS
+```
+
+### Performance Comparison
+
+| Component | CPU | GPU (RTX 4070) | Speedup |
+|-----------|-----|----------------|---------|
+| Whisper   | ~3-5s | ~1-2s | 2-3x |
+| Ollama    | ~2-3s | ~0.4-0.6s | 4-5x |
+
 ## Installation
 
 ### Prerequisites
 
 1. **Python 3.8+** with pip
 
-2. **faster-whisper** (already installed)
+2. **PyTorch with CUDA** (for GPU support)
    ```bash
-   pip install faster-whisper
+   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
    ```
 
-3. **Ollama** (already installed)
+3. **Whisper** (OpenAI Whisper with GPU support)
+   ```bash
+   pip install openai-whisper
+   ```
+
+4. **Ollama** (already installed)
    ```bash
    # Verify installation
    ollama list
    ```
 
-4. **Piper TTS** (already installed)
+5. **Piper TTS** (already installed)
    ```bash
    # Verify installation
    ~/.local/bin/piper --version
    ```
 
-5. **Audio dependencies**
+6. **Audio dependencies**
    ```bash
-   pip install sounddevice numpy requests
+   pip install sounddevice numpy requests python-dotenv
    ```
 
 ### Setup
@@ -172,11 +209,13 @@ Press **CTRL+C** for graceful shutdown (100-500ms response time).
 ## File Structure
 
 ```
-rosie_conversation.py      # Main application
-.env.rosie.example         # Configuration template
-.env.rosie                 # Your configuration (not committed)
-ROSIE_README.md            # This file
-CONVERSE_B4M_OLLAMA_HYBRID.md  # Full specification
+rosie_conversation.py           # Main application
+verify_gpu_setup.py             # GPU verification utility
+test_ollama_latency.py          # Ollama performance testing
+.env.rosie.example              # Configuration template
+.env.rosie                      # Your configuration (not committed)
+ROSIE_README.md                 # This file (includes GPU troubleshooting)
+CONVERSE_B4M_OLLAMA_HYBRID.md   # Full specification
 development_notes/B4M_API_HOWTO.md  # bike4mind API details
 ```
 
@@ -244,6 +283,37 @@ After deactivation:
 
 ## Troubleshooting
 
+### GPU Issues
+
+#### CUDA Not Working
+If you see `[WHISPER] ℹ Model loaded on CPU (GPU not available)`:
+
+**Quick Fix**: Reboot your system
+```bash
+sudo reboot
+```
+
+**After reboot**, verify CUDA:
+```bash
+python3 -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+```
+
+**If still not working**:
+1. Check NVIDIA driver: `nvidia-smi`
+2. Reload nvidia_uvm module: `sudo rmmod nvidia_uvm && sudo modprobe nvidia_uvm`
+3. Run verification: `python3 verify_gpu_setup.py`
+
+#### Ollama Not Using GPU
+```bash
+# Check if Ollama is using GPU
+curl -s http://localhost:11434/api/ps | python3 -m json.tool
+```
+
+Look for `size_vram` > 0. If 0, restart Ollama:
+```bash
+sudo systemctl restart ollama
+```
+
 ### No audio input
 - Check microphone permissions
 - Verify device: `arecord -l`
@@ -258,24 +328,40 @@ After deactivation:
 - Speak clearly and close to microphone
 - Reduce background noise
 - Try different `WHISPER_MODEL` (larger = more accurate)
+- Check GPU status: `python3 verify_gpu_setup.py`
 
 ### Ollama not responding
 - Verify Ollama is running: `ollama list`
 - Check model is pulled: `ollama pull qwen2.5:0.5b`
 - Test: `ollama run qwen2.5:0.5b "Hello"`
+- Verify GPU usage: `python3 test_ollama_latency.py`
 
 ### bike4mind errors
 - Verify API key is set: `echo $B4M_API_KEY`
 - Verify conversation ID is set: `echo $B4M_OLLAMA_CONVERSATION_ID`
-- Check conversation ID is valid (must exist in your bike4mind account)
-- System continues working with Ollama-only if bike4mind fails
+- Check conversation ID is valid (must be an existing session in your bike4mind account)
+- bike4mind uses quest-based polling (7 second intervals, 105 second timeout)
+- System continues working with Ollama-only if bike4mind fails or times out
 
 ## Performance
 
-- **Response time**: <1 second (Ollama)
-- **bike4mind latency**: 5-10 seconds (background)
-- **Memory**: ~2GB (Whisper + Ollama models)
-- **CPU**: Moderate (local inference)
+### With GPU (NVIDIA RTX 4070)
+
+- **Whisper transcription**: ~1-2 seconds per audio chunk
+- **Ollama response**: ~400-600ms average (✓ meets <1s requirement)
+- **bike4mind latency**: 5-10 seconds (background, asynchronous)
+- **GPU Memory**: ~2-3GB VRAM (Whisper + Ollama models)
+- **System Memory**: ~1-2GB RAM
+
+### With CPU Only
+
+- **Whisper transcription**: ~3-5 seconds per audio chunk (2-3x slower)
+- **Ollama response**: ~2-3 seconds average (slower but functional)
+- **bike4mind latency**: 5-10 seconds (background, asynchronous)
+- **CPU Usage**: High during inference
+- **System Memory**: ~2-3GB RAM
+
+**Recommendation**: Use GPU for optimal real-time conversation experience.
 
 ## Security
 

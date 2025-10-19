@@ -65,7 +65,7 @@ class RosieConversation:
         self.b4m_api_key = os.getenv('B4M_API_KEY')
         self.b4m_conversation_id = os.getenv('B4M_OLLAMA_CONVERSATION_ID')
         self.b4m_user_id = os.getenv('B4M_USER_ID', '65563f622213b120cd1d9592')
-        self.b4m_url = 'https://www.bike4mind.com/api/v1/conversation'
+        self.b4m_url = 'https://app.bike4mind.com/api/ai/llm'
 
         # Piper TTS configuration (from .bashrc)
         self.piper_model_path = os.getenv('PIPER_MODEL_PATH')
@@ -174,11 +174,61 @@ class RosieConversation:
     # =====================================================================
 
     def _load_whisper_model(self):
-        """Load Whisper model (lazy loading)"""
+        """Load Whisper model (lazy loading) with GPU auto-detection and CPU fallback"""
         if self.whisper_model is None:
             self._log(f"Loading Whisper model: {self.whisper_model_name}")
-            self.whisper_model = whisper.load_model(self.whisper_model_name)
-            self._log("Whisper model loaded")
+
+            try:
+                import torch
+
+                # Auto-detect best available device
+                device = self._detect_best_device()
+                self._log(f"Using device: {device}")
+
+                # Load model with selected device
+                self.whisper_model = whisper.load_model(
+                    self.whisper_model_name,
+                    device=device
+                )
+
+                if device == "cuda":
+                    print(f"[WHISPER] ✓ Model loaded on GPU (CUDA)")
+                else:
+                    print(f"[WHISPER] ℹ Model loaded on CPU (GPU not available)")
+
+                self._log(f"Whisper model loaded successfully on {device}")
+
+            except Exception as e:
+                print(f"\n[ERROR] Failed to load Whisper model: {e}")
+                print(f"[ERROR] Please check Whisper installation and model availability")
+                self._log(f"Whisper model loading failed: {e}")
+                raise
+
+    def _detect_best_device(self):
+        """Detect best available device for Whisper (GPU with fallback to CPU)"""
+        try:
+            import torch
+
+            # Check if CUDA is available and working
+            if torch.cuda.is_available():
+                try:
+                    # Test if CUDA actually works by creating a small tensor
+                    test_tensor = torch.zeros(1).cuda()
+                    del test_tensor
+                    self._log("CUDA detected and functional")
+                    return "cuda"
+                except Exception as e:
+                    self._log(f"CUDA available but not functional: {e}")
+                    print(f"[WHISPER] ⚠ GPU detected but CUDA initialization failed")
+                    print(f"[WHISPER] → Falling back to CPU")
+                    return "cpu"
+            else:
+                self._log("CUDA not available, using CPU")
+                return "cpu"
+
+        except Exception as e:
+            self._log(f"Device detection error: {e}, defaulting to CPU")
+            return "cpu"
 
     def _audio_callback(self, indata, frames, time_info, status):
         """
@@ -376,7 +426,7 @@ class RosieConversation:
                 "engaged and talking. Ask follow-up questions, express curiosity, and maintain "
                 "natural dialogue. If you don't have complete information, acknowledge what was "
                 "asked and encourage them to tell you more about it. Keep the conversation "
-                "flowingbike4mind will provide deeper insights soon."
+                "flowing. bike4mind will provide deeper insights soon."
             )
 
             # Call Ollama API
@@ -389,7 +439,7 @@ class RosieConversation:
                     'max_tokens': self.ollama_max_tokens,
                     'stream': False
                 },
-                timeout=5
+                timeout=30  # Increased from 5 to 30 seconds for longer contexts
             )
 
             if response.status_code == 200:
@@ -412,10 +462,12 @@ class RosieConversation:
                     self._log("Ollama returned empty response")
                     self._set_state(ConversationState.LISTENING)
             else:
+                print(f"[OLLAMA] Error: API returned status {response.status_code}")
                 self._log(f"Ollama API error: {response.status_code}")
                 self._set_state(ConversationState.LISTENING)
 
         except Exception as e:
+            print(f"[OLLAMA] Error: {e}")
             self._log(f"Ollama error: {e}")
             self._set_state(ConversationState.LISTENING)
 
@@ -465,6 +517,7 @@ class RosieConversation:
 
         Leverages powerful LLM with real-time internet access.
         Updates summary.txt for future Ollama responses.
+        Uses quest-based polling system.
         """
         self._log("bike4mind processing started")
 
@@ -479,52 +532,149 @@ class RosieConversation:
             # Always print what's being sent to bike4mind
             print(f"[BIKE4MIND] Analyzing conversation: {listen_content[:80]}{'...' if len(listen_content) > 80 else ''}")
 
-            # Prepare bike4mind API request
+            # Prepare bike4mind API request with correct structure
             headers = {
                 'X-API-Key': self.b4m_api_key,
                 'Content-Type': 'application/json'
             }
 
             payload = {
-                'conversationId': self.b4m_conversation_id,
-                'userId': self.b4m_user_id,
+                'sessionId': self.b4m_conversation_id,
                 'message': (
                     f"Please summarize this conversation, including intelligent insights:\n\n"
                     f"{listen_content}"
-                )
+                ),
+                'historyCount': 10,
+                'fabFileIds': [],
+                'messageFileIds': [],
+                'params': {
+                    'model': 'gpt-4o-mini',
+                    'temperature': 0.7,
+                    'max_tokens': 500,
+                    'stream': False
+                },
+                'promptMeta': {
+                    'session': {
+                        'id': self.b4m_conversation_id,
+                        'userId': self.b4m_user_id
+                    }
+                }
             }
 
-            # Call bike4mind API (5-10 seconds latency expected)
+            # Step 1: Submit quest to bike4mind API
             response = requests.post(
                 self.b4m_url,
                 headers=headers,
                 json=payload,
-                timeout=15
+                timeout=10
             )
 
-            if response.status_code == 200:
-                result = response.json()
-
-                # Extract response (API structure may vary)
-                b4m_response = result.get('response', result.get('message', ''))
-
-                if b4m_response:
-                    # Write enriched summary to summary.txt (atomic overwrite)
-                    self.summary_file.write_text(b4m_response)
-                    # Always print bike4mind completion to console
-                    print(f"[BIKE4MIND] Analysis complete! Summary updated ({len(b4m_response)} chars)")
-                    print(f"[BIKE4MIND] Preview: {b4m_response[:100]}{'...' if len(b4m_response) > 100 else ''}")
-                    self._log(f"bike4mind summary updated: {len(b4m_response)} chars")
-                else:
-                    print(f"[BIKE4MIND] Warning: Empty response received")
-                    self._log("bike4mind returned empty response")
-            else:
+            if response.status_code != 200:
                 print(f"[BIKE4MIND] Error: API returned status {response.status_code}")
                 self._log(f"bike4mind API error: {response.status_code}")
+                return
+
+            quest_data = response.json()
+            quest_id = quest_data.get('id')  # Note: 'id' not 'questId'
+
+            if not quest_id:
+                print(f"[BIKE4MIND] Error: No quest ID in response")
+                self._log("bike4mind: No quest ID returned")
+                return
+
+            print(f"[BIKE4MIND] Quest submitted (ID: {quest_id[:8]}...), polling for response...")
+            self._log(f"bike4mind quest ID: {quest_id}")
+
+            # Step 2: Poll for quest completion
+            b4m_response = self._b4m_poll_quest(quest_id)
+
+            if b4m_response:
+                # Write enriched summary to summary.txt (atomic overwrite)
+                self.summary_file.write_text(b4m_response)
+                # Always print bike4mind completion to console
+                print(f"[BIKE4MIND] Analysis complete! Summary updated ({len(b4m_response)} chars)")
+                print(f"[BIKE4MIND] Preview: {b4m_response[:100]}{'...' if len(b4m_response) > 100 else ''}")
+                self._log(f"bike4mind summary updated: {len(b4m_response)} chars")
+            else:
+                print(f"[BIKE4MIND] Warning: No response received after polling")
+                self._log("bike4mind returned empty response after polling")
 
         except Exception as e:
             print(f"[BIKE4MIND] Error: {e}")
             self._log(f"bike4mind error: {e}")
+
+    def _b4m_poll_quest(self, quest_id):
+        """
+        Poll bike4mind quest until completion or timeout
+
+        Returns AI response text or None on timeout/error
+        """
+        poll_url = f"https://app.bike4mind.com/api/sessions/{self.b4m_conversation_id}/chat/{quest_id}"
+        headers = {'X-API-Key': self.b4m_api_key}
+
+        # Poll for up to 15 attempts (105 seconds)
+        for attempt in range(15):
+            time.sleep(7)  # 7 second intervals
+
+            try:
+                response = requests.get(poll_url, headers=headers, timeout=5.0)
+
+                if response.status_code == 200:
+                    quest_data = response.json()
+                    status = quest_data.get('status')
+
+                    if status == 'done':
+                        # Extract AI response using fallback methods
+                        return self._b4m_extract_response(quest_data)
+
+                    elif status == 'stopped':
+                        self._log("bike4mind quest was stopped")
+                        return None
+
+                    # Continue polling if status is 'running'
+                    self._log(f"bike4mind quest polling: attempt {attempt + 1}/15, status={status}")
+
+                else:
+                    self._log(f"bike4mind poll error: HTTP {response.status_code}")
+
+            except (requests.Timeout, requests.RequestException) as e:
+                self._log(f"bike4mind poll exception: {e}")
+                # Continue polling even on errors
+
+        # Timeout reached
+        print(f"[BIKE4MIND] Timeout: No response after 105 seconds")
+        self._log("bike4mind quest timeout")
+        return None
+
+    def _b4m_extract_response(self, quest_data):
+        """
+        Extract AI response from quest data using multiple fallback methods
+
+        bike4mind API response structure can vary, check all possible locations
+        """
+        # Primary: check replies array
+        if (quest_data.get('replies') and
+            isinstance(quest_data['replies'], list) and
+            len(quest_data['replies']) > 0):
+            return '\n'.join(quest_data['replies'])
+
+        # Fallback 1: check single reply field
+        elif quest_data.get('reply'):
+            return quest_data['reply']
+
+        # Fallback 2: check questMasterReply
+        elif quest_data.get('questMasterReply'):
+            return quest_data['questMasterReply']
+
+        # Fallback 3: check Research Mode results
+        elif (quest_data.get('researchModeResults') and
+              isinstance(quest_data['researchModeResults'], list)):
+            results = [r['response'] for r in quest_data['researchModeResults']
+                      if r.get('response')]
+            if results:
+                return '\n\n'.join(results)
+
+        return None
 
     # =====================================================================
     # STATE 3: SPEAKING - Piper TTS Output
