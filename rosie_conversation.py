@@ -56,7 +56,7 @@ class RosieConversation:
         self.whisper_model_name = os.getenv('WHISPER_MODEL', 'base')
         self.whisper_chunk_duration = int(os.getenv('WHISPER_CHUNK_DURATION', '3'))
 
-        self.ollama_model = os.getenv('OLLAMA_MODEL', 'qwen2.5:0.5b')
+        self.ollama_model = os.getenv('OLLAMA_MODEL', 'llama3.1:8b')
         self.ollama_temperature = float(os.getenv('OLLAMA_TEMPERATURE', '0.7'))
         self.ollama_max_tokens = int(os.getenv('OLLAMA_MAX_TOKENS', '100'))
         self.ollama_url = 'http://localhost:11434/api/generate'
@@ -468,23 +468,27 @@ class RosieConversation:
             else:
                 print(f"[OLLAMA] No summary.txt found")
 
-            # Combine context
-            context = f"Conversation history:\n{listen_content}\n\n"
+            # Build prompt with explicit instruction to use summary details
             if summary_content:
-                context += f"Intelligence summary:\n{summary_content}\n\n"
                 print(f"[OLLAMA] Using bike4mind summary in context")
+                # Use system message format to guide response style
+                prompt = (
+                    f"Conversation:\n{listen_content}\n\n"
+                    f"Context: {summary_content}\n\n"
+                    "Continue the conversation as Robot. Don't say Hello. Make a brief statement (1-2 sentences max). "
+                    "Acknowledge what they're doing based on the context. "
+                    "Make it a statement, not a question. Be warm and natural.\n\n"
+                    "Robot said: "
+                )
             else:
                 print(f"[OLLAMA] No bike4mind summary available yet")
-
-            # Ollama prompt focused on engagement
-            prompt = (
-                f"{context}"
-                "You are Rosie, a friendly conversational robot. The HUMAN just said something to you. "
-                "Look at the Intelligence summary - it tells you important insights about what the human said. "
-                "Respond based on those insights in 2-3 short sentences. Be conversational and natural. "
-                "Use 'I' statements. DO NOT ask 'how can I help' or 'how can I assist'. "
-                "Just respond naturally to what they said."
-            )
+                # Fallback when no summary available
+                prompt = (
+                    f"Conversation history:\n{listen_content}\n\n"
+                    "You are Rosie, a friendly conversational robot. "
+                    "Respond naturally to what the human just said in 2-3 short sentences. "
+                    "Be conversational and use 'I' statements. Keep it brief and natural."
+                )
 
             print(f"[OLLAMA] Total prompt length: {len(prompt)} chars")
             print(f"[OLLAMA] Sending request to Ollama...")

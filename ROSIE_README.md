@@ -232,38 +232,52 @@ development_notes/B4M_API_HOWTO.md  # bike4mind API details
 **Optional (can be set in .env.rosie or environment):**
 - `B4M_USER_ID` - bike4mind user ID (default: 65563f622213b120cd1d9592)
 - `WHISPER_MODEL` - Model size (default: base, options: tiny, base, small, medium, large)
-- `OLLAMA_MODEL` - Ollama model to use (default: qwen2.5:1.5b, see model recommendations below)
+- `OLLAMA_MODEL` - Ollama model to use (default: llama3.1:8b, see model recommendations below)
 
 ### Ollama Model Recommendations
 
-ROSIE's conversational intelligence depends heavily on the Ollama model size. Larger models better understand context from bike4mind summaries.
+ROSIE's conversational intelligence depends heavily on the Ollama model choice. Larger models provide more natural, human-like responses.
 
-**Recommended: qwen2.5:1.5b** (default)
+**Recommended: llama3.1:8b** (default)
+- Size: 4.9 GB
+- VRAM: 5.7 GB (requires 8GB+ GPU)
+- Latency: 0.6-0.8s (excellent!)
+- Quality: **Superior natural conversation** - warm, human-like, contextual
+- Tokens/sec: ~37 on RTX 4070
+- Best for: Natural, engaging conversations with excellent context awareness
+- Note: Meta's flagship conversational model, specifically tuned for dialogue
+
+**Alternative: qwen2.5:1.5b**
 - Size: 986 MB
-- Latency: 0.4-2s (still conversational)
-- Quality: Good context understanding, uses bike4mind insights effectively
-- Best balance of speed and intelligence
+- Latency: 0.4-2s
+- Quality: Good intelligence, less natural phrasing
+- Best for: Lower VRAM systems or when speed is critical
 
 **Minimum: qwen2.5:0.5b**
 - Size: 397 MB
 - Latency: 0.2-1s (very fast)
 - Quality: Basic responses, often ignores context
-- Use only if latency is critical
+- Use only if hardware is very limited
 
-**Better Quality: qwen2.5:3b**
-- Size: ~2GB
-- Latency: 1-3s (slower but acceptable)
-- Quality: Excellent context understanding
-- Best for rich, intelligent conversations
+**Better Quality: qwen2.5:7b** (requires more VRAM)
+- Size: ~4.5 GB
+- Quality: Excellent reasoning and context
+- Trade-off: Less natural than llama3.1:8b but stronger reasoning
 
 **To install a different model:**
 ```bash
-ollama pull qwen2.5:1.5b  # Recommended
-ollama pull qwen2.5:3b    # Better quality
-ollama pull llama3.2:3b   # Alternative, also good
+ollama pull llama3.1:8b   # Recommended (default)
+ollama pull qwen2.5:1.5b  # Alternative for lower VRAM
+ollama pull qwen2.5:3b    # Mid-range option
+ollama pull qwen2.5:7b    # Advanced reasoning
 ```
 
 **To switch models:** Update `OLLAMA_MODEL` in `.env.rosie` or `~/.bashrc`
+
+**GPU Requirements:**
+- llama3.1:8b: Requires 8GB+ VRAM (tested on RTX 4070)
+- qwen2.5:1.5b/3b: Works with 4GB+ VRAM
+- qwen2.5:0.5b: Works with 2GB+ VRAM
 
 ### Audio Configuration
 
