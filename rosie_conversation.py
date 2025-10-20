@@ -20,6 +20,7 @@ import threading
 import time
 import json
 import re
+import argparse
 from enum import Enum
 from pathlib import Path
 import requests
@@ -49,8 +50,15 @@ class RosieConversation:
     Implements a state machine architecture with asynchronous background intelligence.
     """
 
-    def __init__(self):
-        """Initialize ROSIE system with configuration from environment"""
+    def __init__(self, bypass_b4m=False):
+        """Initialize ROSIE system with configuration from environment
+
+        Args:
+            bypass_b4m: If True, disable bike4mind integration (Ollama-only mode)
+        """
+
+        # Store bypass flag
+        self.bypass_b4m = bypass_b4m
 
         # Load configuration from environment
         self.whisper_model_name = os.getenv('WHISPER_MODEL', 'base')
@@ -130,11 +138,14 @@ class RosieConversation:
 
     def _validate_configuration(self):
         """Validate required configuration"""
-        if not self.b4m_api_key:
-            print("WARNING: B4M_API_KEY not set in environment. bike4mind features will be disabled.")
+        if self.bypass_b4m:
+            print("ℹ bike4mind BYPASSED - Running in Ollama-only mode")
+        else:
+            if not self.b4m_api_key:
+                print("WARNING: B4M_API_KEY not set in environment. bike4mind features will be disabled.")
 
-        if not self.b4m_conversation_id:
-            print("WARNING: B4M_OLLAMA_CONVERSATION_ID not set in environment. bike4mind features will be disabled.")
+            if not self.b4m_conversation_id:
+                print("WARNING: B4M_OLLAMA_CONVERSATION_ID not set in environment. bike4mind features will be disabled.")
 
         if not self.piper_model_path or not Path(self.piper_model_path).exists():
             print(f"ERROR: PIPER_MODEL_PATH not found: {self.piper_model_path}")
@@ -551,6 +562,11 @@ class RosieConversation:
         """
         self._log("bike4mind worker started")
 
+        # Check if bike4mind is bypassed
+        if self.bypass_b4m:
+            self._log("bike4mind bypassed, worker disabled")
+            return
+
         # Check if bike4mind is configured
         if not self.b4m_api_key or not self.b4m_conversation_id:
             self._log("bike4mind not configured, worker disabled")
@@ -873,11 +889,23 @@ def signal_handler(sig, frame):
 
 def main():
     """Main entry point"""
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description='ROSIE Conversational AI System',
+        epilog='Example: ./rosie_conversation.py --bypass-b4m'
+    )
+    parser.add_argument(
+        '--bypass-b4m', '-b',
+        action='store_true',
+        help='Bypass bike4mind integration (Ollama-only mode)'
+    )
+    args = parser.parse_args()
+
     # Register signal handler for graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)
 
-    # Create ROSIE instance
-    rosie = RosieConversation()
+    # Create ROSIE instance with bypass flag
+    rosie = RosieConversation(bypass_b4m=args.bypass_b4m)
 
     # Store instance for signal handler
     signal_handler.rosie_instance = rosie

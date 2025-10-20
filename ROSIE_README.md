@@ -150,26 +150,42 @@ Expected output with GPU:
 ### Start the System
 
 ```bash
-# Run ROSIE directly (environment variables from .bashrc are loaded automatically)
+# Run ROSIE with full bike4mind integration (default)
 python3 rosie_conversation.py
+
+# Run ROSIE in Ollama-only mode (bypass bike4mind)
+python3 rosie_conversation.py --bypass-b4m
+# or use short form:
+python3 rosie_conversation.py -b
 
 # Or make it executable and run
 chmod +x rosie_conversation.py
 ./rosie_conversation.py
+
+# View help for all options
+python3 rosie_conversation.py --help
 ```
+
+**Command-Line Options:**
+- `--bypass-b4m` or `-b`: Bypass bike4mind integration (Ollama-only mode)
+  - Faster responses (no background processing)
+  - No internet access for contextual intelligence
+  - Uses only local Ollama for all responses
+  - Ideal for testing, offline use, or when bike4mind is unavailable
 
 **Important**: Ensure your environment variables are exported in `.bashrc` **before** the interactive shell check:
 ```bash
 # In ~/.bashrc, place these BEFORE the "If not running interactively" section:
-export B4M_API_KEY="your_api_key"
-export B4M_OLLAMA_CONVERSATION_ID="your_conversation_id"
-export PIPER_MODEL_PATH="/path/to/model.onnx"
+export B4M_API_KEY="your_api_key"  # Optional if using --bypass-b4m
+export B4M_OLLAMA_CONVERSATION_ID="your_conversation_id"  # Optional if using --bypass-b4m
+export PIPER_MODEL_PATH="/path/to/model.onnx"  # Required
 ```
 
 **Note**:
 - ROSIE clears all conversation files (listen.txt, summary.txt, speak.txt) on startup for a fresh session
-- The system will show warnings if bike4mind API keys are not found
-- Check the console output to verify bike4mind is enabled (look for "[BIKE4MIND]" messages)
+- When using `--bypass-b4m`, bike4mind API keys are not required
+- Without `--bypass-b4m`, the system will show warnings if bike4mind API keys are not found
+- Check the console output to verify mode (look for "[BIKE4MIND]" messages or "bike4mind BYPASSED")
 
 ### Interaction
 
