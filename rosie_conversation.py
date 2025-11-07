@@ -290,19 +290,29 @@ class RosieConversation:
 
     def _whisper_worker(self):
         """
-        Whisper speech-to-text worker thread
+        Whisper speech-to-text worker thread with Voice Activity Detection
 
-        Processes audio from continuous stream and appends to listen.txt.
-        Audio capture continues in background via callback - NO GAPS.
+        Uses VAD to detect when user finishes speaking, then transcribes complete phrases.
+        NO MORE PARTIAL PHRASES!
         """
         self._log("Whisper worker started")
         self._load_whisper_model()
 
+        # Import VAD
+        import webrtcvad
+        vad = webrtcvad.Vad(2)  # Aggressiveness: 0-3 (2 = balanced)
+
         # Start continuous audio stream
         self._start_audio_stream()
 
-        # Process audio buffer every 2 seconds
-        process_interval = 2.0  # seconds
+        # VAD configuration
+        vad_frame_duration = 30  # ms per frame (must be 10, 20, or 30)
+        vad_frames_per_check = int(self.sample_rate * vad_frame_duration / 1000)
+        speech_buffer = []  # Accumulates audio while speaking
+        silence_threshold = 0.5  # seconds of silence to end phrase
+        silence_frames_needed = int(silence_threshold * 1000 / vad_frame_duration)
+        consecutive_silence = 0
+        is_speaking = False
 
         while not self.shutdown_event.is_set():
             current_state = self._get_state()
@@ -310,70 +320,112 @@ class RosieConversation:
             # Only process in LISTENING state
             if current_state == ConversationState.LISTENING:
                 try:
-                    # Wait for audio to accumulate
-                    time.sleep(process_interval)
+                    # Check audio queue every 30ms
+                    time.sleep(vad_frame_duration / 1000.0)
 
                     # Get accumulated audio from queue
                     with self.audio_lock:
                         if len(self.audio_queue) == 0:
                             continue
 
-                        # Concatenate all queued audio chunks
-                        audio_data = np.concatenate(self.audio_queue)
-
-                        # Clear queue (we've grabbed it all)
-                        self.audio_queue.clear()
-
-                    # Check if there's actual speech
-                    audio_level = np.abs(audio_data).max()
-                    if audio_level < 0.01:
-                        continue  # Skip silence
-
-                    # Transcribe with Whisper
-                    result = self.whisper_model.transcribe(
-                        audio_data,
-                        fp16=False,
-                        language='en'
-                    )
-
-                    transcription = result['text'].strip()
-
-                    # Filter out common Whisper hallucinations
-                    if transcription and not self._is_hallucination(transcription):
-                        # Check for wake word BEFORE storing
-                        wake_word_pattern = r'\b(rosie|rose|rosy|rosee)\b'
-                        wake_word_match = re.search(wake_word_pattern, transcription, re.IGNORECASE)
-
-                        if wake_word_match:
-                            # Wake word detected! Set flag and remove it from transcription
-                            with self.wake_word_lock:
-                                self.wake_word_detected = True
-
-                            # Remove wake word from transcription before storing
-                            cleaned_transcription = re.sub(wake_word_pattern, '', transcription, flags=re.IGNORECASE).strip()
-
-                            print(f"[WHISPER] Human: {transcription} (wake word detected and removed)")
-                            self._log(f"Wake word detected in: {transcription}")
-
-                            # Store cleaned version (without wake word)
-                            if cleaned_transcription:  # Only store if there's content left
-                                self._append_to_history(f"Human: {cleaned_transcription}\n")
+                        # Get enough audio for VAD frame
+                        if len(self.audio_queue) > 0:
+                            audio_chunk = self.audio_queue.pop(0)
                         else:
-                            # No wake word, store as-is
-                            self._append_to_history(f"Human: {transcription}\n")
-                            print(f"[WHISPER] Human: {transcription}")
-                            self._log(f"Transcribed: {transcription}")
-                    elif transcription:
-                        # Log filtered hallucinations in debug mode
-                        self._log(f"Filtered hallucination: {transcription}")
+                            continue
+
+                    # Convert to int16 for VAD
+                    audio_int16 = (audio_chunk * 32767).astype(np.int16)
+
+                    # Pad or trim to exact frame size
+                    if len(audio_int16) < vad_frames_per_check:
+                        audio_int16 = np.pad(audio_int16, (0, vad_frames_per_check - len(audio_int16)))
+                    elif len(audio_int16) > vad_frames_per_check:
+                        audio_int16 = audio_int16[:vad_frames_per_check]
+
+                    # Check if this frame contains speech
+                    try:
+                        is_speech = vad.is_speech(audio_int16.tobytes(), self.sample_rate)
+                    except:
+                        continue
+
+                    if is_speech:
+                        # Voice detected!
+                        consecutive_silence = 0
+                        is_speaking = True
+                        speech_buffer.append(audio_chunk)
+                    elif is_speaking:
+                        # Silence while speaking - might be end of phrase
+                        consecutive_silence += 1
+                        speech_buffer.append(audio_chunk)
+
+                        # Check if enough silence to consider phrase complete
+                        if consecutive_silence >= silence_frames_needed:
+                            # Phrase complete! Transcribe it
+                            if len(speech_buffer) > 0:
+                                audio_data = np.concatenate(speech_buffer)
+
+                                # Check if there's actual speech (double-check)
+                                audio_level = np.abs(audio_data).max()
+                                if audio_level > 0.01:
+                                    # Transcribe with Whisper
+                                    result = self.whisper_model.transcribe(
+                                        audio_data,
+                                        fp16=False,
+                                        language='en',
+                                        beam_size=5,
+                                        best_of=5,
+                                        temperature=0.0,
+                                        condition_on_previous_text=False
+                                    )
+
+                                    transcription = result['text'].strip()
+
+                                    # Filter out common Whisper hallucinations
+                                    if transcription and not self._is_hallucination(transcription):
+                                        # Check for wake word BEFORE storing
+                                        wake_word_pattern = r'\b(rosie|rose|rosy|rosee)\b'
+                                        wake_word_match = re.search(wake_word_pattern, transcription, re.IGNORECASE)
+
+                                        if wake_word_match:
+                                            # Wake word detected! Set flag and remove it from transcription
+                                            with self.wake_word_lock:
+                                                self.wake_word_detected = True
+
+                                            # Remove wake word from transcription before storing
+                                            cleaned_transcription = re.sub(wake_word_pattern, '', transcription, flags=re.IGNORECASE).strip()
+
+                                            print(f"[WHISPER] Human: {transcription} (wake word detected and removed)")
+                                            self._log(f"Wake word detected in: {transcription}")
+
+                                            # Store cleaned version (without wake word)
+                                            if cleaned_transcription:
+                                                self._append_to_history(f"Human: {cleaned_transcription}\n")
+                                        else:
+                                            # No wake word, store as-is
+                                            self._append_to_history(f"Human: {transcription}\n")
+                                            print(f"[WHISPER] Human: {transcription}")
+                                            self._log(f"Transcribed: {transcription}")
+                                    elif transcription:
+                                        self._log(f"Filtered hallucination: {transcription}")
+
+                            # Reset for next phrase
+                            speech_buffer = []
+                            consecutive_silence = 0
+                            is_speaking = False
 
                 except Exception as e:
-                    self._log(f"Whisper error: {e}")
+                    self._log(f"Whisper VAD error: {e}")
+                    import traceback
+                    traceback.print_exc()
 
             else:
                 # Clear queue during RESPONDING/SPEAKING (don't transcribe robot speech)
                 with self.audio_lock:
                     self.audio_queue.clear()
+                speech_buffer = []
+                is_speaking = False
+                consecutive_silence = 0
                 time.sleep(0.1)
 
         # Stop audio stream
@@ -509,9 +561,9 @@ class RosieConversation:
             # Build prompt
             prompt = (
                 f"Conversation history:\n{conversation_content}\n\n"
-                "You are Rosie, a friendly conversational robot. "
-                "Respond naturally to what the human just said in 2-3 short sentences. "
-                "Be conversational and use 'I' statements. Keep it brief and natural."
+                "Respond naturally in 1 short sentence. "
+                "If you are referring to things that Robot says, use 'I'"
+                "If you are referring to things that Human says, use 'You'"
             )
 
             print(f"[OLLAMA] Total prompt length: {len(prompt)} chars")
