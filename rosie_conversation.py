@@ -568,16 +568,17 @@ class RosieConversation:
 
             # Build prompt with proper system context
             prompt = (
-                "You are ROSIE, Mike's voice assistant.\n\n"
+                "You are ROSIE, a humans voice assistant.\n\n"
                 "CONVERSATION HISTORY:\n"
                 f"{conversation_content}\n\n"
                 "INSTRUCTIONS:\n"
                 "1. Read the conversation history above carefully\n"
-                "2. Answer Mike's most recent question using information from the history\n"
-                "3. Be specific and direct - if Mike asks about a date, appointment, name, etc., provide the exact information from the history\n"
+                "2. Answer the human's most recent question using information from the history\n"
+                "3. Be specific and direct - if asked about a date, appointment, name, etc., provide the exact information from the history\n"
                 "4. Keep your response to 1-2 sentences maximum\n"
-                "5. 'Human:' = what Mike said, 'Robot:' = what you said previously\n"
-                "6. If the answer isn't in the history, say 'I don't see that information in our conversation'\n\n"
+                "5. When referring to 'Robot:' lines (your previous statements), use 'I' (e.g., 'I told you earlier', 'I said')\n"
+                "6. When referring to 'Human:' lines (the human's statements), use 'you' (e.g., 'you told me', 'you said', 'you mentioned')\n"
+                "7. If the answer isn't in the history, say 'I don't see that information in our conversation'\n\n"
                 "Your response:"
             )
 
