@@ -216,34 +216,40 @@ class RosieConversation:
         return False
 
     def _load_whisper_model(self):
-        """Load Whisper model (lazy loading) with GPU auto-detection and CPU fallback"""
+        """Load faster-whisper model with GPU auto-detection and superior hallucination suppression"""
         if self.whisper_model is None:
-            self._log(f"Loading Whisper model: {self.whisper_model_name}")
+            self._log(f"Loading faster-whisper model: {self.whisper_model_name}")
 
             try:
-                import torch
+                from faster_whisper import WhisperModel
 
                 # Auto-detect best available device
                 device = self._detect_best_device()
-                self._log(f"Using device: {device}")
 
-                # Load model with selected device
-                self.whisper_model = whisper.load_model(
+                # Use float16 with CUDA (now that cuDNN is installed), int8 for CPU
+                compute_type = "float16" if device == "cuda" else "int8"
+
+                self._log(f"Using device: {device}, compute_type: {compute_type}")
+
+                # Load faster-whisper model with optimizations
+                self.whisper_model = WhisperModel(
                     self.whisper_model_name,
-                    device=device
+                    device=device,
+                    compute_type=compute_type,
+                    num_workers=1  # Single worker for real-time
                 )
 
                 if device == "cuda":
-                    print(f"[WHISPER] ✓ Model loaded on GPU (CUDA)")
+                    print(f"[WHISPER] ✓ Faster-Whisper loaded on GPU (CUDA, {compute_type}) - 4-6x faster!")
                 else:
-                    print(f"[WHISPER] ℹ Model loaded on CPU (GPU not available)")
+                    print(f"[WHISPER] ℹ Faster-Whisper loaded on CPU")
 
-                self._log(f"Whisper model loaded successfully on {device}")
+                self._log(f"Faster-Whisper model loaded successfully on {device}")
 
             except Exception as e:
-                print(f"\n[ERROR] Failed to load Whisper model: {e}")
-                print(f"[ERROR] Please check Whisper installation and model availability")
-                self._log(f"Whisper model loading failed: {e}")
+                print(f"\n[ERROR] Failed to load Faster-Whisper model: {e}")
+                print(f"[ERROR] Please check faster-whisper installation and cuDNN")
+                self._log(f"Faster-Whisper model loading failed: {e}")
                 raise
 
     def _detect_best_device(self):
@@ -368,18 +374,20 @@ class RosieConversation:
                                 # Check if there's actual speech (double-check)
                                 audio_level = np.abs(audio_data).max()
                                 if audio_level > 0.01:
-                                    # Transcribe with Whisper
-                                    result = self.whisper_model.transcribe(
+                                    # Transcribe with faster-whisper (superior hallucination suppression)
+                                    segments, info = self.whisper_model.transcribe(
                                         audio_data,
-                                        fp16=False,
                                         language='en',
                                         beam_size=5,
                                         best_of=5,
                                         temperature=0.0,
-                                        condition_on_previous_text=False
+                                        condition_on_previous_text=False,
+                                        vad_filter=True,  # Extra VAD filtering from faster-whisper
+                                        vad_parameters=dict(min_silence_duration_ms=500)
                                     )
 
-                                    transcription = result['text'].strip()
+                                    # Extract text from segments generator
+                                    transcription = ' '.join([segment.text for segment in segments]).strip()
 
                                     # Filter out common Whisper hallucinations
                                     if transcription and not self._is_hallucination(transcription):

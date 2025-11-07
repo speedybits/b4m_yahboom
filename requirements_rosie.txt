@@ -1,7 +1,7 @@
 # ROSIE Conversational AI System Dependencies
 
 # Speech Recognition
-openai-whisper>=20230314
+faster-whisper>=1.0.0  # CTranslate2-optimized Whisper (4-6x faster, superior hallucination suppression)
 sounddevice>=0.4.6
 numpy>=1.24.0
 webrtcvad>=2.0.10  # Voice Activity Detection for better phrase segmentation
