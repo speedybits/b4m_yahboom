@@ -61,7 +61,8 @@ class RosieConversation:
         self.ollama_temperature = float(os.getenv('OLLAMA_TEMPERATURE', '0.7'))  # Default (overridden dynamically)
         self.ollama_max_tokens = int(os.getenv('OLLAMA_MAX_TOKENS', '100'))  # Short, focused responses
         self.ollama_url = 'http://localhost:11434/api/generate'
-        self.context_limit = int(os.getenv('CONTEXT_LIMIT', '6000'))  # Token limit before summarization
+        #self.context_limit = int(os.getenv('CONTEXT_LIMIT', '6000'))  # Token limit before summarization
+        self.context_limit = int(os.getenv('CONTEXT_LIMIT', '1000'))  # Token limit before summarization
 
         # Piper TTS configuration (from .bashrc)
         self.piper_model_path = os.getenv('PIPER_MODEL_PATH')
@@ -559,9 +560,9 @@ class RosieConversation:
                 # Create summary
                 summary = self._summarize_conversation(conversation_content)
                 if summary:
-                    # Replace history with summary
-                    self.history_file.write_text(f"Summary of previous conversation:\n{summary}\n\n")
-                    print(f"[OLLAMA] History replaced with summary ({len(summary)} chars)")
+                    # Replace history with condensed script (no labels, just the script)
+                    self.history_file.write_text(summary)
+                    print(f"[OLLAMA] History replaced with condensed script ({len(summary)} chars)")
                     conversation_content = self.history_file.read_text()
                 else:
                     print(f"[OLLAMA] Warning: Summarization failed, using full context")
@@ -678,9 +679,13 @@ class RosieConversation:
             print(f"[OLLAMA] Creating summary of {len(conversation_text)} chars...")
 
             summary_prompt = (
-                f"Please summarize this conversation, keeping important information only:\n\n"
+                f"Condense this conversation into a shorter script format.\n"
+                f"Keep only important facts (names, dates, appointments, key topics).\n"
+                f"Remove unimportant exchanges and small talk.\n"
+                f"Use the exact same format: 'Human: ...' and 'Robot: ...' lines.\n"
+                f"Do NOT add any labels or explanations - just output the condensed script.\n\n"
                 f"{conversation_text}\n\n"
-                f"Summary:"
+                f"Condensed conversation:"
             )
 
             response = requests.post(
