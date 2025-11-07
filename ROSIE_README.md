@@ -1,53 +1,57 @@
 # ROSIE Conversational AI System
 
-A voice-controlled conversational AI system combining local and cloud-based AI for natural, intelligent conversations.
+A fully local voice-controlled conversational AI system for natural, intelligent conversations.
 
 ## Overview
 
-ROSIE (based on the CONVERSE_B4M_OLLAMA_HYBRID specification) combines:
+ROSIE combines these components for a streamlined conversational experience:
 
-- **Whisper** - Fast speech-to-text (faster-whisper)
-- **Ollama** - Local LLM for immediate responses (<1 second)
-- **bike4mind API** - Cloud-based intelligence with internet access (background, 5-10 seconds)
+- **Whisper** - Fast speech-to-text
+- **Ollama** - Local LLM for intelligent responses (<1 second)
 - **Piper** - High-quality text-to-speech
+- **Keyboard Input** - Spacebar trigger option
 
 ## Architecture
 
-**Non-Blocking Progressive Intelligence Enhancement:**
-- User says "Rosie" → Activates conversation mode
-- Ollama provides immediate response (<1 second)
-- bike4mind activates and analyzes in background (5-10 seconds)
-- Future responses enriched with bike4mind insights
-- Robot "gets smarter" during conversation without blocking
+**Simple, Fully Local Design:**
+- All conversation stored in plain text file
+- Whisper continuously transcribes to `conversation_history.txt`
+- User says "Rosie" → Sends full conversation context to Ollama
+- Ollama responds intelligently using all conversation history
+- Response spoken by Piper and added to conversation history
+- Automatic summarization when context gets too large
 
 **Conversation Lifecycle:**
-- **Before wake word**: Whisper transcribes to listen.txt, bike4mind dormant
-- **"Rosie" detected**: Conversation activates, Ollama responds, bike4mind processes
-- **After robot speaks**: Conversation deactivates automatically
-- **Next conversation**: Requires saying "Rosie" again to reactivate
+- **Continuous listening**: Whisper transcribes everything to conversation_history.txt
+- **Trigger detected**: Say "Rosie" OR press SPACEBAR to activate
+- **Wake word filtered**: "Rosie" removed from stored conversation (spacebar trigger adds nothing)
+- **Response generation**: Full context sent to Ollama for intelligent response
+- **Robot speaks**: Response added to conversation history and spoken via Piper
+- **Automatic context management**: When history too large, Ollama summarizes it
 
-This ensures bike4mind only processes during active conversations, providing both privacy and efficiency.
+This ensures a simple, transparent, fully local conversational AI with no external dependencies.
 
 ### State Machine
 ```
 LISTENING → RESPONDING → SPEAKING → LISTENING
-     ↑                                    ↓
-     └────────────────────────────────────┘
-
-Background: bike4mind worker (independent, asynchronous)
+     ↑                              ↓
+     └──────────────────────────────┘
 ```
 
 ### File-Based Communication
-- `/tmp/listen.txt` - Conversation transcript with speaker attribution (auto-pruned)
-- `/tmp/summary.txt` - bike4mind's intelligent insights (updated asynchronously)
-- `/tmp/speak.txt` - Temporary TTS output buffer
+- `conversation_history.txt` - Complete conversation transcript (human and robot, stored in script directory)
+- `speak.txt` - Temporary TTS output buffer (stored in script directory)
 
-### Automatic Conversation Pruning
-- **Purpose**: Prevent listen.txt from growing unbounded during long conversations
-- **Limit**: Keep only last 100 words in listen.txt
-- **Action**: After each robot response, trim to last 100 words if exceeded
-- **Impact**: Bounded memory usage, faster processing, no loss of context (summary.txt retains insights)
-- **Configurable**: Adjust MAX_WORDS in code or .env.rosie
+### Intelligent Context Management
+- **Purpose**: Maintain conversation context without exceeding LLM limits
+- **Storage**: Plain text conversation history in script directory (`conversation_history.txt`)
+- **Persistence**: Conversation survives reboots, restarts, and system shutdowns
+- **Continuous Memory**: ROSIE continues previous conversations on startup (no clearing)
+- **Summarization**: When context approaches token limit, Ollama automatically summarizes
+- **Process**: Piper says "Let me think" → Ollama creates summary → History replaced with summary
+- **Token limit**: Configurable limit (default: 6000 tokens for llama3.1:8b)
+- **Reset**: Say "Rosie, forget everything" or delete `conversation_history.txt` to start fresh
+- **Transparency**: All conversation visible in plain text file
 
 ## Hardware Requirements
 
@@ -109,9 +113,9 @@ Expected output with GPU:
    ~/.local/bin/piper --version
    ```
 
-6. **Audio dependencies**
+6. **Audio and input dependencies**
    ```bash
-   pip install sounddevice numpy requests python-dotenv
+   pip install sounddevice numpy requests python-dotenv pynput
    ```
 
 ### Setup
@@ -120,8 +124,6 @@ Expected output with GPU:
 
    Add these to your ~/.bashrc file:
    ```bash
-   export B4M_API_KEY="your_api_key_here"
-   export B4M_OLLAMA_CONVERSATION_ID="your_conversation_session_id_here"
    export PIPER_MODEL_PATH="/path/to/your/piper/model.onnx"
    export PIPER_CONFIG_PATH="/path/to/your/piper/model.onnx.json"
    ```
@@ -139,8 +141,6 @@ Expected output with GPU:
 
 3. **Verify environment:**
    ```bash
-   echo $B4M_API_KEY
-   echo $B4M_OLLAMA_CONVERSATION_ID
    echo $PIPER_MODEL_PATH
    echo $PIPER_CONFIG_PATH
    ```
@@ -150,13 +150,8 @@ Expected output with GPU:
 ### Start the System
 
 ```bash
-# Run ROSIE with full bike4mind integration (default)
+# Run ROSIE
 python3 rosie_conversation.py
-
-# Run ROSIE in Ollama-only mode (bypass bike4mind)
-python3 rosie_conversation.py --bypass-b4m
-# or use short form:
-python3 rosie_conversation.py -b
 
 # Or make it executable and run
 chmod +x rosie_conversation.py
@@ -166,56 +161,76 @@ chmod +x rosie_conversation.py
 python3 rosie_conversation.py --help
 ```
 
-**Command-Line Options:**
-- `--bypass-b4m` or `-b`: Bypass bike4mind integration (Ollama-only mode)
-  - Faster responses (no background processing)
-  - No internet access for contextual intelligence
-  - Uses only local Ollama for all responses
-  - Ideal for testing, offline use, or when bike4mind is unavailable
-
 **Important**: Ensure your environment variables are exported in `.bashrc` **before** the interactive shell check:
 ```bash
 # In ~/.bashrc, place these BEFORE the "If not running interactively" section:
-export B4M_API_KEY="your_api_key"  # Optional if using --bypass-b4m
-export B4M_OLLAMA_CONVERSATION_ID="your_conversation_id"  # Optional if using --bypass-b4m
 export PIPER_MODEL_PATH="/path/to/model.onnx"  # Required
+export PIPER_CONFIG_PATH="/path/to/model.onnx.json"  # Required
 ```
 
 **Note**:
-- ROSIE clears all conversation files (listen.txt, summary.txt, speak.txt) on startup for a fresh session
-- When using `--bypass-b4m`, bike4mind API keys are not required
-- Without `--bypass-b4m`, the system will show warnings if bike4mind API keys are not found
-- Check the console output to verify mode (look for "[BIKE4MIND]" messages or "bike4mind BYPASSED")
+- ROSIE preserves conversation_history.txt on startup (continues previous conversations)
+- All conversation is stored in plain text in the script directory (`conversation_history.txt`)
+- Conversation persists across reboots and restarts
+- To start fresh: Delete `conversation_history.txt` or say "Rosie, forget everything"
+- Check the console output to monitor conversation flow
 
 ### Interaction
 
 1. **System starts** and begins listening
-2. **Say "Rosie"** to activate conversation
-3. **Speak your question** (wake word is automatically removed)
-4. **Rosie responds immediately** with Ollama
-5. **bike4mind enriches** context in background during active conversation
-6. **Conversation deactivates** after Rosie finishes speaking
-7. **Repeat step 2** - Say "Rosie" again for next conversation turn
+2. **Speak naturally** - Everything transcribed to conversation_history.txt
+3. **Trigger ROSIE** - Say "Rosie" OR press SPACEBAR to get a response
+4. **Rosie processes** entire conversation context and responds intelligently
+5. **Response is spoken** and added to conversation history
+6. **Continue speaking** - Conversation context preserved
+7. **Trigger again** - Say "Rosie" or press SPACEBAR whenever you want another response
 
-**Note**: Each conversation turn requires saying "Rosie" to activate. Speech without the wake word is transcribed to listen.txt but not processed by bike4mind.
+**Note**: All speech is transcribed continuously. Two ways to trigger Ollama response:
+- **Voice**: Say "Rosie" (wake word filtered from history)
+- **Keyboard**: Press SPACEBAR (silent trigger, adds nothing to history)
 
 ### Example Conversation
 
 ```
-User: "Rosie, what's the weather like today?"
-[Conversation activates]
-Rosie: "I am thinking about it." [<1 second, Ollama]
-[Background: bike4mind fetches real weather data... 5-10 seconds]
-[Conversation deactivates after Rosie speaks]
+User: "My dog's name is Luke"
+[Transcribed to conversation_history.txt]
 
-User: "What about that weather?" [Transcribed but ignored - no "Rosie"]
-[bike4mind dormant, no processing]
+User: "Did you hear what I said?" [presses SPACEBAR]
+[Spacebar detected, full context sent to Ollama]
+Rosie: "Yes! You told me your dog's name is Luke. That's a wonderful name!" [<1 second]
+[Response added to conversation_history.txt]
 
-User: "Rosie, what about that weather?"
-[Conversation activates again]
-Rosie: "Based on current conditions, it's 72°F and partly cloudy,
-       with rain expected this evening." [<1 second, now with bike4mind data]
-[Conversation deactivates]
+User: "He's three years old"
+[Transcribed to conversation_history.txt]
+
+User: "Rosie, tell me about my dog"
+[Wake word detected and filtered, full context sent to Ollama]
+Rosie: "Your dog Luke is three years old. That's a great age!" [<1 second]
+
+User: "What's his breed?" [presses SPACEBAR]
+[Silent spacebar trigger]
+Rosie: "I don't recall you mentioning his breed yet. What breed is Luke?" [<1 second]
+
+[If context gets too large...]
+Rosie: "Let me think" [Ollama summarizes conversation history]
+[conversation_history.txt replaced with summary, conversation continues]
+```
+
+### Memory Reset
+
+To clear all conversation history (two methods):
+
+**Method 1: Voice command**
+```
+User: "Rosie, forget everything"
+[MEMORY] Reset command detected! Clearing conversation history...
+[MEMORY] Conversation history cleared. Starting fresh.
+```
+
+**Method 2: Delete the file**
+```bash
+rm conversation_history.txt
+# Next ROSIE launch will start with empty history
 ```
 
 ### Shutdown
@@ -228,11 +243,12 @@ Press **CTRL+C** for graceful shutdown (100-500ms response time).
 rosie_conversation.py           # Main application
 verify_gpu_setup.py             # GPU verification utility
 test_ollama_latency.py          # Ollama performance testing
+test_new_rosie.py               # Validation test suite
 .env.rosie.example              # Configuration template
 .env.rosie                      # Your configuration (not committed)
 ROSIE_README.md                 # This file (includes GPU troubleshooting)
-CONVERSE_B4M_OLLAMA_HYBRID.md   # Full specification
-development_notes/B4M_API_HOWTO.md  # bike4mind API details
+conversation_history.txt        # Plain text conversation history (not committed)
+speak.txt                       # Temporary TTS buffer (not committed)
 ```
 
 ## Configuration
@@ -240,15 +256,15 @@ development_notes/B4M_API_HOWTO.md  # bike4mind API details
 ### Environment Variables
 
 **Required (set in ~/.bashrc):**
-- `B4M_API_KEY` - Your bike4mind API key
-- `B4M_OLLAMA_CONVERSATION_ID` - Session ID for Ollama conversations (must exist in your bike4mind account)
 - `PIPER_MODEL_PATH` - Path to Piper voice model (.onnx file)
 - `PIPER_CONFIG_PATH` - Path to Piper voice config (.onnx.json file)
 
 **Optional (can be set in .env.rosie or environment):**
-- `B4M_USER_ID` - bike4mind user ID (default: 65563f622213b120cd1d9592)
 - `WHISPER_MODEL` - Model size (default: base, options: tiny, base, small, medium, large)
 - `OLLAMA_MODEL` - Ollama model to use (default: llama3.1:8b, see model recommendations below)
+- `CONTEXT_LIMIT` - Token limit before summarization (default: 6000)
+- `HISTORY_FILE` - Path to conversation history (default: ./conversation_history.txt)
+- `SPEAK_FILE` - Path to TTS buffer (default: ./speak.txt)
 
 ### Ollama Model Recommendations
 
@@ -309,37 +325,44 @@ ollama pull qwen2.5:7b    # Advanced reasoning
 
 ### Worker Threads
 
-1. **WhisperWorker** - Continuous speech-to-text (pauses during robot speech)
-2. **WakeWordDetector** - Monitors for "Rosie" trigger and activates conversation
-3. **OllamaResponder** - Generates immediate responses
-4. **PiperSpeaker** - Text-to-speech output
-5. **Bike4mindWorker** - Background intelligence (activates only after wake word detected)
+1. **WhisperWorker** - Continuous speech-to-text to conversation_history.txt
+2. **WakeWordDetector** - Monitors for "Rosie" trigger, spacebar press, and "forget everything" command
+3. **KeyboardListener** - Detects spacebar presses for silent activation
+4. **OllamaResponder** - Generates responses using full conversation context
+5. **PiperSpeaker** - Text-to-speech output
 
 ### Conversation Flow
 
 ```
-Human speaks → Whisper → "Human said: [text]" → listen.txt
+Human speaks → Whisper → Append to conversation_history.txt
                                 ↓
+                    "Rosie, forget everything"?
+                                ↓ YES
+                    Clear conversation_history.txt → Start fresh
+                                ↓ NO
                          "Rosie" detected?
                                 ↓ YES
-                         1. Activate conversation flag (conversation_active = True)
-                         2. Ollama reads:
-                            - listen.txt (conversation)
-                            - summary.txt (if available)
+                         1. Remove "Rosie" from conversation_history.txt
+                         2. Check if context > CONTEXT_LIMIT tokens
+                                ↓ YES
+                            Piper: "Let me think"
+                            Ollama summarizes conversation_history.txt
+                            Replace file with summary
+                                ↓ NO (or after summarization)
+                         3. Send entire conversation_history.txt to Ollama
+                         4. Ollama generates response based on full context
+                         5. Append response to conversation_history.txt
+                         6. Write response to speak.txt
                                 ↓
-                         Generate response → speak.txt
+                         Piper speaks response
                                 ↓
-                         Piper speaks → "Robot said: [response]" → listen.txt
-                                ↓
-                         Deactivate conversation (conversation_active = False)
-                                ↓
-                         Resume listening (requires "Rosie" for next turn)
+                         Resume listening (all speech continuously transcribed)
 
-Background (only while conversation_active = True):
-  listen.txt changes → bike4mind API → summary.txt (5-10s later)
-
-After deactivation:
-  Human speech transcribed but bike4mind dormant until next "Rosie"
+Context Management:
+  - All conversation in plain text: conversation_history.txt (script directory)
+  - Persists across reboots (not in /tmp)
+  - Automatic summarization when approaching token limit
+  - Transparent, simple, fully local
 ```
 
 ## Troubleshooting
@@ -397,12 +420,11 @@ sudo systemctl restart ollama
 - Test: `ollama run qwen2.5:0.5b "Hello"`
 - Verify GPU usage: `python3 test_ollama_latency.py`
 
-### bike4mind errors
-- Verify API key is set: `echo $B4M_API_KEY`
-- Verify conversation ID is set: `echo $B4M_OLLAMA_CONVERSATION_ID`
-- Check conversation ID is valid (must be an existing session in your bike4mind account)
-- bike4mind uses quest-based polling (7 second intervals, 105 second timeout)
-- System continues working with Ollama-only if bike4mind fails or times out
+### Context management issues
+- Conversation history stored in script directory (`conversation_history.txt`)
+- System automatically summarizes when approaching token limit
+- Manual reset: Say "Rosie, forget everything"
+- Check file with: `cat conversation_history.txt` (from script directory)
 
 ## Performance
 
@@ -410,7 +432,6 @@ sudo systemctl restart ollama
 
 - **Whisper transcription**: ~1-2 seconds per audio chunk
 - **Ollama response**: ~400-600ms average (✓ meets <1s requirement)
-- **bike4mind latency**: 5-10 seconds (background, asynchronous)
 - **GPU Memory**: ~2-3GB VRAM (Whisper + Ollama models)
 - **System Memory**: ~1-2GB RAM
 
@@ -418,7 +439,6 @@ sudo systemctl restart ollama
 
 - **Whisper transcription**: ~3-5 seconds per audio chunk (2-3x slower)
 - **Ollama response**: ~2-3 seconds average (slower but functional)
-- **bike4mind latency**: 5-10 seconds (background, asynchronous)
 - **CPU Usage**: High during inference
 - **System Memory**: ~2-3GB RAM
 
@@ -426,14 +446,9 @@ sudo systemctl restart ollama
 
 ## Security
 
-- **Never commit** `.env.rosie` to git (contains API keys)
-- API keys stored in environment variables only
-- HTTPS used for all bike4mind API calls
-
-## Reference
-
-- **Full Specification**: [CONVERSE_B4M_OLLAMA_HYBRID.md](CONVERSE_B4M_OLLAMA_HYBRID.md)
-- **bike4mind API**: [development_notes/B4M_API_HOWTO.md](development_notes/B4M_API_HOWTO.md)
+- **Never commit** `.env.rosie` to git
+- All processing fully local (no external API calls)
+- Conversation history stored only on local filesystem
 
 ## License
 

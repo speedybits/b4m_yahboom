@@ -137,6 +137,10 @@ conversation.txt
 response.txt
 prompts/
 
+# ROSIE conversation files (contain private conversation data)
+conversation_history.txt
+speak.txt
+
 # Unused/temporary files directory
 unused/
 .env.rosie

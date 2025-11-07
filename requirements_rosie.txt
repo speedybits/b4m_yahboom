@@ -11,6 +11,9 @@ requests>=2.31.0
 # Configuration
 python-dotenv>=1.0.0
 
+# Keyboard input for spacebar trigger
+pynput>=1.7.6
+
 # Piper TTS is installed separately as a system binary
 # Installation: https://github.com/rhasspy/piper
 

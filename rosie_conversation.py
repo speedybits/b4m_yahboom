@@ -31,7 +31,7 @@ from dotenv import load_dotenv
 
 # Load optional configuration from .env file (only if variables not already set)
 # Environment variables from .bashrc always take precedence
-env_file = Path(__file__).parent / '.env.rosie.example'
+env_file = Path(__file__).parent / '.env.rosie'
 if env_file.exists():
     load_dotenv(env_file, override=False)
 
@@ -47,18 +47,11 @@ class RosieConversation:
     """
     Main ROSIE Conversational AI System
 
-    Implements a state machine architecture with asynchronous background intelligence.
+    Simplified architecture with plain text conversation history.
     """
 
-    def __init__(self, bypass_b4m=False):
-        """Initialize ROSIE system with configuration from environment
-
-        Args:
-            bypass_b4m: If True, disable bike4mind integration (Ollama-only mode)
-        """
-
-        # Store bypass flag
-        self.bypass_b4m = bypass_b4m
+    def __init__(self):
+        """Initialize ROSIE system with configuration from environment"""
 
         # Load configuration from environment
         self.whisper_model_name = os.getenv('WHISPER_MODEL', 'base')
@@ -68,33 +61,23 @@ class RosieConversation:
         self.ollama_temperature = float(os.getenv('OLLAMA_TEMPERATURE', '0.7'))
         self.ollama_max_tokens = int(os.getenv('OLLAMA_MAX_TOKENS', '100'))
         self.ollama_url = 'http://localhost:11434/api/generate'
-
-        # bike4mind API configuration (from .bashrc)
-        self.b4m_api_key = os.getenv('B4M_API_KEY')
-        self.b4m_conversation_id = os.getenv('B4M_OLLAMA_CONVERSATION_ID')
-        self.b4m_user_id = os.getenv('B4M_USER_ID', '65563f622213b120cd1d9592')
-        self.b4m_url = 'https://app.bike4mind.com/api/ai/llm'
+        self.context_limit = int(os.getenv('CONTEXT_LIMIT', '6000'))  # Token limit before summarization
 
         # Piper TTS configuration (from .bashrc)
         self.piper_model_path = os.getenv('PIPER_MODEL_PATH')
         self.piper_config_path = os.getenv('PIPER_CONFIG_PATH')
 
-        # File paths
-        self.listen_file = Path(os.getenv('LISTEN_FILE', '/tmp/listen.txt'))
-        self.summary_file = Path(os.getenv('SUMMARY_FILE', '/tmp/summary.txt'))
-        self.speak_file = Path(os.getenv('SPEAK_FILE', '/tmp/speak.txt'))
+        # File paths (default to script directory)
+        script_dir = Path(__file__).parent
+        self.history_file = Path(os.getenv('HISTORY_FILE', script_dir / 'conversation_history.txt'))
+        self.speak_file = Path(os.getenv('SPEAK_FILE', script_dir / 'speak.txt'))
 
         # Conversation settings
-        self.max_words = int(os.getenv('MAX_WORDS', '100'))
         self.debug = int(os.getenv('DEBUG', '0')) == 1
 
         # State machine
         self.state = ConversationState.LISTENING
         self.state_lock = threading.Lock()
-
-        # Conversation activation flag (for edge detection)
-        self.conversation_active = False
-        self.conversation_lock = threading.Lock()
 
         # Shutdown event for graceful termination
         self.shutdown_event = threading.Event()
@@ -102,7 +85,6 @@ class RosieConversation:
         # Threads
         self.whisper_thread = None
         self.wake_word_thread = None
-        self.b4m_worker_thread = None
 
         # Audio configuration for continuous streaming
         self.sample_rate = 16000
@@ -114,6 +96,10 @@ class RosieConversation:
 
         # Whisper model (loaded lazily)
         self.whisper_model = None
+
+        # Wake word detection flag (set by Whisper when wake word detected)
+        self.wake_word_detected = False
+        self.wake_word_lock = threading.Lock()
 
         # Initialize files
         self._initialize_files()
@@ -129,24 +115,29 @@ class RosieConversation:
             print(f"[{time.strftime('%H:%M:%S')}] {message}")
 
     def _initialize_files(self):
-        """Initialize conversation files - clear all temp files at startup"""
-        # Clear all conversation files for fresh start
-        for file_path in [self.listen_file, self.summary_file, self.speak_file]:
-            file_path.write_text('')
+        """Initialize conversation files - ensure they exist"""
+        # Create files if they don't exist (but don't clear existing content)
+        if not self.history_file.exists():
+            self.history_file.write_text('')
+            print("Created new conversation_history.txt")
+        else:
+            # Load existing conversation
+            existing_content = self.history_file.read_text()
+            if existing_content:
+                print(f"Loaded existing conversation history ({len(existing_content)} chars)")
+            else:
+                print("conversation_history.txt exists but is empty")
 
-        print("Conversation files cleared and ready for new session.")
+        # Always clear speak file (temporary buffer)
+        self.speak_file.write_text('')
+
+    def _estimate_token_count(self, text):
+        """Estimate token count (rough approximation: 1 token ≈ 0.75 words)"""
+        words = len(text.split())
+        return int(words * 1.3)  # Conservative estimate
 
     def _validate_configuration(self):
         """Validate required configuration"""
-        if self.bypass_b4m:
-            print("ℹ bike4mind BYPASSED - Running in Ollama-only mode")
-        else:
-            if not self.b4m_api_key:
-                print("WARNING: B4M_API_KEY not set in environment. bike4mind features will be disabled.")
-
-            if not self.b4m_conversation_id:
-                print("WARNING: B4M_OLLAMA_CONVERSATION_ID not set in environment. bike4mind features will be disabled.")
-
         if not self.piper_model_path or not Path(self.piper_model_path).exists():
             print(f"ERROR: PIPER_MODEL_PATH not found: {self.piper_model_path}")
             print("Please set PIPER_MODEL_PATH in ~/.bashrc")
@@ -166,20 +157,6 @@ class RosieConversation:
             print(f"\n[STATE] {old_state.name} → {new_state.name}")
             self._log(f"State transition: {old_state.name} -> {new_state.name}")
 
-    def _get_conversation_active(self):
-        """Thread-safe conversation_active getter"""
-        with self.conversation_lock:
-            return self.conversation_active
-
-    def _set_conversation_active(self, value):
-        """Thread-safe conversation_active setter with edge detection"""
-        with self.conversation_lock:
-            old_value = self.conversation_active
-            self.conversation_active = value
-            edge_detected = (old_value != value)
-            self._log(f"Conversation active: {old_value} -> {value} (edge: {edge_detected})")
-            return edge_detected, old_value, value
-
     # =====================================================================
     # STATE 1: LISTENING - Whisper STT and Wake Word Detection
     # =====================================================================
@@ -196,9 +173,10 @@ class RosieConversation:
             r'channel',
             r'like.*comment',
             r'bell icon',
-            r'thank you for watching',
+            r'thank(s| you) for watching',
             r'幕',  # Chinese characters (common in training data)
             r'字幕',
+            r'살아',  # Korean characters
             r'CC',
             r'\[.*?\]',  # Brackets like [Music], [Applause]
             r'♪',  # Music notes
@@ -214,13 +192,26 @@ class RosieConversation:
             if re.search(pattern, text_lower):
                 return True
 
-        # Check for very short transcriptions with non-alphabetic characters
-        if len(text) < 5 and not text.isalpha():
+        # Check for very short transcriptions (single punctuation or short nonsense)
+        if len(text.strip()) <= 2:
             return True
 
         # Check for repeated punctuation (often hallucination)
         if re.search(r'[.!?]{3,}', text):
             return True
+
+        # Check for gibberish - high ratio of non-ASCII or mixed scripts
+        non_ascii_count = sum(1 for c in text if ord(c) > 127)
+        if len(text) > 0 and (non_ascii_count / len(text)) > 0.3:
+            return True
+
+        # Check for very low ratio of common English words
+        common_words = ['the', 'is', 'are', 'was', 'were', 'a', 'an', 'to', 'of', 'in', 'on', 'for', 'with', 'you', 'i', 'me', 'my', 'your']
+        words = text_lower.split()
+        if len(words) > 5:  # Only check longer phrases
+            common_word_count = sum(1 for word in words if word in common_words)
+            if common_word_count == 0:
+                return True
 
         return False
 
@@ -349,11 +340,29 @@ class RosieConversation:
 
                     # Filter out common Whisper hallucinations
                     if transcription and not self._is_hallucination(transcription):
-                        # Append to listen.txt with "Human said:" prefix
-                        self._append_to_listen_file(f"Human said: {transcription}")
-                        # Always print transcriptions to console
-                        print(f"[WHISPER] Human said: {transcription}")
-                        self._log(f"Transcribed: {transcription}")
+                        # Check for wake word BEFORE storing
+                        wake_word_pattern = r'\b(rosie|rose|rosy|rosee)\b'
+                        wake_word_match = re.search(wake_word_pattern, transcription, re.IGNORECASE)
+
+                        if wake_word_match:
+                            # Wake word detected! Set flag and remove it from transcription
+                            with self.wake_word_lock:
+                                self.wake_word_detected = True
+
+                            # Remove wake word from transcription before storing
+                            cleaned_transcription = re.sub(wake_word_pattern, '', transcription, flags=re.IGNORECASE).strip()
+
+                            print(f"[WHISPER] Human: {transcription} (wake word detected and removed)")
+                            self._log(f"Wake word detected in: {transcription}")
+
+                            # Store cleaned version (without wake word)
+                            if cleaned_transcription:  # Only store if there's content left
+                                self._append_to_history(f"Human: {cleaned_transcription}\n")
+                        else:
+                            # No wake word, store as-is
+                            self._append_to_history(f"Human: {transcription}\n")
+                            print(f"[WHISPER] Human: {transcription}")
+                            self._log(f"Transcribed: {transcription}")
                     elif transcription:
                         # Log filtered hallucinations in debug mode
                         self._log(f"Filtered hallucination: {transcription}")
@@ -389,24 +398,33 @@ class RosieConversation:
         """Stop continuous audio capture stream"""
         if self.audio_stream is not None:
             self._log("Stopping audio stream")
-            self.audio_stream.stop()
-            self.audio_stream.close()
+            try:
+                self.audio_stream.stop()
+            except Exception as e:
+                self._log(f"Error stopping stream: {e}")
+
+            try:
+                self.audio_stream.close()
+            except Exception as e:
+                self._log(f"Error closing stream: {e}")
+
             self.audio_stream = None
             self._log("Audio stream stopped")
 
-    def _append_to_listen_file(self, text):
-        """Append text to listen.txt (thread-safe)"""
+    def _append_to_history(self, text):
+        """Append text to conversation_history.txt (thread-safe)"""
         try:
-            with open(self.listen_file, 'a') as f:
-                f.write(text + ' ')
+            with open(self.history_file, 'a') as f:
+                f.write(text)
         except Exception as e:
-            self._log(f"Error writing to listen.txt: {e}")
+            self._log(f"Error writing to conversation_history.txt: {e}")
 
     def _wake_word_detector(self):
         """
         Wake word detection worker thread
 
-        Monitors listen.txt for "Rosie" and activates conversation mode.
+        Monitors wake_word_detected flag and triggers response.
+        Flag is set by Whisper when wake word detected.
         Active only during LISTENING state.
         """
         self._log("Wake word detector started")
@@ -417,32 +435,32 @@ class RosieConversation:
             # Only active in LISTENING state
             if current_state == ConversationState.LISTENING:
                 try:
-                    # Read listen.txt
-                    content = self.listen_file.read_text()
+                    # Check if wake word flag was set by Whisper
+                    with self.wake_word_lock:
+                        if self.wake_word_detected:
+                            # Reset flag
+                            self.wake_word_detected = False
 
-                    # Check if "Rosie" or common variations appear (case-insensitive)
-                    # Whisper may transcribe as: Rosie, Rose, Rosy, Rosee
-                    wake_word_pattern = r'\b(rosie|rose|rosy|rosee)\b'
-                    match = re.search(wake_word_pattern, content, re.IGNORECASE)
+                            # Always print wake word detection to console
+                            print(f"\n[WAKE WORD] Detected! Processing...")
+                            self._log(f"Wake word flag detected!")
 
-                    if match:
-                        detected_word = match.group(0)
-                        # Always print wake word detection to console
-                        print(f"\n[WAKE WORD] '{detected_word}' detected! Activating conversation...")
-                        self._log(f"Wake word '{detected_word}' detected!")
+                            # Check for memory reset command in recent history
+                            content = self.history_file.read_text()
+                            forget_pattern = r'\b(forget everything|clear memory|reset memory)\b'
+                            forget_match = re.search(forget_pattern, content, re.IGNORECASE)
 
-                        # Activate conversation (edge detection)
-                        edge_detected, _, _ = self._set_conversation_active(True)
+                            if forget_match:
+                                print(f"\n[MEMORY] Reset command detected! Clearing conversation history...")
+                                self.history_file.write_text('')
+                                print(f"[MEMORY] Conversation history cleared. Starting fresh.")
+                                continue
 
-                        # Transition to RESPONDING state
-                        self._set_state(ConversationState.RESPONDING)
+                            # Transition to RESPONDING state
+                            self._set_state(ConversationState.RESPONDING)
 
-                        # Remove wake word from listen.txt (all variations)
-                        cleaned_content = re.sub(wake_word_pattern, '', content, flags=re.IGNORECASE)
-                        self.listen_file.write_text(cleaned_content)
-
-                        # Trigger Ollama response (in new thread to avoid blocking)
-                        threading.Thread(target=self._ollama_response, daemon=True).start()
+                            # Trigger Ollama response (in new thread to avoid blocking)
+                            threading.Thread(target=self._ollama_response, daemon=True).start()
 
                 except Exception as e:
                     self._log(f"Wake word detection error: {e}")
@@ -458,50 +476,48 @@ class RosieConversation:
 
     def _ollama_response(self):
         """
-        Ollama immediate response generation
+        Ollama response generation using full conversation context
 
-        Generates response in <1 second using local Ollama.
-        Primary goal: Keep the human engaged and talking.
+        Automatically summarizes context if it exceeds token limit.
         """
         print(f"[OLLAMA] Processing started...")
         self._log("Ollama processing started")
 
         try:
-            # Read listen.txt (conversation history)
-            listen_content = self.listen_file.read_text()
-            print(f"[OLLAMA] Read listen.txt: {len(listen_content)} chars")
+            # Read conversation history
+            conversation_content = self.history_file.read_text()
+            print(f"[OLLAMA] Read conversation_history.txt: {len(conversation_content)} chars")
 
-            # Read summary.txt if it exists (may be stale)
-            summary_content = ""
-            if self.summary_file.exists():
-                summary_content = self.summary_file.read_text()
-                print(f"[OLLAMA] Read summary.txt: {len(summary_content)} chars")
-            else:
-                print(f"[OLLAMA] No summary.txt found")
+            # Check if context exceeds limit - if so, summarize first
+            token_count = self._estimate_token_count(conversation_content)
+            print(f"[OLLAMA] Estimated tokens: {token_count} (limit: {self.context_limit})")
 
-            # Build prompt with explicit instruction to use summary details
-            if summary_content:
-                print(f"[OLLAMA] Using bike4mind summary in context")
-                # Use system message format to guide response style
-                prompt = (
-                    f"Conversation:\n{listen_content}\n\n"
-                    f"Context: {summary_content}\n\n"
-                    "Continue the conversation as Robot. Don't say Hello. Make a brief statement (1-2 sentences max). "
-                    "Acknowledge what they're doing based on the context. "
-                    "Make it a statement, not a question. Be warm and natural.\n\n"
-                    "Robot said: "
-                )
-            else:
-                print(f"[OLLAMA] No bike4mind summary available yet")
-                # Fallback when no summary available
-                prompt = (
-                    f"Conversation history:\n{listen_content}\n\n"
-                    "You are Rosie, a friendly conversational robot. "
-                    "Respond naturally to what the human just said in 2-3 short sentences. "
-                    "Be conversational and use 'I' statements. Keep it brief and natural."
-                )
+            if token_count > self.context_limit:
+                print(f"[OLLAMA] Context exceeds limit! Summarizing...")
+                self._speak_immediately("Let me think")
+
+                # Create summary
+                summary = self._summarize_conversation(conversation_content)
+                if summary:
+                    # Replace history with summary
+                    self.history_file.write_text(f"Summary of previous conversation:\n{summary}\n\n")
+                    print(f"[OLLAMA] History replaced with summary ({len(summary)} chars)")
+                    conversation_content = self.history_file.read_text()
+                else:
+                    print(f"[OLLAMA] Warning: Summarization failed, using full context")
+
+            # Build prompt
+            prompt = (
+                f"Conversation history:\n{conversation_content}\n\n"
+                "You are Rosie, a friendly conversational robot. "
+                "Respond naturally to what the human just said in 2-3 short sentences. "
+                "Be conversational and use 'I' statements. Keep it brief and natural."
+            )
 
             print(f"[OLLAMA] Total prompt length: {len(prompt)} chars")
+            print(f"\n[OLLAMA] ===== PROMPT BEING SENT =====")
+            print(prompt)
+            print(f"[OLLAMA] ===== END PROMPT =====\n")
             print(f"[OLLAMA] Sending request to Ollama...")
 
             # Call Ollama API
@@ -548,226 +564,69 @@ class RosieConversation:
             self._log(f"Ollama error: {e}")
             self._set_state(ConversationState.LISTENING)
 
-    # =====================================================================
-    # BACKGROUND: bike4mind Intelligent Analysis
-    # =====================================================================
-
-    def _b4m_worker(self):
+    def _summarize_conversation(self, conversation_text):
         """
-        bike4mind background worker with edge detection
+        Summarize conversation using Ollama
 
-        Monitors conversation_active flag for state changes.
-        Processes conversation once per activation (False -> True edge).
-        Operates independently, never blocks main conversation loop.
+        Returns summary string or None on failure
         """
-        self._log("bike4mind worker started")
-
-        # Check if bike4mind is bypassed
-        if self.bypass_b4m:
-            self._log("bike4mind bypassed, worker disabled")
-            return
-
-        # Check if bike4mind is configured
-        if not self.b4m_api_key or not self.b4m_conversation_id:
-            self._log("bike4mind not configured, worker disabled")
-            return
-
-        last_state = False
-
-        while not self.shutdown_event.is_set():
-            current_state = self._get_conversation_active()
-
-            # Edge detection: False -> True transition
-            if not last_state and current_state:
-                # Always print bike4mind activation to console
-                print(f"\n[BIKE4MIND] Background analysis triggered...")
-                self._log("bike4mind activation edge detected!")
-
-                # Process conversation (one-shot per activation)
-                threading.Thread(target=self._b4m_process, daemon=True).start()
-
-            last_state = current_state
-
-            # Check every 100ms
-            time.sleep(0.1)
-
-        self._log("bike4mind worker stopped")
-
-    def _b4m_process(self):
-        """
-        bike4mind API processing (background, asynchronous)
-
-        Leverages powerful LLM with real-time internet access.
-        Updates summary.txt for future Ollama responses.
-        Uses quest-based polling system.
-        """
-        self._log("bike4mind processing started")
-
         try:
-            # Read current listen.txt content
-            listen_content = self.listen_file.read_text()
+            print(f"[OLLAMA] Creating summary of {len(conversation_text)} chars...")
 
-            if not listen_content.strip():
-                self._log("bike4mind: Empty listen.txt, skipping")
-                return
+            summary_prompt = (
+                f"Please summarize this conversation, keeping important information only:\n\n"
+                f"{conversation_text}\n\n"
+                f"Summary:"
+            )
 
-            # Always print what's being sent to bike4mind
-            print(f"[BIKE4MIND] Analyzing conversation: {listen_content[:80]}{'...' if len(listen_content) > 80 else ''}")
-
-            # Prepare bike4mind API request with correct structure
-            headers = {
-                'X-API-Key': self.b4m_api_key,
-                'Content-Type': 'application/json'
-            }
-
-            # Prompt
-            payload = {
-                'sessionId': self.b4m_conversation_id,
-                'message': (
-                    f"Please summarize this conversation in 2 sentences or less with intelligent insights. Text only...no symbols.\n\n"
-                    f"{listen_content}"
-                ),
-                'historyCount': 10,
-                'fabFileIds': [],
-                'messageFileIds': [],
-                'params': {
-                    'model': 'gpt-4o-mini',
+            response = requests.post(
+                self.ollama_url,
+                json={
+                    'model': self.ollama_model,
+                    'prompt': summary_prompt,
                     'temperature': 0.7,
                     'max_tokens': 500,
                     'stream': False
                 },
-                'promptMeta': {
-                    'session': {
-                        'id': self.b4m_conversation_id,
-                        'userId': self.b4m_user_id
-                    }
-                }
-            }
-
-            # Step 1: Submit quest to bike4mind API
-            response = requests.post(
-                self.b4m_url,
-                headers=headers,
-                json=payload,
-                timeout=10
+                timeout=30
             )
 
-            if response.status_code != 200:
-                print(f"[BIKE4MIND] Error: API returned status {response.status_code}")
-                self._log(f"bike4mind API error: {response.status_code}")
-                return
-
-            quest_data = response.json()
-            quest_id = quest_data.get('id')  # Note: 'id' not 'questId'
-
-            if not quest_id:
-                print(f"[BIKE4MIND] Error: No quest ID in response")
-                self._log("bike4mind: No quest ID returned")
-                return
-
-            print(f"[BIKE4MIND] Quest submitted (ID: {quest_id[:8]}...), polling for response...")
-            self._log(f"bike4mind quest ID: {quest_id}")
-
-            # Step 2: Poll for quest completion
-            b4m_response = self._b4m_poll_quest(quest_id)
-
-            if b4m_response:
-                # Write enriched summary to summary.txt (atomic overwrite)
-                self.summary_file.write_text(b4m_response)
-                # Always print bike4mind completion to console
-                print(f"[BIKE4MIND] Analysis complete! Summary updated ({len(b4m_response)} chars)")
-                print(f"[BIKE4MIND] Preview: {b4m_response[:100]}{'...' if len(b4m_response) > 100 else ''}")
-                self._log(f"bike4mind summary updated: {len(b4m_response)} chars")
+            if response.status_code == 200:
+                result = response.json()
+                summary = result.get('response', '').strip()
+                print(f"[OLLAMA] Summary created: {len(summary)} chars")
+                return summary
             else:
-                print(f"[BIKE4MIND] Warning: No response received after polling")
-                self._log("bike4mind returned empty response after polling")
+                print(f"[OLLAMA] Summarization failed: HTTP {response.status_code}")
+                return None
 
         except Exception as e:
-            print(f"[BIKE4MIND] Error: {e}")
-            self._log(f"bike4mind error: {e}")
-
-    def _b4m_poll_quest(self, quest_id):
-        """
-        Poll bike4mind quest until completion or timeout
-
-        Returns AI response text or None on timeout/error
-        """
-        poll_url = f"https://app.bike4mind.com/api/sessions/{self.b4m_conversation_id}/chat/{quest_id}"
-        headers = {'X-API-Key': self.b4m_api_key}
-
-        # Poll for up to 15 attempts (105 seconds)
-        for attempt in range(15):
-            time.sleep(7)  # 7 second intervals
-
-            try:
-                response = requests.get(poll_url, headers=headers, timeout=5.0)
-
-                if response.status_code == 200:
-                    quest_data = response.json()
-                    status = quest_data.get('status')
-
-                    if status == 'done':
-                        # Extract AI response using fallback methods
-                        return self._b4m_extract_response(quest_data)
-
-                    elif status == 'stopped':
-                        self._log("bike4mind quest was stopped")
-                        return None
-
-                    # Continue polling if status is 'running'
-                    self._log(f"bike4mind quest polling: attempt {attempt + 1}/15, status={status}")
-
-                else:
-                    self._log(f"bike4mind poll error: HTTP {response.status_code}")
-
-            except (requests.Timeout, requests.RequestException) as e:
-                self._log(f"bike4mind poll exception: {e}")
-                # Continue polling even on errors
-
-        # Timeout reached
-        print(f"[BIKE4MIND] Timeout: No response after 105 seconds")
-        self._log("bike4mind quest timeout")
-        return None
-
-    def _b4m_extract_response(self, quest_data):
-        """
-        Extract AI response from quest data using multiple fallback methods
-
-        bike4mind API response structure can vary, check all possible locations
-        """
-        # Primary: check replies array
-        if (quest_data.get('replies') and
-            isinstance(quest_data['replies'], list) and
-            len(quest_data['replies']) > 0):
-            return '\n'.join(quest_data['replies'])
-
-        # Fallback 1: check single reply field
-        elif quest_data.get('reply'):
-            return quest_data['reply']
-
-        # Fallback 2: check questMasterReply
-        elif quest_data.get('questMasterReply'):
-            return quest_data['questMasterReply']
-
-        # Fallback 3: check Research Mode results
-        elif (quest_data.get('researchModeResults') and
-              isinstance(quest_data['researchModeResults'], list)):
-            results = [r['response'] for r in quest_data['researchModeResults']
-                      if r.get('response')]
-            if results:
-                return '\n\n'.join(results)
-
-        return None
+            print(f"[OLLAMA] Summarization error: {e}")
+            return None
 
     # =====================================================================
     # STATE 3: SPEAKING - Piper TTS Output
     # =====================================================================
 
+    def _speak_immediately(self, text):
+        """
+        Speak text immediately without changing state (for system messages)
+
+        Used for "Let me think" message during summarization.
+        """
+        try:
+            import subprocess
+            piper_cmd = f'echo "{text}" | piper --model {self.piper_model_path} --output-raw | aplay -r 22050 -f S16_LE -t raw -'
+            subprocess.run(piper_cmd, shell=True, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(f"[PIPER] {text}")
+        except Exception as e:
+            self._log(f"Piper immediate speech error: {e}")
+
     def _piper_speak(self):
         """
         Piper text-to-speech output
 
-        Converts speak.txt to speech, plays audio, and deactivates conversation.
+        Converts speak.txt to speech and returns to LISTENING state.
         """
         self._log("Piper TTS started")
 
@@ -790,17 +649,11 @@ class RosieConversation:
 
             self._log(f"Piper spoke: {text}")
 
-            # Append to listen.txt with "Robot said:" prefix
-            self._append_to_listen_file(f"Robot said: {text}")
+            # Append to conversation history with "Robot:" prefix
+            self._append_to_history(f"Robot: {text}\n")
 
             # Clear speak.txt
             self.speak_file.write_text('')
-
-            # Prune listen.txt if needed
-            self._prune_listen_file()
-
-            # Deactivate conversation (edge: True -> False)
-            self._set_conversation_active(False)
 
             # Transition back to LISTENING state
             self._set_state(ConversationState.LISTENING)
@@ -809,19 +662,6 @@ class RosieConversation:
             self._log(f"Piper error: {e}")
             self._set_state(ConversationState.LISTENING)
 
-    def _prune_listen_file(self):
-        """Prune listen.txt to keep last MAX_WORDS words"""
-        try:
-            content = self.listen_file.read_text()
-            words = content.split()
-
-            if len(words) > self.max_words:
-                pruned = ' '.join(words[-self.max_words:])
-                self.listen_file.write_text(pruned)
-                self._log(f"Pruned listen.txt to {self.max_words} words")
-
-        except Exception as e:
-            self._log(f"Pruning error: {e}")
 
     # =====================================================================
     # System Control
@@ -839,20 +679,18 @@ class RosieConversation:
         self.wake_word_thread = threading.Thread(target=self._wake_word_detector, daemon=True)
         self.wake_word_thread.start()
 
-        # Start bike4mind background worker
-        self.b4m_worker_thread = threading.Thread(target=self._b4m_worker, daemon=True)
-        self.b4m_worker_thread.start()
-
         # Always print startup message and instructions
         print("\n" + "="*70)
         print("ROSIE Conversational AI System - READY")
         print("="*70)
         print(f"Current State: {self._get_state().name}")
-        print("\nSay 'Rosie' followed by your question to start a conversation.")
+        print("\nSpeak naturally - everything is transcribed.")
+        print("Say 'Rosie' to get a response.")
+        print("Say 'Rosie, forget everything' to reset conversation history.")
         print("Press CTRL+C to exit.")
         print("="*70 + "\n")
 
-        self._log("ROSIE system started. Say 'Rosie' to activate conversation.")
+        self._log("ROSIE system started. Say 'Rosie' to get a response.")
 
         # Main loop (keep alive)
         try:
@@ -863,17 +701,29 @@ class RosieConversation:
 
     def shutdown(self):
         """Graceful shutdown with SIGINT handling"""
+        print("\n[SHUTDOWN] Stopping ROSIE system...")
         self._log("Shutting down ROSIE system...")
 
         # Signal all threads to stop
         self.shutdown_event.set()
 
+        # Stop audio stream first (critical for clean shutdown)
+        try:
+            if self.audio_stream is not None:
+                print("[SHUTDOWN] Stopping audio stream...")
+                self._stop_audio_stream()
+                print("[SHUTDOWN] Audio stream stopped")
+        except Exception as e:
+            print(f"[SHUTDOWN] Error stopping audio stream: {e}")
+
         # Wait for threads to finish (with timeout)
-        threads = [self.whisper_thread, self.wake_word_thread, self.b4m_worker_thread]
+        print("[SHUTDOWN] Waiting for threads to finish...")
+        threads = [self.whisper_thread, self.wake_word_thread]
         for thread in threads:
             if thread and thread.is_alive():
                 thread.join(timeout=2)
 
+        print("[SHUTDOWN] ROSIE system stopped cleanly")
         self._log("ROSIE system stopped")
         sys.exit(0)
 
@@ -891,21 +741,16 @@ def main():
     """Main entry point"""
     # Parse command-line arguments
     parser = argparse.ArgumentParser(
-        description='ROSIE Conversational AI System',
-        epilog='Example: ./rosie_conversation.py --bypass-b4m'
-    )
-    parser.add_argument(
-        '--bypass-b4m', '-b',
-        action='store_true',
-        help='Bypass bike4mind integration (Ollama-only mode)'
+        description='ROSIE Conversational AI System - Fully Local Voice Assistant',
+        epilog='Example: ./rosie_conversation.py'
     )
     args = parser.parse_args()
 
     # Register signal handler for graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)
 
-    # Create ROSIE instance with bypass flag
-    rosie = RosieConversation(bypass_b4m=args.bypass_b4m)
+    # Create ROSIE instance
+    rosie = RosieConversation()
 
     # Store instance for signal handler
     signal_handler.rosie_instance = rosie
