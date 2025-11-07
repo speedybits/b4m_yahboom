@@ -58,8 +58,8 @@ class RosieConversation:
         self.whisper_chunk_duration = int(os.getenv('WHISPER_CHUNK_DURATION', '3'))
 
         self.ollama_model = os.getenv('OLLAMA_MODEL', 'llama3.1:8b')
-        self.ollama_temperature = float(os.getenv('OLLAMA_TEMPERATURE', '0.3'))  # Lower for more focused responses
-        self.ollama_max_tokens = int(os.getenv('OLLAMA_MAX_TOKENS', '150'))  # Increased for better reasoning
+        self.ollama_temperature = float(os.getenv('OLLAMA_TEMPERATURE', '0.7'))  # Default (overridden dynamically)
+        self.ollama_max_tokens = int(os.getenv('OLLAMA_MAX_TOKENS', '100'))  # Short, focused responses
         self.ollama_url = 'http://localhost:11434/api/generate'
         self.context_limit = int(os.getenv('CONTEXT_LIMIT', '6000'))  # Token limit before summarization
 
@@ -566,21 +566,57 @@ class RosieConversation:
                 else:
                     print(f"[OLLAMA] Warning: Summarization failed, using full context")
 
-            # Build prompt with proper system context
-            prompt = (
-                "You are ROSIE, a humans voice assistant.\n\n"
-                "CONVERSATION HISTORY:\n"
-                f"{conversation_content}\n\n"
-                "INSTRUCTIONS:\n"
-                "1. Read the conversation history above carefully\n"
-                "2. Answer the human's most recent question using information from the history\n"
-                "3. Be specific and direct - if asked about a date, appointment, name, etc., provide the exact information from the history\n"
-                "4. Keep your response to 1-2 sentences maximum\n"
-                "5. When referring to 'Robot:' lines (your previous statements), use 'I' (e.g., 'I told you earlier', 'I said')\n"
-                "6. When referring to 'Human:' lines (the human's statements), use 'you' (e.g., 'you told me', 'you said', 'you mentioned')\n"
-                "7. If the answer isn't in the history, say 'I don't see that information in our conversation'\n\n"
-                "Your response:"
-            )
+            # Detect question type from most recent Human statement
+            # Extract last Human: line from conversation
+            human_lines = [line for line in conversation_content.split('\n') if line.startswith('Human:')]
+            last_human_statement = human_lines[-1] if human_lines else ""
+
+            # Check for factual question words (when, where, who)
+            factual_question_pattern = r'\b(when|where|who)\b'
+            is_factual_question = bool(re.search(factual_question_pattern, last_human_statement, re.IGNORECASE))
+
+            # Set temperature based on question type
+            if is_factual_question:
+                temperature = 0.1  # Low temperature for accurate fact extraction
+                mode = "FACTUAL"
+            else:
+                temperature = 0.7  # Higher temperature for conversational/creative responses
+                mode = "CONVERSATIONAL"
+
+            print(f"[OLLAMA] Question type: {mode} (temperature: {temperature})")
+            print(f"[OLLAMA] Last human statement: {last_human_statement}")
+
+            # Build prompt based on question type
+            if is_factual_question:
+                # FACTUAL MODE: Focus on accurate information extraction
+                prompt = (
+                    "You are ROSIE, a voice assistant.\n\n"
+                    "CONVERSATION HISTORY:\n"
+                    f"{conversation_content}\n\n"
+                    "Answer the most recent question using information from the conversation above.\n"
+                    "Look for facts (names, dates, places, etc.) that answer the question.\n"
+                    "Keep your response short and direct (1-2 sentences).\n"
+                    "Find ONLY the specific information needed to answer that question.\n"
+                    "Do NOT include extra facts that weren't asked for.\n"
+                    "The human's possessions/appointments are 'your' or 'yours', not 'my' or 'mine'.\n"
+                    "Use 'you' when referring to what the human said.\n"
+                    "Use 'I' when referring to what you (the robot) said.\n\n"
+                    "Answer ONLY the question asked:"
+                )
+            else:
+                # CONVERSATIONAL MODE: Natural, friendly responses
+                prompt = (
+                    "You are ROSIE, a helpful and friendly voice assistant.\n\n"
+                    "CONVERSATION HISTORY:\n"
+                    f"{conversation_content}\n\n"
+                    "Respond naturally to the most recent request or question.\n"
+                    "You can be creative, tell jokes, share opinions, or have casual conversation.\n"
+                    "Use the conversation history for context if relevant.\n"
+                    "Keep your response conversational and friendly (1-3 sentences).\n"
+                    "Use 'you' when referring to the human.\n"
+                    "Use 'I' when referring to yourself.\n\n"
+                    "Your response:"
+                )
 
             print(f"[OLLAMA] Total prompt length: {len(prompt)} chars")
             print(f"\n[OLLAMA] ===== PROMPT BEING SENT =====")
@@ -594,7 +630,7 @@ class RosieConversation:
                 json={
                     'model': self.ollama_model,
                     'prompt': prompt,
-                    'temperature': self.ollama_temperature,
+                    'temperature': temperature,  # Dynamic temperature based on question type
                     'max_tokens': self.ollama_max_tokens,
                     'stream': False
                 },
