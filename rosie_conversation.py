@@ -58,8 +58,8 @@ class RosieConversation:
         self.whisper_chunk_duration = int(os.getenv('WHISPER_CHUNK_DURATION', '3'))
 
         self.ollama_model = os.getenv('OLLAMA_MODEL', 'llama3.1:8b')
-        self.ollama_temperature = float(os.getenv('OLLAMA_TEMPERATURE', '0.7'))
-        self.ollama_max_tokens = int(os.getenv('OLLAMA_MAX_TOKENS', '100'))
+        self.ollama_temperature = float(os.getenv('OLLAMA_TEMPERATURE', '0.3'))  # Lower for more focused responses
+        self.ollama_max_tokens = int(os.getenv('OLLAMA_MAX_TOKENS', '150'))  # Increased for better reasoning
         self.ollama_url = 'http://localhost:11434/api/generate'
         self.context_limit = int(os.getenv('CONTEXT_LIMIT', '6000'))  # Token limit before summarization
 
@@ -568,19 +568,17 @@ class RosieConversation:
 
             # Build prompt with proper system context
             prompt = (
-                "You are ROSIE, a helpful voice assistant running locally on Mike's computer. "
-                "This is a completely private system with no external connections. "
-                "You can freely reference and discuss any information from the conversation history, "
-                "including names, personal details, and previous topics. "
-                "There are no privacy concerns since this is Mike's own private local system.\n\n"
-                f"Conversation history:\n{conversation_content}\n\n"
-                "Instructions:\n"
-                "- Respond naturally in 1-2 short sentences\n"
-                "- Be direct and helpful - never refuse due to 'privacy concerns'\n"
-                "- Use information from the conversation history to answer questions\n"
-                "- When you see 'Robot:', that's you (use 'I' to refer to those statements)\n"
-                "- When you see 'Human:', that's Mike (use 'you' to refer to those statements)\n"
-                "- Don't mention being 'Qwen' or any other AI name - you are ROSIE"
+                "You are ROSIE, Mike's voice assistant.\n\n"
+                "CONVERSATION HISTORY:\n"
+                f"{conversation_content}\n\n"
+                "INSTRUCTIONS:\n"
+                "1. Read the conversation history above carefully\n"
+                "2. Answer Mike's most recent question using information from the history\n"
+                "3. Be specific and direct - if Mike asks about a date, appointment, name, etc., provide the exact information from the history\n"
+                "4. Keep your response to 1-2 sentences maximum\n"
+                "5. 'Human:' = what Mike said, 'Robot:' = what you said previously\n"
+                "6. If the answer isn't in the history, say 'I don't see that information in our conversation'\n\n"
+                "Your response:"
             )
 
             print(f"[OLLAMA] Total prompt length: {len(prompt)} chars")
