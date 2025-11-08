@@ -473,8 +473,16 @@ class RosieConversation:
             self._log("Audio stream stopped")
 
     def _append_to_history(self, text):
-        """Append text to conversation_history.txt (thread-safe)"""
+        """Append text to conversation_history.txt with timestamp (thread-safe)"""
         try:
+            # Add timestamp to Human: or Robot: lines
+            if text.startswith('Human:') or text.startswith('Robot:'):
+                # Format: Human [2025-11-8-14:30]: or Robot [2025-11-8-14:30]:
+                timestamp = time.strftime('%Y-%m-%d-%H:%M')
+                prefix = text.split(':', 1)[0]  # Get "Human" or "Robot"
+                rest = text.split(':', 1)[1] if ':' in text else ''
+                text = f"{prefix} [{timestamp}]:{rest}"
+
             with open(self.history_file, 'a') as f:
                 f.write(text)
         except Exception as e:
@@ -587,11 +595,20 @@ class RosieConversation:
             print(f"[OLLAMA] Question type: {mode} (temperature: {temperature})")
             print(f"[OLLAMA] Last human statement: {last_human_statement}")
 
+            # Get current date and time for context
+            import datetime
+            now = datetime.datetime.now()
+            current_date_context = (
+                f"Current date and time: {now.strftime('%A, %B %d, %Y at %I:%M %p')}\n"
+                f"(Day of week: {now.strftime('%A')})\n\n"
+            )
+
             # Build prompt based on question type
             if is_factual_question:
                 # FACTUAL MODE: Focus on accurate information extraction
                 prompt = (
                     "You are ROSIE, a voice assistant.\n\n"
+                    f"{current_date_context}"
                     "CONVERSATION HISTORY:\n"
                     f"{conversation_content}\n\n"
                     "Answer the most recent question using information from the conversation above.\n"
@@ -601,13 +618,15 @@ class RosieConversation:
                     "Do NOT include extra facts that weren't asked for.\n"
                     "The human's possessions/appointments are 'your' or 'yours', not 'my' or 'mine'.\n"
                     "Use 'you' when referring to what the human said.\n"
-                    "Use 'I' when referring to what you (the robot) said.\n\n"
+                    "Use 'I' when referring to what you (the robot) said.\n"
+                    "When answering questions about dates or times, use the current date context above.\n\n"
                     "Answer ONLY the question asked:"
                 )
             else:
                 # CONVERSATIONAL MODE: Natural, friendly responses
                 prompt = (
                     "You are ROSIE, a helpful and friendly voice assistant.\n\n"
+                    f"{current_date_context}"
                     "CONVERSATION HISTORY:\n"
                     f"{conversation_content}\n\n"
                     "Respond naturally to the most recent request or question.\n"
@@ -616,7 +635,8 @@ class RosieConversation:
                     "Use the conversation history for context if relevant.\n"
                     "Keep your response conversational and friendly (1 sentence).\n"
                     "Use 'you' when referring to the human.\n"
-                    "Use 'I' when referring to yourself.\n\n"
+                    "Use 'I' when referring to yourself.\n"
+                    "When discussing dates or times, use the current date context above.\n\n"
                     "Your response:"
                 )
 
