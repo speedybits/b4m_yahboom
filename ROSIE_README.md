@@ -6,10 +6,11 @@ A fully local voice-controlled conversational AI system for natural, intelligent
 
 ROSIE combines these components for a streamlined conversational experience:
 
-- **Whisper** - Fast speech-to-text
+- **faster-whisper** - GPU-accelerated speech-to-text with superior hallucination suppression
 - **Ollama** - Local LLM for intelligent responses (<1 second)
 - **Piper** - High-quality text-to-speech
-- **Keyboard Input** - Spacebar trigger option
+- **Voice Activity Detection (VAD)** - Complete phrase detection for accurate transcription
+- **Dual-mode Intelligence** - Factual accuracy (temp 0.1) + Creative conversation (temp 0.7)
 
 ## Architecture
 
@@ -47,11 +48,28 @@ LISTENING → RESPONDING → SPEAKING → LISTENING
 - **Storage**: Plain text conversation history in script directory (`conversation_history.txt`)
 - **Persistence**: Conversation survives reboots, restarts, and system shutdowns
 - **Continuous Memory**: ROSIE continues previous conversations on startup (no clearing)
-- **Summarization**: When context approaches token limit, Ollama automatically summarizes
-- **Process**: Piper says "Let me think" → Ollama creates summary → History replaced with summary
-- **Token limit**: Configurable limit (default: 6000 tokens for llama3.1:8b)
+- **Script-Format Summarization**: When context approaches token limit, Ollama condenses conversation
+  - Maintains `Human:` / `Robot:` script format (no labels or explanations)
+  - Keeps only important facts (names, dates, appointments, key topics)
+  - Removes unimportant exchanges and small talk
+  - Seamless continuation - ROSIE doesn't know it's condensed
+- **Process**: Piper says "Let me think" → Ollama condenses script → History replaced with condensed version
+- **Token limit**: Configurable limit (default: 6000 tokens ≈ 4,600 words)
 - **Reset**: Say "Rosie, forget everything" or delete `conversation_history.txt` to start fresh
 - **Transparency**: All conversation visible in plain text file
+
+### Intelligent Response Modes
+ROSIE automatically adapts its response style based on your question:
+
+**Factual Mode** (when/where/who questions):
+- Temperature: 0.1 (highly focused, accurate)
+- Extracts specific information from conversation history
+- Examples: "When is my appointment?", "Where did I put my keys?", "Who is my doctor?"
+
+**Conversational Mode** (everything else):
+- Temperature: 0.7 (creative, natural)
+- Can tell jokes, share opinions, have casual conversation
+- Examples: "Tell me a joke", "What do you think about...", "How are you?"
 
 ## Hardware Requirements
 
@@ -82,8 +100,10 @@ Expected output with GPU:
 
 | Component | CPU | GPU (RTX 4070) | Speedup |
 |-----------|-----|----------------|---------|
-| Whisper   | ~3-5s | ~1-2s | 2-3x |
-| Ollama    | ~2-3s | ~0.4-0.6s | 4-5x |
+| faster-whisper | ~1-2s | ~0.3-0.5s | 4-6x |
+| Ollama (llama3.1:8b) | ~2-3s | ~0.4-0.6s | 4-5x |
+
+**Note**: faster-whisper with cuDNN provides 4-6x speedup over openai-whisper while maintaining accuracy and adding superior hallucination suppression.
 
 ## Installation
 
@@ -96,9 +116,15 @@ Expected output with GPU:
    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
    ```
 
-3. **Whisper** (OpenAI Whisper with GPU support)
+3. **faster-whisper** (CTranslate2-optimized Whisper with GPU support)
    ```bash
-   pip install openai-whisper
+   pip install faster-whisper
+   ```
+
+   **Note**: faster-whisper requires cuDNN for CUDA support. Install via:
+   ```bash
+   # Ubuntu 22.04 with CUDA 12.x
+   ./install_cudnn_network.sh
    ```
 
 4. **Ollama** (already installed)
@@ -115,8 +141,10 @@ Expected output with GPU:
 
 6. **Audio and input dependencies**
    ```bash
-   pip install sounddevice numpy requests python-dotenv pynput
+   pip install sounddevice numpy requests python-dotenv pynput webrtcvad
    ```
+
+   **Note**: `webrtcvad` provides Voice Activity Detection for complete phrase transcription.
 
 ### Setup
 
@@ -259,12 +287,18 @@ speak.txt                       # Temporary TTS buffer (not committed)
 - `PIPER_MODEL_PATH` - Path to Piper voice model (.onnx file)
 - `PIPER_CONFIG_PATH` - Path to Piper voice config (.onnx.json file)
 
-**Optional (can be set in .env.rosie or environment):**
-- `WHISPER_MODEL` - Model size (default: base, options: tiny, base, small, medium, large)
+**Optional (can be set in .env.rosie or ~/.bashrc):**
+- `WHISPER_MODEL` - Model size (default: small, options: tiny, base, small, medium, large)
 - `OLLAMA_MODEL` - Ollama model to use (default: llama3.1:8b, see model recommendations below)
+- `OLLAMA_TEMPERATURE` - LLM temperature (default: 0.7, overridden dynamically for factual questions)
 - `CONTEXT_LIMIT` - Token limit before summarization (default: 6000)
 - `HISTORY_FILE` - Path to conversation history (default: ./conversation_history.txt)
 - `SPEAK_FILE` - Path to TTS buffer (default: ./speak.txt)
+
+**Dual-Mode Intelligence:**
+ROSIE automatically adjusts temperature based on question type:
+- **Factual questions** (when/where/who): temperature 0.1 for accurate fact extraction
+- **Conversational requests**: temperature 0.7 for creative, natural responses
 
 ### Ollama Model Recommendations
 

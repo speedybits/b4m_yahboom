@@ -61,8 +61,8 @@ class RosieConversation:
         self.ollama_temperature = float(os.getenv('OLLAMA_TEMPERATURE', '0.7'))  # Default (overridden dynamically)
         self.ollama_max_tokens = int(os.getenv('OLLAMA_MAX_TOKENS', '100'))  # Short, focused responses
         self.ollama_url = 'http://localhost:11434/api/generate'
-        #self.context_limit = int(os.getenv('CONTEXT_LIMIT', '6000'))  # Token limit before summarization
-        self.context_limit = int(os.getenv('CONTEXT_LIMIT', '1000'))  # Token limit before summarization
+        self.context_limit = int(os.getenv('CONTEXT_LIMIT', '6000'))  # Token limit before summarization
+        #self.context_limit = int(os.getenv('CONTEXT_LIMIT', '1000'))  # Token limit before summarization
 
         # Piper TTS configuration (from .bashrc)
         self.piper_model_path = os.getenv('PIPER_MODEL_PATH')
@@ -612,8 +612,9 @@ class RosieConversation:
                     f"{conversation_content}\n\n"
                     "Respond naturally to the most recent request or question.\n"
                     "You can be creative, tell jokes, share opinions, or have casual conversation.\n"
+                    "Do not suggest activities.\n"
                     "Use the conversation history for context if relevant.\n"
-                    "Keep your response conversational and friendly (1-3 sentences).\n"
+                    "Keep your response conversational and friendly (1 sentence).\n"
                     "Use 'you' when referring to the human.\n"
                     "Use 'I' when referring to yourself.\n\n"
                     "Your response:"
@@ -725,7 +726,9 @@ class RosieConversation:
         """
         try:
             import subprocess
-            piper_cmd = f'echo "{text}" | piper --model {self.piper_model_path} --output-raw | aplay -r 22050 -f S16_LE -t raw -'
+            # Escape quotes and special characters for shell safety
+            text_escaped = text.replace('"', '\\"').replace('$', '\\$').replace('`', '\\`')
+            piper_cmd = f'echo "{text_escaped}" | piper --model {self.piper_model_path} --output-raw | aplay -r 22050 -f S16_LE -t raw -'
             subprocess.run(piper_cmd, shell=True, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             print(f"[PIPER] {text}")
         except Exception as e:
@@ -752,7 +755,9 @@ class RosieConversation:
             import subprocess
 
             # Piper command: echo text | piper --model path --output-raw | aplay
-            piper_cmd = f'echo "{text}" | piper --model {self.piper_model_path} --output-raw | aplay -r 22050 -f S16_LE -t raw -'
+            # Escape quotes and special characters for shell safety
+            text_escaped = text.replace('"', '\\"').replace('$', '\\$').replace('`', '\\`')
+            piper_cmd = f'echo "{text_escaped}" | piper --model {self.piper_model_path} --output-raw | aplay -r 22050 -f S16_LE -t raw -'
 
             subprocess.run(piper_cmd, shell=True, check=True)
 
