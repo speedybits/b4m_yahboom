@@ -746,6 +746,7 @@ class RosieConversation:
             # Query RAG knowledge base if available
             rag_context = ""
             if self.rag_system:
+                print(f"[RAG] System available, querying...")
                 # Extract last human statement to use as query
                 human_lines = [line for line in conversation_content.split('\n') if line.startswith('Human:')]
                 last_human_statement = human_lines[-1] if human_lines else ""
@@ -760,6 +761,10 @@ class RosieConversation:
                         print(f"[RAG] Retrieved context: {len(rag_context)} chars")
                     else:
                         print(f"[RAG] No relevant context found")
+                else:
+                    print(f"[RAG] No human statement found to query")
+            else:
+                print(f"[RAG] System not available (self.rag_system is None)")
 
             # Check if context exceeds limit - if so, summarize first
             # Note: important_info and RAG context are NOT included in token count for summarization
