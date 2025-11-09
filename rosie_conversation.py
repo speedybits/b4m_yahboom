@@ -233,6 +233,7 @@ class RosieConversation:
         script_dir = Path(__file__).parent
         self.history_file = Path(os.getenv('HISTORY_FILE', script_dir / 'conversation_history.txt'))
         self.speak_file = Path(os.getenv('SPEAK_FILE', script_dir / 'speak.txt'))
+        self.state_file = Path(os.getenv('STATE_FILE', script_dir / 'rosie_state.json'))
 
         # RAG knowledge base configuration
         self.knowledge_base_dir = Path(os.getenv('KNOWLEDGE_BASE_DIR', script_dir / 'knowledge_base'))
@@ -336,13 +337,52 @@ class RosieConversation:
             return self.state
 
     def _set_state(self, new_state):
-        """Thread-safe state setter"""
+        """Thread-safe state setter with web status update"""
         with self.state_lock:
             old_state = self.state
             self.state = new_state
             # Always print state transitions to console
             print(f"\n[STATE] {old_state.name} → {new_state.name}")
             self._log(f"State transition: {old_state.name} -> {new_state.name}")
+
+            # Update web status file
+            self._update_web_status(new_state)
+
+    def _update_web_status(self, state, custom_message=None):
+        """Update web status JSON file for real-time GIF display"""
+        try:
+            # Map state to GIF filename and message
+            state_map = {
+                ConversationState.LISTENING: {
+                    'state': 'waiting',
+                    'gif': 'waiting.gif',
+                    'message': 'Waiting for voice input...'
+                },
+                ConversationState.RESPONDING: {
+                    'state': 'thinking',
+                    'gif': 'thinking.gif',
+                    'message': 'Processing your request...'
+                },
+                ConversationState.SPEAKING: {
+                    'state': 'speaking',
+                    'gif': 'speaking.gif',
+                    'message': 'Speaking...'
+                }
+            }
+
+            status = state_map.get(state, state_map[ConversationState.LISTENING])
+
+            # Allow custom message override
+            if custom_message:
+                status['message'] = custom_message
+
+            # Write to JSON file
+            with open(self.state_file, 'w') as f:
+                json.dump(status, f, indent=2)
+
+        except Exception as e:
+            # Don't let web status updates crash the main system
+            self._log(f"Warning: Could not update web status: {e}")
 
     # =====================================================================
     # STATE 1: LISTENING - Whisper STT and Wake Word Detection
@@ -977,6 +1017,9 @@ class RosieConversation:
         Used for "Let me think" message during summarization.
         """
         try:
+            # Update web status to show "thinking" during this message
+            self._update_web_status(ConversationState.RESPONDING, custom_message=text)
+
             import subprocess
             # Escape quotes and special characters for shell safety
             text_escaped = text.replace('"', '\\"').replace('$', '\\$').replace('`', '\\`')

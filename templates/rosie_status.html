@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ROSIE Status</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: white;
+            padding: 20px;
+        }
+
+        .container {
+            text-align: center;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            max-width: 600px;
+            width: 100%;
+        }
+
+        h1 {
+            font-size: 3em;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .status-message {
+            font-size: 1.5em;
+            margin-bottom: 30px;
+            min-height: 40px;
+            opacity: 0.9;
+        }
+
+        .gif-container {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .status-gif {
+            max-width: 100%;
+            height: auto;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .state-indicator {
+            display: inline-block;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            margin-top: 20px;
+            font-size: 1.1em;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .state-waiting {
+            background: rgba(100, 149, 237, 0.3);
+        }
+
+        .state-thinking {
+            background: rgba(255, 193, 7, 0.3);
+        }
+
+        .state-speaking {
+            background: rgba(76, 175, 80, 0.3);
+        }
+
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 20px;
+            font-size: 0.9em;
+        }
+
+        .connected {
+            color: #4caf50;
+        }
+
+        .disconnected {
+            color: #f44336;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.05);
+            }
+        }
+
+        .gif-container.active {
+            animation: pulse 2s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="connection-status">
+        <span id="connection-indicator" class="disconnected">● Disconnected</span>
+    </div>
+
+    <div class="container">
+        <h1>ROSIE</h1>
+        <div class="status-message" id="status-message">
+            Connecting to ROSIE...
+        </div>
+
+        <div class="gif-container" id="gif-container">
+            <img id="status-gif" class="status-gif" src="/gifs/waiting.gif" alt="ROSIE Status" onerror="this.style.display='none'">
+        </div>
+
+        <div class="state-indicator state-waiting" id="state-indicator">
+            Initializing
+        </div>
+    </div>
+
+    <script>
+        const statusMessage = document.getElementById('status-message');
+        const statusGif = document.getElementById('status-gif');
+        const stateIndicator = document.getElementById('state-indicator');
+        const gifContainer = document.getElementById('gif-container');
+        const connectionIndicator = document.getElementById('connection-indicator');
+
+        // State to class mapping
+        const stateClasses = {
+            'waiting': 'state-waiting',
+            'thinking': 'state-thinking',
+            'speaking': 'state-speaking'
+        };
+
+        // Connect to Server-Sent Events stream
+        const eventSource = new EventSource('/stream');
+
+        eventSource.onopen = function() {
+            connectionIndicator.textContent = '● Connected';
+            connectionIndicator.className = 'connected';
+            console.log('Connected to ROSIE status stream');
+        };
+
+        eventSource.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            console.log('State update:', data);
+
+            // Update message
+            statusMessage.textContent = data.message;
+
+            // Update GIF (force reload to prevent caching)
+            const gifUrl = '/gifs/' + data.gif + '?t=' + new Date().getTime();
+            statusGif.src = gifUrl;
+            statusGif.style.display = 'block';
+
+            // Update state indicator
+            stateIndicator.textContent = data.state.toUpperCase();
+
+            // Remove all state classes
+            Object.values(stateClasses).forEach(cls => {
+                stateIndicator.classList.remove(cls);
+            });
+
+            // Add current state class
+            if (stateClasses[data.state]) {
+                stateIndicator.classList.add(stateClasses[data.state]);
+            }
+
+            // Add pulse animation when speaking or thinking
+            if (data.state === 'speaking' || data.state === 'thinking') {
+                gifContainer.classList.add('active');
+            } else {
+                gifContainer.classList.remove('active');
+            }
+        };
+
+        eventSource.onerror = function(error) {
+            connectionIndicator.textContent = '● Disconnected';
+            connectionIndicator.className = 'disconnected';
+            console.error('SSE error:', error);
+
+            // Try to reconnect after 5 seconds
+            setTimeout(() => {
+                console.log('Attempting to reconnect...');
+                eventSource.close();
+                location.reload();
+            }, 5000);
+        };
+
+        // Handle page visibility changes
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden) {
+                // Force refresh when page becomes visible again
+                location.reload();
+            }
+        });
+    </script>
+</body>
+</html>

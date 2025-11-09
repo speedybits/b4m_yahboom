@@ -140,6 +140,7 @@ prompts/
 # ROSIE conversation files (contain private conversation data)
 conversation_history.txt
 speak.txt
+rosie_state.json
 
 # ROSIE RAG knowledge base (user's private documents)
 knowledge_base/*
@@ -147,6 +148,11 @@ knowledge_base/*
 
 # ROSIE vector database (generated embeddings)
 .rosie_vector_db/
+
+# ROSIE GIF animations (user-provided animated GIFs for web interface)
+gifs/*
+!gifs/.gitkeep
+!gifs/README.md
 
 # Unused/temporary files directory
 unused/

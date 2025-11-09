@@ -12,6 +12,7 @@ ROSIE combines these components for a streamlined conversational experience:
 - **Voice Activity Detection (VAD)** - Complete phrase detection for accurate transcription
 - **Dual-mode Intelligence** - Factual accuracy (temp 0.1) + Creative conversation (temp 0.7)
 - **RAG Knowledge Base** - Retrieval-Augmented Generation with markdown document support
+- **Web Status Display** - Real-time visual status with animated GIFs showing ROSIE's current state
 
 ## Architecture
 
@@ -343,10 +344,63 @@ rm conversation_history.txt
 
 Press **CTRL+C** for graceful shutdown (100-500ms response time).
 
+## Web Status Display
+
+ROSIE includes a real-time web interface that displays animated GIFs representing the current state:
+
+### Quick Start
+
+1. **Launch with web interface:**
+   ```bash
+   ./rosie_with_web.sh
+   ```
+
+2. **Open browser:**
+   ```
+   http://localhost:5000
+   ```
+
+The web page automatically updates to show:
+- **Waiting** (`waiting.gif`) - ROSIE is listening for voice input
+- **Thinking** (`thinking.gif`) - Processing your request or generating response
+- **Speaking** (`speaking.gif`) - Delivering audio response via Piper TTS
+
+### Adding Your Own GIFs
+
+1. Create or download three animated GIF files
+2. Place them in the `gifs/` directory:
+   - `waiting.gif` - Idle/listening state
+   - `thinking.gif` - Processing state
+   - `speaking.gif` - Speaking state
+
+3. See `gifs/README.md` for detailed requirements and recommendations
+
+### Manual Launch
+
+You can also run the web server separately:
+
+```bash
+# Terminal 1: Start web server
+python3 rosie_web_status.py
+
+# Terminal 2: Start ROSIE
+./rosie_launch.sh
+```
+
+### Technical Details
+
+- **Server**: Flask web server on port 5000
+- **Update Method**: Server-Sent Events (SSE) for real-time state changes
+- **State File**: `rosie_state.json` (updated automatically by ROSIE)
+- **No Dependencies**: Works without GIFs (images simply won't display)
+
 ## File Structure
 
 ```
 rosie_conversation.py           # Main application
+rosie_web_status.py             # Web status display server
+rosie_launch.sh                 # Standard launch script
+rosie_with_web.sh               # Launch with web interface
 verify_gpu_setup.py             # GPU verification utility
 test_ollama_latency.py          # Ollama performance testing
 test_new_rosie.py               # Validation test suite
@@ -355,10 +409,19 @@ test_new_rosie.py               # Validation test suite
 ROSIE_README.md                 # This file (includes GPU troubleshooting)
 conversation_history.txt        # Plain text conversation history (not committed)
 speak.txt                       # Temporary TTS buffer (not committed)
+rosie_state.json                # Current state for web display (not committed)
 knowledge_base/                 # Markdown documents for RAG (not committed)
-  ├── robot_info.md             # Example: robot specifications
-  └── project_notes.md          # Example: project documentation
+  ├── .gitkeep                  # Preserves directory structure
+  └── README.md                 # Instructions for adding documents
 .rosie_vector_db/               # Vector embeddings database (not committed)
+gifs/                           # Animated GIFs for web display (not committed)
+  ├── .gitkeep                  # Preserves directory structure
+  ├── README.md                 # GIF requirements and instructions
+  ├── waiting.gif               # Displayed during LISTENING state
+  ├── thinking.gif              # Displayed during RESPONDING state
+  └── speaking.gif              # Displayed during SPEAKING state
+templates/                      # Flask HTML templates
+  └── rosie_status.html         # Web status display page
 ```
 
 ## Configuration
