@@ -12,7 +12,7 @@ ROSIE combines these components for a streamlined conversational experience:
 - **Voice Activity Detection (VAD)** - Complete phrase detection for accurate transcription
 - **Dual-mode Intelligence** - Factual accuracy (temp 0.1) + Creative conversation (temp 0.7)
 - **RAG Knowledge Base** - Retrieval-Augmented Generation with markdown document support
-- **Web Status Display** - Real-time visual status with animated GIFs showing ROSIE's current state
+- **Web Status Display** - Real-time visual status with cycling images showing ROSIE's current state
 
 ## Architecture
 
@@ -346,7 +346,7 @@ Press **CTRL+C** for graceful shutdown (100-500ms response time).
 
 ## Web Status Display
 
-ROSIE includes a real-time web interface that displays animated GIFs representing the current state:
+ROSIE includes a real-time web interface that cycles through numbered images to create animated visual status:
 
 ### Quick Start
 
@@ -360,20 +360,44 @@ ROSIE includes a real-time web interface that displays animated GIFs representin
    http://localhost:5000
    ```
 
-The web page automatically updates to show:
-- **Waiting** (`waiting.gif`) - ROSIE is listening for voice input
-- **Thinking** (`thinking.gif`) - Processing your request or generating response
-- **Speaking** (`speaking.gif`) - Delivering audio response via Piper TTS
+The web page automatically updates to show cycling images based on ROSIE's state:
+- **Waiting** (waiting1.png, waiting2.png, ...) - ROSIE is listening for voice input
+- **Thinking** (thinking1.png, thinking2.png, ...) - Processing your request or generating response
+- **Speaking** (speaking1.png, speaking2.png, ...) - Delivering audio response via Piper TTS
 
-### Adding Your Own GIFs
+Images cycle randomly every 0.5-1 second, avoiding immediate repeats.
 
-1. Create or download three animated GIF files
-2. Place them in the `gifs/` directory:
-   - `waiting.gif` - Idle/listening state
-   - `thinking.gif` - Processing state
-   - `speaking.gif` - Speaking state
+### Adding Your Own Images
 
-3. See `gifs/README.md` for detailed requirements and recommendations
+1. Create numbered image files (PNG or JPG) for each state:
+   ```
+   waiting1.png, waiting2.png, waiting3.png, ...
+   thinking1.png, thinking2.png, ...
+   speaking1.png, speaking2.png, speaking3.png, speaking4.png, ...
+   ```
+
+2. Place them in the `gifs/` directory
+
+3. Each state can have a different number of images (minimum 1, recommended 3-5)
+
+4. See `gifs/README.md` for:
+   - File naming requirements
+   - Image specifications
+   - Creation tips and tools
+   - Troubleshooting
+
+**Example:**
+```bash
+gifs/
+├── waiting1.png    # Eyes open
+├── waiting2.png    # Eyes blinking
+├── waiting3.png    # Eyes closed
+├── thinking1.jpg   # Thinking pose
+├── thinking2.jpg   # Gears turning
+├── speaking1.png   # Mouth open
+├── speaking2.png   # Talking
+└── speaking3.png   # Sound waves
+```
 
 ### Manual Launch
 
@@ -392,7 +416,11 @@ python3 rosie_web_status.py
 - **Server**: Flask web server on port 5000
 - **Update Method**: Server-Sent Events (SSE) for real-time state changes
 - **State File**: `rosie_state.json` (updated automatically by ROSIE)
-- **No Dependencies**: Works without GIFs (images simply won't display)
+- **Image Detection**: Automatic scanning for `{state}{number}.{png|jpg}` pattern
+- **Cycling**: Client-side JavaScript, random selection without immediate repeats
+- **Interval**: 500-1000ms per image (randomized)
+- **Preloading**: All images cached for smooth transitions
+- **No Dependencies**: Works without images (gracefully handles missing images)
 
 ## File Structure
 
@@ -414,12 +442,16 @@ knowledge_base/                 # Markdown documents for RAG (not committed)
   ├── .gitkeep                  # Preserves directory structure
   └── README.md                 # Instructions for adding documents
 .rosie_vector_db/               # Vector embeddings database (not committed)
-gifs/                           # Animated GIFs for web display (not committed)
+gifs/                           # Numbered images for web display (not committed)
   ├── .gitkeep                  # Preserves directory structure
-  ├── README.md                 # GIF requirements and instructions
-  ├── waiting.gif               # Displayed during LISTENING state
-  ├── thinking.gif              # Displayed during RESPONDING state
-  └── speaking.gif              # Displayed during SPEAKING state
+  ├── README.md                 # Image requirements and instructions
+  ├── waiting1.png              # LISTENING state images
+  ├── waiting2.png              # (cycle randomly)
+  ├── thinking1.jpg             # RESPONDING state images
+  ├── thinking2.jpg             # (cycle randomly)
+  ├── speaking1.png             # SPEAKING state images
+  ├── speaking2.png             # (cycle randomly)
+  └── speaking3.png             # ...
 templates/                      # Flask HTML templates
   └── rosie_status.html         # Web status display page
 ```

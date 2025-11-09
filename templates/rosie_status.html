@@ -152,6 +152,93 @@
             'speaking': 'state-speaking'
         };
 
+        // Image cycling state
+        let currentImages = [];
+        let currentImageIndex = 0;
+        let lastImageIndex = -1;
+        let cycleTimer = null;
+        let imageCache = {};  // Preloaded images
+
+        // Preload images for smooth transitions
+        function preloadImages(images) {
+            images.forEach(img => {
+                if (!imageCache[img]) {
+                    const imageObj = new Image();
+                    imageObj.src = '/gifs/' + img;
+                    imageCache[img] = imageObj;
+                }
+            });
+        }
+
+        // Get random image index, avoiding immediate repeats
+        function getRandomImageIndex(imageCount, lastIndex) {
+            if (imageCount <= 1) return 0;
+
+            let newIndex;
+            do {
+                newIndex = Math.floor(Math.random() * imageCount);
+            } while (newIndex === lastIndex && imageCount > 1);
+
+            return newIndex;
+        }
+
+        // Cycle through images
+        function cycleImages() {
+            if (!currentImages || currentImages.length === 0) {
+                console.log('No images to cycle');
+                return;
+            }
+
+            // Get next random image (avoiding immediate repeat)
+            currentImageIndex = getRandomImageIndex(currentImages.length, lastImageIndex);
+            lastImageIndex = currentImageIndex;
+
+            const imageName = currentImages[currentImageIndex];
+            console.log(`Cycling to image ${currentImageIndex + 1}/${currentImages.length}: ${imageName}`);
+
+            // Update image
+            statusGif.src = '/gifs/' + imageName;
+            statusGif.style.display = 'block';
+
+            // Schedule next cycle (random 500-1000ms)
+            const nextCycle = 500 + Math.random() * 500;
+            cycleTimer = setTimeout(cycleImages, nextCycle);
+        }
+
+        // Start cycling for new image set
+        function startImageCycling(images) {
+            // Stop existing cycle
+            if (cycleTimer) {
+                clearTimeout(cycleTimer);
+                cycleTimer = null;
+            }
+
+            currentImages = images;
+            lastImageIndex = -1;  // Reset for new set
+
+            if (!currentImages || currentImages.length === 0) {
+                console.warn('No images available for current state');
+                statusGif.style.display = 'none';
+                return;
+            }
+
+            console.log(`Starting image cycling with ${currentImages.length} images:`, currentImages);
+
+            // Preload all images
+            preloadImages(currentImages);
+
+            // Start cycling immediately
+            cycleImages();
+        }
+
+        // Stop cycling (when page hidden to save battery)
+        function stopImageCycling() {
+            if (cycleTimer) {
+                clearTimeout(cycleTimer);
+                cycleTimer = null;
+            }
+        }
+
         // Connect to Server-Sent Events stream
         const eventSource = new EventSource('/stream');
 
@@ -168,10 +255,13 @@
             // Update message
             statusMessage.textContent = data.message;
 
-            // Update GIF (force reload to prevent caching)
-            const gifUrl = '/gifs/' + data.gif + '?t=' + new Date().getTime();
-            statusGif.src = gifUrl;
-            statusGif.style.display = 'block';
+            // Start cycling with new images
+            if (data.images && data.images.length > 0) {
+                startImageCycling(data.images);
+            } else {
+                stopImageCycling();
+                statusGif.style.display = 'none';
+            }
 
             // Update state indicator
             stateIndicator.textContent = data.state.toUpperCase();
@@ -199,6 +289,8 @@
             connectionIndicator.className = 'disconnected';
             console.error('SSE error:', error);
 
+            stopImageCycling();
+
             // Try to reconnect after 5 seconds
             setTimeout(() => {
                 console.log('Attempting to reconnect...');
@@ -209,9 +301,14 @@
 
         // Handle page visibility changes
         document.addEventListener('visibilitychange', function() {
-            if (!document.hidden) {
-                // Force refresh when page becomes visible again
-                location.reload();
+            if (document.hidden) {
+                // Stop cycling to save battery
+                stopImageCycling();
+            } else {
+                // Resume cycling when page visible
+                if (currentImages && currentImages.length > 0) {
+                    startImageCycling(currentImages);
+                }
             }
         });
     </script>

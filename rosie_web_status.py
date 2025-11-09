@@ -2,7 +2,7 @@
 """
 ROSIE Web Status Display Server
 
-Provides a simple web interface showing ROSIE's current state with animated GIFs.
+Provides a simple web interface showing ROSIE's current state with cycling images.
 Uses Server-Sent Events (SSE) for real-time state updates.
 """
 
@@ -10,6 +10,7 @@ import os
 import json
 import signal
 import sys
+import re
 from pathlib import Path
 from flask import Flask, render_template, Response, send_from_directory
 from threading import Lock
@@ -21,7 +22,7 @@ app.config['SECRET_KEY'] = 'rosie-status-display'
 current_state_lock = Lock()
 current_state = {
     'state': 'waiting',  # waiting, thinking, speaking
-    'gif': 'waiting.gif',
+    'images': [],  # List of available images for current state
     'message': 'Waiting for voice input...'
 }
 
@@ -29,8 +30,65 @@ current_state = {
 SCRIPT_DIR = Path(__file__).parent
 STATE_FILE = SCRIPT_DIR / 'rosie_state.json'
 
-# GIF directory
-GIF_DIR = SCRIPT_DIR / 'gifs'
+# Images directory
+IMAGES_DIR = SCRIPT_DIR / 'gifs'
+
+# Available images cache (populated on startup)
+available_images = {
+    'waiting': [],
+    'thinking': [],
+    'speaking': []
+}
+
+
+def detect_available_images():
+    """
+    Scan images directory for numbered image files.
+
+    Looks for patterns like: waiting1.png, thinking2.jpg, speaking3.png
+    Supports PNG and JPG formats.
+
+    Returns dict: {'waiting': ['waiting1.png', 'waiting2.png'], ...}
+    """
+    global available_images
+
+    if not IMAGES_DIR.exists():
+        print(f"Warning: Images directory not found: {IMAGES_DIR}")
+        return available_images
+
+    # Pattern: {prefix}{number}.{ext}
+    # Example: waiting1.png, thinking2.jpg, speaking10.png
+    pattern = re.compile(r'^(waiting|thinking|speaking)(\d+)\.(png|jpe?g)$', re.IGNORECASE)
+
+    image_groups = {
+        'waiting': [],
+        'thinking': [],
+        'speaking': []
+    }
+
+    # Scan directory
+    for file_path in IMAGES_DIR.iterdir():
+        if file_path.is_file():
+            match = pattern.match(file_path.name)
+            if match:
+                prefix = match.group(1).lower()
+                number = int(match.group(2))
+                filename = file_path.name
+
+                image_groups[prefix].append((number, filename))
+
+    # Sort by number and extract filenames
+    for state in ['waiting', 'thinking', 'speaking']:
+        if image_groups[state]:
+            # Sort by the number
+            image_groups[state].sort(key=lambda x: x[0])
+            # Extract just the filenames
+            available_images[state] = [filename for _, filename in image_groups[state]]
+            print(f"[IMAGES] Found {len(available_images[state])} images for '{state}': {available_images[state]}")
+        else:
+            print(f"[IMAGES] Warning: No images found for state '{state}'")
+
+    return available_images
 
 
 def read_state_file():
@@ -61,9 +119,9 @@ def index():
 
 
 @app.route('/gifs/<path:filename>')
-def serve_gif(filename):
-    """Serve GIF files"""
-    return send_from_directory(str(GIF_DIR), filename)
+def serve_image(filename):
+    """Serve image files"""
+    return send_from_directory(str(IMAGES_DIR), filename)
 
 
 @app.route('/stream')
@@ -80,9 +138,16 @@ def stream():
 
                 # Update current state
                 with current_state_lock:
-                    current_state['state'] = file_state.get('state', 'waiting')
-                    current_state['gif'] = file_state.get('gif', 'waiting.gif')
-                    current_state['message'] = file_state.get('message', get_state_message(current_state['state']))
+                    state_name = file_state.get('state', 'waiting')
+                    current_state['state'] = state_name
+                    current_state['message'] = file_state.get('message', get_state_message(state_name))
+
+                    # Get available images for this state
+                    current_state['images'] = available_images.get(state_name, [])
+
+                    # If no images found, log warning
+                    if not current_state['images']:
+                        print(f"[STREAM] Warning: No images available for state '{state_name}'")
 
                 # Send update to client
                 yield f"data: {json.dumps(current_state)}\n\n"
@@ -114,9 +179,15 @@ if __name__ == '__main__':
     print("="*70)
     print("ROSIE Web Status Display Server")
     print("="*70)
-    print(f"GIF directory: {GIF_DIR}")
+    print(f"Images directory: {IMAGES_DIR}")
     print(f"State file: {STATE_FILE}")
     print()
+
+    # Detect available images on startup
+    print("Scanning for available images...")
+    detect_available_images()
+    print()
+
     print("Server starting at http://localhost:5000")
     print("Press CTRL+C to stop")
     print("="*70)

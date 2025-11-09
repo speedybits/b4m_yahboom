@@ -26,23 +26,27 @@ if ! python3 -c "import flask" 2>/dev/null; then
     exit 1
 fi
 
-# Check if GIF files exist
-echo "Checking for GIF files..."
-MISSING_GIFS=0
+# Check for numbered image files
+echo "Checking for numbered image files..."
+MISSING_STATES=0
 
-for gif in waiting.gif thinking.gif speaking.gif; do
-    if [ ! -f "$SCRIPT_DIR/gifs/$gif" ]; then
-        echo -e "${YELLOW}Warning: gifs/$gif not found${NC}"
-        MISSING_GIFS=$((MISSING_GIFS + 1))
+for state in waiting thinking speaking; do
+    # Check for at least one numbered image (PNG or JPG)
+    if ls "$SCRIPT_DIR/gifs/${state}"[0-9]*.{png,jpg,jpeg,PNG,JPG,JPEG} 2>/dev/null | grep -q .; then
+        COUNT=$(ls "$SCRIPT_DIR/gifs/${state}"[0-9]*.{png,jpg,jpeg,PNG,JPG,JPEG} 2>/dev/null | wc -l)
+        echo -e "${GREEN}✓ Found $COUNT image(s) for '$state' state${NC}"
     else
-        echo -e "${GREEN}✓ Found gifs/$gif${NC}"
+        echo -e "${YELLOW}Warning: No images found for '$state' state${NC}"
+        echo -e "${YELLOW}  Looking for files like: ${state}1.png, ${state}2.jpg, etc.${NC}"
+        MISSING_STATES=$((MISSING_STATES + 1))
     fi
 done
 
-if [ $MISSING_GIFS -gt 0 ]; then
+if [ $MISSING_STATES -gt 0 ]; then
     echo ""
-    echo -e "${YELLOW}Note: $MISSING_GIFS GIF file(s) missing. Web interface will display without images.${NC}"
-    echo "See gifs/README.md for instructions on adding GIF files."
+    echo -e "${YELLOW}Note: $MISSING_STATES state(s) missing images. Web interface will display without images for those states.${NC}"
+    echo "See gifs/README.md for instructions on adding numbered image files."
+    echo "Example: waiting1.png, waiting2.png, thinking1.jpg, speaking1.png"
     echo ""
     read -p "Continue anyway? (y/n) " -n 1 -r
     echo
