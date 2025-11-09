@@ -33,13 +33,14 @@ from dotenv import load_dotenv
 try:
     from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Settings, StorageContext
     from llama_index.embeddings.ollama import OllamaEmbedding
+    from llama_index.llms.ollama import Ollama
     from llama_index.vector_stores.chroma import ChromaVectorStore
     import chromadb
     RAG_AVAILABLE = True
 except ImportError:
     RAG_AVAILABLE = False
     print("WARNING: RAG dependencies not installed. Knowledge base features disabled.")
-    print("Install with: pip install llama-index llama-index-embeddings-ollama chromadb")
+    print("Install with: pip install llama-index llama-index-llms-ollama llama-index-embeddings-ollama llama-index-vector-stores-chroma chromadb")
 
 # Load optional configuration from .env file (only if variables not already set)
 # Environment variables from .bashrc always take precedence
@@ -74,13 +75,23 @@ class RosieRAG:
         print(f"[RAG] Initializing knowledge base from: {self.knowledge_base_dir}")
         print(f"[RAG] Vector database location: {self.chroma_db_dir}")
 
-        # Setup Ollama embeddings
+        # Setup Ollama embeddings and LLM
         print(f"[RAG] Configuring Ollama embedding model (nomic-embed-text)...")
         Settings.embed_model = OllamaEmbedding(
             model_name="nomic-embed-text",
             base_url="http://localhost:11434"
         )
         print(f"[RAG] Embedding model configured")
+
+        # Configure Ollama LLM (we don't actually use it for generation, just for query engine)
+        # Using a small model since we only need it for the query engine structure
+        print(f"[RAG] Configuring Ollama LLM...")
+        Settings.llm = Ollama(
+            model="qwen2.5:0.5b",  # Smallest/fastest model available
+            base_url="http://localhost:11434",
+            request_timeout=30.0
+        )
+        print(f"[RAG] LLM configured")
 
         # Initialize ChromaDB
         print(f"[RAG] Initializing ChromaDB...")

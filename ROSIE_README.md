@@ -174,12 +174,13 @@ Expected output with GPU:
    pip install llama-index llama-index-llms-ollama llama-index-embeddings-ollama llama-index-vector-stores-chroma chromadb
    ```
 
-   Then pull the embedding model:
+   Then pull the required Ollama models:
    ```bash
-   ollama pull nomic-embed-text
+   ollama pull nomic-embed-text  # Embedding model for semantic search
+   ollama pull qwen2.5:0.5b      # Small LLM for query engine (or any other Ollama model)
    ```
 
-   **Note**: RAG features are optional. ROSIE works without these dependencies, but won't have document retrieval capabilities.
+   **Note**: RAG features are optional. ROSIE works without these dependencies, but won't have document retrieval capabilities. The LLM is only used internally by LlamaIndex's query engine structure; actual response generation still uses your configured Ollama model.
 
 ### Setup
 
@@ -553,6 +554,7 @@ Solution: Install all required dependencies:
 ```bash
 pip install llama-index llama-index-llms-ollama llama-index-embeddings-ollama llama-index-vector-stores-chroma chromadb
 ollama pull nomic-embed-text
+ollama pull qwen2.5:0.5b  # Or any other small Ollama model
 ```
 
 **Note**: All five packages are required:
@@ -576,6 +578,23 @@ Solution: Pull the embedding model:
 ```bash
 ollama pull nomic-embed-text
 ```
+
+**OpenAI API key error during RAG initialization:**
+```
+Could not load OpenAI model. If you intended to use OpenAI, please check your OPENAI_API_KEY.
+No API key found for OpenAI.
+```
+This error occurs when LlamaIndex defaults to OpenAI for the query engine LLM.
+
+**Cause**: Missing `llama-index-llms-ollama` package or LLM not configured in Settings.
+
+**Solution**: Ensure you have the Ollama LLM integration package:
+```bash
+pip install llama-index-llms-ollama
+ollama pull qwen2.5:0.5b  # Or any other Ollama model
+```
+
+The code automatically configures `Settings.llm = Ollama(...)` to use local Ollama instead of OpenAI.
 
 **RAG not retrieving relevant information:**
 - Check document content is clear and well-formatted
