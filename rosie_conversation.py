@@ -66,7 +66,7 @@ class RosieRAG:
         self.knowledge_base_dir = Path(knowledge_base_dir)
         self.chroma_db_dir = Path(chroma_db_dir)
         self.index = None
-        self.query_engine = None
+        self.retriever = None
 
         # Create directories if they don't exist
         self.knowledge_base_dir.mkdir(exist_ok=True)
@@ -75,23 +75,13 @@ class RosieRAG:
         print(f"[RAG] Initializing knowledge base from: {self.knowledge_base_dir}")
         print(f"[RAG] Vector database location: {self.chroma_db_dir}")
 
-        # Setup Ollama embeddings and LLM
+        # Setup Ollama embeddings (no LLM needed for retrieval-only RAG)
         print(f"[RAG] Configuring Ollama embedding model (nomic-embed-text)...")
         Settings.embed_model = OllamaEmbedding(
             model_name="nomic-embed-text",
             base_url="http://localhost:11434"
         )
         print(f"[RAG] Embedding model configured")
-
-        # Configure Ollama LLM (we don't actually use it for generation, just for query engine)
-        # Using a small model since we only need it for the query engine structure
-        print(f"[RAG] Configuring Ollama LLM...")
-        Settings.llm = Ollama(
-            model="qwen2.5:0.5b",  # Smallest/fastest model available
-            base_url="http://localhost:11434",
-            request_timeout=30.0
-        )
-        print(f"[RAG] LLM configured")
 
         # Initialize ChromaDB
         print(f"[RAG] Initializing ChromaDB...")
@@ -145,17 +135,17 @@ class RosieRAG:
                     storage_context=storage_context
                 )
 
-        # Create query engine with top_k=3 (retrieve 3 most relevant chunks)
-        self.query_engine = self.index.as_query_engine(
-            similarity_top_k=3,
-            response_mode="no_text"  # We only want the retrieved chunks, not LLM response
+        # Create retriever (NO LLM calls - embeddings only for fast retrieval)
+        # This completely bypasses LLM synthesis and only uses vector similarity
+        self.retriever = self.index.as_retriever(
+            similarity_top_k=3
         )
 
-        print(f"[RAG] Initialization complete")
+        print(f"[RAG] Initialization complete (using embedding-only retrieval)")
 
     def query(self, question, top_k=3):
         """
-        Retrieve relevant context for a question
+        Retrieve relevant context for a question using ONLY embeddings (no LLM calls)
 
         Args:
             question: The question to search for
@@ -164,24 +154,23 @@ class RosieRAG:
         Returns:
             String containing relevant context, or empty string if no results
         """
-        if not self.query_engine:
+        if not self.retriever:
             return ""
 
         try:
-            # Update top_k if different
+            # Update top_k if different from default
             if top_k != 3:
-                self.query_engine = self.index.as_query_engine(
-                    similarity_top_k=top_k,
-                    response_mode="no_text"
+                self.retriever = self.index.as_retriever(
+                    similarity_top_k=top_k
                 )
 
-            # Query the index
-            response = self.query_engine.query(question)
+            # Retrieve relevant nodes (NO LLM CALL - embeddings only)
+            nodes = self.retriever.retrieve(question)
 
-            # Extract source nodes (retrieved chunks)
-            if hasattr(response, 'source_nodes') and response.source_nodes:
+            # Extract text from retrieved nodes
+            if nodes:
                 contexts = []
-                for node in response.source_nodes:
+                for node in nodes:
                     # Get the text content from each node
                     text = node.node.get_content()
                     # Include source file info if available
@@ -194,6 +183,8 @@ class RosieRAG:
 
         except Exception as e:
             print(f"[RAG] Query error: {e}")
+            import traceback
+            traceback.print_exc()
             return ""
 
 
