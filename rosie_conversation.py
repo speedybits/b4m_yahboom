@@ -72,6 +72,7 @@ class RosieConversation:
         script_dir = Path(__file__).parent
         self.history_file = Path(os.getenv('HISTORY_FILE', script_dir / 'conversation_history.txt'))
         self.speak_file = Path(os.getenv('SPEAK_FILE', script_dir / 'speak.txt'))
+        self.important_info_file = Path(os.getenv('IMPORTANT_INFO_FILE', script_dir / 'important_information.txt'))
 
         # Conversation settings
         self.debug = int(os.getenv('DEBUG', '0')) == 1
@@ -128,6 +129,31 @@ class RosieConversation:
                 print(f"Loaded existing conversation history ({len(existing_content)} chars)")
             else:
                 print("conversation_history.txt exists but is empty")
+
+        # Initialize important_information.txt if it doesn't exist
+        if not self.important_info_file.exists():
+            template_content = (
+                "# Important Information for ROSIE\n\n"
+                "This file contains persistent facts and important information that ROSIE should always know.\n"
+                "This information will be included in every prompt to help ROSIE provide accurate and contextual responses.\n\n"
+                "## User Preferences\n"
+                "[Add user preferences here]\n\n"
+                "## Important Facts\n"
+                "[Add important facts that ROSIE should remember]\n\n"
+                "## Reminders\n"
+                "[Add persistent reminders]\n\n"
+                "## System Information\n"
+                "[Add system-specific information]\n"
+            )
+            self.important_info_file.write_text(template_content)
+            print("Created new important_information.txt")
+        else:
+            # Load existing important information
+            existing_info = self.important_info_file.read_text()
+            if existing_info:
+                print(f"Loaded important information ({len(existing_info)} chars)")
+            else:
+                print("important_information.txt exists but is empty")
 
         # Always clear speak file (temporary buffer)
         self.speak_file.write_text('')
@@ -553,11 +579,21 @@ class RosieConversation:
         self._log("Ollama processing started")
 
         try:
+            # Read important information
+            important_info_content = ""
+            if self.important_info_file.exists():
+                important_info_content = self.important_info_file.read_text()
+                print(f"[OLLAMA] Read important_information.txt: {len(important_info_content)} chars")
+            else:
+                print(f"[OLLAMA] important_information.txt not found, skipping")
+
             # Read conversation history
             conversation_content = self.history_file.read_text()
             print(f"[OLLAMA] Read conversation_history.txt: {len(conversation_content)} chars")
 
             # Check if context exceeds limit - if so, summarize first
+            # Note: important_info is NOT included in token count for summarization
+            # as it should always be preserved
             token_count = self._estimate_token_count(conversation_content)
             print(f"[OLLAMA] Estimated tokens: {token_count} (limit: {self.context_limit})")
 
@@ -609,6 +645,16 @@ class RosieConversation:
                 prompt = (
                     "You are ROSIE, a voice assistant.\n\n"
                     f"{current_date_context}"
+                )
+
+                # Add important information section if available
+                if important_info_content.strip():
+                    prompt += (
+                        "IMPORTANT INFORMATION (Always Remember):\n"
+                        f"{important_info_content}\n\n"
+                    )
+
+                prompt += (
                     "CONVERSATION HISTORY:\n"
                     f"{conversation_content}\n\n"
                     "Answer the most recent question using information from the conversation above.\n"
@@ -627,6 +673,16 @@ class RosieConversation:
                 prompt = (
                     "You are ROSIE, a helpful and friendly voice assistant.\n\n"
                     f"{current_date_context}"
+                )
+
+                # Add important information section if available
+                if important_info_content.strip():
+                    prompt += (
+                        "IMPORTANT INFORMATION (Always Remember):\n"
+                        f"{important_info_content}\n\n"
+                    )
+
+                prompt += (
                     "CONVERSATION HISTORY:\n"
                     f"{conversation_content}\n\n"
                     "Respond naturally to the most recent request or question.\n"

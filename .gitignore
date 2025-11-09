@@ -140,6 +140,7 @@ prompts/
 # ROSIE conversation files (contain private conversation data)
 conversation_history.txt
 speak.txt
+important_information.txt
 
 # Unused/temporary files directory
 unused/
