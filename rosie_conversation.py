@@ -75,16 +75,22 @@ class RosieRAG:
         print(f"[RAG] Vector database location: {self.chroma_db_dir}")
 
         # Setup Ollama embeddings
+        print(f"[RAG] Configuring Ollama embedding model (nomic-embed-text)...")
         Settings.embed_model = OllamaEmbedding(
             model_name="nomic-embed-text",
             base_url="http://localhost:11434"
         )
+        print(f"[RAG] Embedding model configured")
 
         # Initialize ChromaDB
+        print(f"[RAG] Initializing ChromaDB...")
         chroma_client = chromadb.PersistentClient(path=str(self.chroma_db_dir))
+        print(f"[RAG] Getting/creating collection...")
         chroma_collection = chroma_client.get_or_create_collection("rosie_knowledge")
+        print(f"[RAG] Setting up vector store...")
         vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
+        print(f"[RAG] ChromaDB initialized")
 
         # Check for .md files in knowledge base
         md_files = list(self.knowledge_base_dir.glob("*.md"))
@@ -102,17 +108,20 @@ class RosieRAG:
 
             # Load and index documents
             try:
+                print(f"[RAG] Loading documents...")
                 documents = SimpleDirectoryReader(
                     str(self.knowledge_base_dir),
                     required_exts=[".md"]
                 ).load_data()
 
                 print(f"[RAG] Loaded {len(documents)} document chunks")
+                print(f"[RAG] Creating vector embeddings (this may take a moment)...")
 
                 # Create or update index
                 self.index = VectorStoreIndex.from_documents(
                     documents,
-                    storage_context=storage_context
+                    storage_context=storage_context,
+                    show_progress=True
                 )
 
                 print(f"[RAG] Index created successfully")
@@ -1079,6 +1088,10 @@ def signal_handler(sig, frame):
 
 def main():
     """Main entry point"""
+    print("="*70)
+    print("ROSIE Conversational AI System - Starting up...")
+    print("="*70)
+
     # Parse command-line arguments
     parser = argparse.ArgumentParser(
         description='ROSIE Conversational AI System - Fully Local Voice Assistant',
@@ -1090,7 +1103,9 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
 
     # Create ROSIE instance
+    print("\n[INIT] Creating ROSIE instance...")
     rosie = RosieConversation()
+    print("[INIT] ROSIE instance created successfully")
 
     # Store instance for signal handler
     signal_handler.rosie_instance = rosie
