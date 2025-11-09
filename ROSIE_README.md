@@ -171,7 +171,7 @@ Expected output with GPU:
 
 7. **RAG knowledge base dependencies** (optional, for document retrieval)
    ```bash
-   pip install llama-index llama-index-llms-ollama llama-index-embeddings-ollama chromadb
+   pip install llama-index llama-index-llms-ollama llama-index-embeddings-ollama llama-index-vector-stores-chroma chromadb
    ```
 
    Then pull the embedding model:
@@ -549,11 +549,18 @@ sudo systemctl restart ollama
 ```
 WARNING: RAG dependencies not installed. Knowledge base features disabled.
 ```
-Solution: Install dependencies:
+Solution: Install all required dependencies:
 ```bash
-pip install llama-index llama-index-llms-ollama llama-index-embeddings-ollama chromadb
+pip install llama-index llama-index-llms-ollama llama-index-embeddings-ollama llama-index-vector-stores-chroma chromadb
 ollama pull nomic-embed-text
 ```
+
+**Note**: All five packages are required:
+- `llama-index` - Core framework
+- `llama-index-llms-ollama` - Ollama LLM integration
+- `llama-index-embeddings-ollama` - Ollama embeddings
+- `llama-index-vector-stores-chroma` - ChromaDB integration
+- `chromadb` - Vector database
 
 **No documents found:**
 ```
