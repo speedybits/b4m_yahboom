@@ -11,6 +11,7 @@ ROSIE combines these components for a streamlined conversational experience:
 - **Piper** - High-quality text-to-speech
 - **Voice Activity Detection (VAD)** - Complete phrase detection for accurate transcription
 - **Dual-mode Intelligence** - Factual accuracy (temp 0.1) + Creative conversation (temp 0.7)
+- **RAG Knowledge Base** - Retrieval-Augmented Generation with markdown document support
 
 ## Architecture
 
@@ -42,6 +43,8 @@ LISTENING → RESPONDING → SPEAKING → LISTENING
 ### File-Based Communication
 - `conversation_history.txt` - Complete conversation transcript (human and robot, stored in script directory)
 - `speak.txt` - Temporary TTS output buffer (stored in script directory)
+- `knowledge_base/` - Markdown documents for RAG retrieval (user's knowledge base)
+- `.rosie_vector_db/` - Vector embeddings database (ChromaDB persistence)
 
 ### Intelligent Context Management
 - **Purpose**: Maintain conversation context without exceeding LLM limits
@@ -70,6 +73,26 @@ ROSIE automatically adapts its response style based on your question:
 - Temperature: 0.7 (creative, natural)
 - Can tell jokes, share opinions, have casual conversation
 - Examples: "Tell me a joke", "What do you think about...", "How are you?"
+
+### RAG Knowledge Base
+ROSIE can retrieve relevant information from markdown documents to enhance responses:
+
+**Features**:
+- **Document Indexing**: Automatically indexes all `.md` files in `knowledge_base/` directory
+- **Semantic Search**: Uses Ollama embeddings (nomic-embed-text) for intelligent retrieval
+- **Top-K Retrieval**: Retrieves 3 most relevant chunks for each query
+- **Source Attribution**: Shows which file information came from
+- **Persistent Storage**: ChromaDB vector database with on-disk persistence
+
+**Context Hierarchy** (information priority in prompts):
+1. Current date/time
+2. Knowledge base (RAG-retrieved context)
+3. Conversation history
+
+**Performance**:
+- Adds 60-100ms to response time (still under 1 second)
+- ~150-250MB additional RAM usage
+- ~1-5MB storage per 100 markdown files
 
 ## Hardware Requirements
 
@@ -146,6 +169,18 @@ Expected output with GPU:
 
    **Note**: `webrtcvad` provides Voice Activity Detection for complete phrase transcription.
 
+7. **RAG knowledge base dependencies** (optional, for document retrieval)
+   ```bash
+   pip install llama-index llama-index-llms-ollama llama-index-embeddings-ollama chromadb
+   ```
+
+   Then pull the embedding model:
+   ```bash
+   ollama pull nomic-embed-text
+   ```
+
+   **Note**: RAG features are optional. ROSIE works without these dependencies, but won't have document retrieval capabilities.
+
 ### Setup
 
 1. **Configure environment variables in ~/.bashrc:**
@@ -171,6 +206,16 @@ Expected output with GPU:
    ```bash
    echo $PIPER_MODEL_PATH
    echo $PIPER_CONFIG_PATH
+   ```
+
+4. **Set up knowledge base (optional):**
+   ```bash
+   # The knowledge_base directory is created automatically on first run
+   # Add your markdown documents to it:
+   cp ~/my_notes.md knowledge_base/
+   cp ~/project_docs.md knowledge_base/
+
+   # Restart ROSIE to index the documents
    ```
 
 ## Usage
@@ -244,6 +289,36 @@ Rosie: "Let me think" [Ollama summarizes conversation history]
 [conversation_history.txt replaced with summary, conversation continues]
 ```
 
+### Using the Knowledge Base
+
+ROSIE automatically retrieves relevant information from your markdown documents:
+
+**Adding Documents:**
+```bash
+# Place markdown files in the knowledge_base directory
+echo "# My Notes\nThe robot is located in the basement." > knowledge_base/my_notes.md
+
+# Restart ROSIE to index new documents
+./rosie_conversation.py
+```
+
+**Example Interaction:**
+```
+[ROSIE starts and indexes documents]
+[RAG] Found 2 markdown files
+[RAG] Loaded 15 document chunks
+[RAG] Index created successfully
+
+User: "Rosie, what sensors does the robot have?"
+[RAG] Querying knowledge base with: 'what sensors does the robot have?'
+[RAG] Retrieved context: 347 chars
+
+Rosie: "The robot has a LIDAR sensor for mapping, an ESP32 microcontroller,
+an IMU for pose estimation, and a camera for computer vision tasks."
+```
+
+**Tip:** For facts that should always be available (user preferences, persistent reminders, etc.), create a dedicated markdown file like `knowledge_base/persistent_facts.md`.
+
 ### Memory Reset
 
 To clear all conversation history (two methods):
@@ -261,6 +336,8 @@ rm conversation_history.txt
 # Next ROSIE launch will start with empty history
 ```
 
+**Note**: Memory reset does NOT clear important_information.txt or the knowledge base.
+
 ### Shutdown
 
 Press **CTRL+C** for graceful shutdown (100-500ms response time).
@@ -277,6 +354,10 @@ test_new_rosie.py               # Validation test suite
 ROSIE_README.md                 # This file (includes GPU troubleshooting)
 conversation_history.txt        # Plain text conversation history (not committed)
 speak.txt                       # Temporary TTS buffer (not committed)
+knowledge_base/                 # Markdown documents for RAG (not committed)
+  ├── robot_info.md             # Example: robot specifications
+  └── project_notes.md          # Example: project documentation
+.rosie_vector_db/               # Vector embeddings database (not committed)
 ```
 
 ## Configuration
@@ -294,6 +375,8 @@ speak.txt                       # Temporary TTS buffer (not committed)
 - `CONTEXT_LIMIT` - Token limit before summarization (default: 6000)
 - `HISTORY_FILE` - Path to conversation history (default: ./conversation_history.txt)
 - `SPEAK_FILE` - Path to TTS buffer (default: ./speak.txt)
+- `KNOWLEDGE_BASE_DIR` - Path to markdown documents (default: ./knowledge_base)
+- `CHROMA_DB_DIR` - Path to vector database (default: ./.rosie_vector_db)
 
 **Dual-Mode Intelligence:**
 ROSIE automatically adjusts temperature based on question type:
@@ -459,6 +542,47 @@ sudo systemctl restart ollama
 - System automatically summarizes when approaching token limit
 - Manual reset: Say "Rosie, forget everything"
 - Check file with: `cat conversation_history.txt` (from script directory)
+
+### RAG knowledge base issues
+
+**RAG dependencies not installed:**
+```
+WARNING: RAG dependencies not installed. Knowledge base features disabled.
+```
+Solution: Install dependencies:
+```bash
+pip install llama-index llama-index-llms-ollama llama-index-embeddings-ollama chromadb
+ollama pull nomic-embed-text
+```
+
+**No documents found:**
+```
+[RAG] No .md files found in knowledge_base/
+```
+Solution: Add markdown files to the knowledge_base directory and restart ROSIE.
+
+**Embedding model not available:**
+```
+[RAG] Error loading documents: ...
+```
+Solution: Pull the embedding model:
+```bash
+ollama pull nomic-embed-text
+```
+
+**RAG not retrieving relevant information:**
+- Check document content is clear and well-formatted
+- Try more specific questions
+- Verify files are in `knowledge_base/` directory with `.md` extension
+- Check console for `[RAG]` debug messages
+
+**Rebuilding the index:**
+```bash
+# Delete the vector database to rebuild from scratch
+rm -rf .rosie_vector_db/
+# Restart ROSIE to rebuild index
+./rosie_conversation.py
+```
 
 ## Performance
 

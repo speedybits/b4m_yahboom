@@ -29,11 +29,152 @@ import numpy as np
 import sounddevice as sd
 from dotenv import load_dotenv
 
+# RAG imports
+try:
+    from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Settings, StorageContext
+    from llama_index.embeddings.ollama import OllamaEmbedding
+    from llama_index.vector_stores.chroma import ChromaVectorStore
+    import chromadb
+    RAG_AVAILABLE = True
+except ImportError:
+    RAG_AVAILABLE = False
+    print("WARNING: RAG dependencies not installed. Knowledge base features disabled.")
+    print("Install with: pip install llama-index llama-index-embeddings-ollama chromadb")
+
 # Load optional configuration from .env file (only if variables not already set)
 # Environment variables from .bashrc always take precedence
 env_file = Path(__file__).parent / '.env.rosie'
 if env_file.exists():
     load_dotenv(env_file, override=False)
+
+
+class RosieRAG:
+    """RAG (Retrieval-Augmented Generation) knowledge base for ROSIE"""
+
+    def __init__(self, knowledge_base_dir, chroma_db_dir):
+        """
+        Initialize RAG system with LlamaIndex and ChromaDB
+
+        Args:
+            knowledge_base_dir: Path to directory containing .md files
+            chroma_db_dir: Path to directory for ChromaDB persistence
+        """
+        if not RAG_AVAILABLE:
+            raise ImportError("RAG dependencies not installed")
+
+        self.knowledge_base_dir = Path(knowledge_base_dir)
+        self.chroma_db_dir = Path(chroma_db_dir)
+        self.index = None
+        self.query_engine = None
+
+        # Create directories if they don't exist
+        self.knowledge_base_dir.mkdir(exist_ok=True)
+        self.chroma_db_dir.mkdir(exist_ok=True)
+
+        print(f"[RAG] Initializing knowledge base from: {self.knowledge_base_dir}")
+        print(f"[RAG] Vector database location: {self.chroma_db_dir}")
+
+        # Setup Ollama embeddings
+        Settings.embed_model = OllamaEmbedding(
+            model_name="nomic-embed-text",
+            base_url="http://localhost:11434"
+        )
+
+        # Initialize ChromaDB
+        chroma_client = chromadb.PersistentClient(path=str(self.chroma_db_dir))
+        chroma_collection = chroma_client.get_or_create_collection("rosie_knowledge")
+        vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
+        storage_context = StorageContext.from_defaults(vector_store=vector_store)
+
+        # Check for .md files in knowledge base
+        md_files = list(self.knowledge_base_dir.glob("*.md"))
+
+        if not md_files:
+            print(f"[RAG] No .md files found in {self.knowledge_base_dir}")
+            print(f"[RAG] Knowledge base is empty. Add .md files and restart ROSIE.")
+            # Create empty index
+            self.index = VectorStoreIndex.from_documents(
+                [],
+                storage_context=storage_context
+            )
+        else:
+            print(f"[RAG] Found {len(md_files)} markdown files")
+
+            # Load and index documents
+            try:
+                documents = SimpleDirectoryReader(
+                    str(self.knowledge_base_dir),
+                    required_exts=[".md"]
+                ).load_data()
+
+                print(f"[RAG] Loaded {len(documents)} document chunks")
+
+                # Create or update index
+                self.index = VectorStoreIndex.from_documents(
+                    documents,
+                    storage_context=storage_context
+                )
+
+                print(f"[RAG] Index created successfully")
+
+            except Exception as e:
+                print(f"[RAG] Error loading documents: {e}")
+                # Create empty index on error
+                self.index = VectorStoreIndex.from_documents(
+                    [],
+                    storage_context=storage_context
+                )
+
+        # Create query engine with top_k=3 (retrieve 3 most relevant chunks)
+        self.query_engine = self.index.as_query_engine(
+            similarity_top_k=3,
+            response_mode="no_text"  # We only want the retrieved chunks, not LLM response
+        )
+
+        print(f"[RAG] Initialization complete")
+
+    def query(self, question, top_k=3):
+        """
+        Retrieve relevant context for a question
+
+        Args:
+            question: The question to search for
+            top_k: Number of relevant chunks to retrieve
+
+        Returns:
+            String containing relevant context, or empty string if no results
+        """
+        if not self.query_engine:
+            return ""
+
+        try:
+            # Update top_k if different
+            if top_k != 3:
+                self.query_engine = self.index.as_query_engine(
+                    similarity_top_k=top_k,
+                    response_mode="no_text"
+                )
+
+            # Query the index
+            response = self.query_engine.query(question)
+
+            # Extract source nodes (retrieved chunks)
+            if hasattr(response, 'source_nodes') and response.source_nodes:
+                contexts = []
+                for node in response.source_nodes:
+                    # Get the text content from each node
+                    text = node.node.get_content()
+                    # Include source file info if available
+                    source = node.node.metadata.get('file_name', 'unknown')
+                    contexts.append(f"[From {source}]\n{text}")
+
+                return "\n\n".join(contexts)
+            else:
+                return ""
+
+        except Exception as e:
+            print(f"[RAG] Query error: {e}")
+            return ""
 
 
 class ConversationState(Enum):
@@ -72,7 +213,11 @@ class RosieConversation:
         script_dir = Path(__file__).parent
         self.history_file = Path(os.getenv('HISTORY_FILE', script_dir / 'conversation_history.txt'))
         self.speak_file = Path(os.getenv('SPEAK_FILE', script_dir / 'speak.txt'))
-        self.important_info_file = Path(os.getenv('IMPORTANT_INFO_FILE', script_dir / 'important_information.txt'))
+
+        # RAG knowledge base configuration
+        self.knowledge_base_dir = Path(os.getenv('KNOWLEDGE_BASE_DIR', script_dir / 'knowledge_base'))
+        self.chroma_db_dir = Path(os.getenv('CHROMA_DB_DIR', script_dir / '.rosie_vector_db'))
+        self.rag_system = None  # Initialized later if RAG is available
 
         # Conversation settings
         self.debug = int(os.getenv('DEBUG', '0')) == 1
@@ -106,6 +251,9 @@ class RosieConversation:
         # Initialize files
         self._initialize_files()
 
+        # Initialize RAG system if available
+        self._initialize_rag()
+
         # Validate configuration
         self._validate_configuration()
 
@@ -130,33 +278,25 @@ class RosieConversation:
             else:
                 print("conversation_history.txt exists but is empty")
 
-        # Initialize important_information.txt if it doesn't exist
-        if not self.important_info_file.exists():
-            template_content = (
-                "# Important Information for ROSIE\n\n"
-                "This file contains persistent facts and important information that ROSIE should always know.\n"
-                "This information will be included in every prompt to help ROSIE provide accurate and contextual responses.\n\n"
-                "## User Preferences\n"
-                "[Add user preferences here]\n\n"
-                "## Important Facts\n"
-                "[Add important facts that ROSIE should remember]\n\n"
-                "## Reminders\n"
-                "[Add persistent reminders]\n\n"
-                "## System Information\n"
-                "[Add system-specific information]\n"
-            )
-            self.important_info_file.write_text(template_content)
-            print("Created new important_information.txt")
-        else:
-            # Load existing important information
-            existing_info = self.important_info_file.read_text()
-            if existing_info:
-                print(f"Loaded important information ({len(existing_info)} chars)")
-            else:
-                print("important_information.txt exists but is empty")
-
         # Always clear speak file (temporary buffer)
         self.speak_file.write_text('')
+
+    def _initialize_rag(self):
+        """Initialize RAG knowledge base system"""
+        if not RAG_AVAILABLE:
+            print("RAG system not available (missing dependencies)")
+            return
+
+        try:
+            self.rag_system = RosieRAG(
+                knowledge_base_dir=self.knowledge_base_dir,
+                chroma_db_dir=self.chroma_db_dir
+            )
+            print("RAG knowledge base initialized successfully")
+        except Exception as e:
+            print(f"Warning: Could not initialize RAG system: {e}")
+            print("ROSIE will continue without knowledge base features")
+            self.rag_system = None
 
     def _estimate_token_count(self, text):
         """Estimate token count (rough approximation: 1 token ≈ 0.75 words)"""
@@ -579,21 +719,31 @@ class RosieConversation:
         self._log("Ollama processing started")
 
         try:
-            # Read important information
-            important_info_content = ""
-            if self.important_info_file.exists():
-                important_info_content = self.important_info_file.read_text()
-                print(f"[OLLAMA] Read important_information.txt: {len(important_info_content)} chars")
-            else:
-                print(f"[OLLAMA] important_information.txt not found, skipping")
-
             # Read conversation history
             conversation_content = self.history_file.read_text()
             print(f"[OLLAMA] Read conversation_history.txt: {len(conversation_content)} chars")
 
+            # Query RAG knowledge base if available
+            rag_context = ""
+            if self.rag_system:
+                # Extract last human statement to use as query
+                human_lines = [line for line in conversation_content.split('\n') if line.startswith('Human:')]
+                last_human_statement = human_lines[-1] if human_lines else ""
+
+                if last_human_statement:
+                    # Remove "Human [timestamp]:" prefix to get just the question
+                    question = re.sub(r'^Human\s+\[.*?\]:\s*', '', last_human_statement)
+                    print(f"[RAG] Querying knowledge base with: '{question[:50]}...'")
+
+                    rag_context = self.rag_system.query(question, top_k=3)
+                    if rag_context:
+                        print(f"[RAG] Retrieved context: {len(rag_context)} chars")
+                    else:
+                        print(f"[RAG] No relevant context found")
+
             # Check if context exceeds limit - if so, summarize first
-            # Note: important_info is NOT included in token count for summarization
-            # as it should always be preserved
+            # Note: important_info and RAG context are NOT included in token count for summarization
+            # as they should always be preserved
             token_count = self._estimate_token_count(conversation_content)
             print(f"[OLLAMA] Estimated tokens: {token_count} (limit: {self.context_limit})")
 
@@ -647,11 +797,11 @@ class RosieConversation:
                     f"{current_date_context}"
                 )
 
-                # Add important information section if available
-                if important_info_content.strip():
+                # Add RAG context if available
+                if rag_context.strip():
                     prompt += (
-                        "IMPORTANT INFORMATION (Always Remember):\n"
-                        f"{important_info_content}\n\n"
+                        "KNOWLEDGE BASE (Relevant Information):\n"
+                        f"{rag_context}\n\n"
                     )
 
                 prompt += (
@@ -675,11 +825,11 @@ class RosieConversation:
                     f"{current_date_context}"
                 )
 
-                # Add important information section if available
-                if important_info_content.strip():
+                # Add RAG context if available
+                if rag_context.strip():
                     prompt += (
-                        "IMPORTANT INFORMATION (Always Remember):\n"
-                        f"{important_info_content}\n\n"
+                        "KNOWLEDGE BASE (Relevant Information):\n"
+                        f"{rag_context}\n\n"
                     )
 
                 prompt += (
