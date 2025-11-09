@@ -474,23 +474,28 @@ class RosieConversation:
         """Detect best available device for Whisper (GPU with fallback to CPU)"""
         try:
             import torch
+            import warnings
 
-            # Check if CUDA is available and working
-            if torch.cuda.is_available():
-                try:
-                    # Test if CUDA actually works by creating a small tensor
-                    test_tensor = torch.zeros(1).cuda()
-                    del test_tensor
-                    self._log("CUDA detected and functional")
-                    return "cuda"
-                except Exception as e:
-                    self._log(f"CUDA available but not functional: {e}")
-                    print(f"[WHISPER] ⚠ GPU detected but CUDA initialization failed")
-                    print(f"[WHISPER] → Falling back to CPU")
+            # Suppress CUDA initialization warnings (system-level PyTorch/CUDA mismatch)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=UserWarning, message=".*CUDA initialization.*")
+
+                # Check if CUDA is available and working
+                if torch.cuda.is_available():
+                    try:
+                        # Test if CUDA actually works by creating a small tensor
+                        test_tensor = torch.zeros(1).cuda()
+                        del test_tensor
+                        self._log("CUDA detected and functional")
+                        return "cuda"
+                    except Exception as e:
+                        self._log(f"CUDA available but not functional: {e}")
+                        print(f"[WHISPER] ⚠ GPU detected but CUDA initialization failed")
+                        print(f"[WHISPER] → Falling back to CPU")
+                        return "cpu"
+                else:
+                    self._log("CUDA not available, using CPU")
                     return "cpu"
-            else:
-                self._log("CUDA not available, using CPU")
-                return "cpu"
 
         except Exception as e:
             self._log(f"Device detection error: {e}, defaulting to CPU")
