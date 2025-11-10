@@ -41,13 +41,6 @@
             text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
         }
 
-        .status-message {
-            font-size: 1.5em;
-            margin-bottom: 30px;
-            min-height: 40px;
-            opacity: 0.9;
-        }
-
         .gif-container {
             background: rgba(255, 255, 255, 0.2);
             border-radius: 15px;
@@ -61,29 +54,6 @@
             height: auto;
             border-radius: 10px;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-        }
-
-        .state-indicator {
-            display: inline-block;
-            padding: 10px 20px;
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 20px;
-            margin-top: 20px;
-            font-size: 1.1em;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-        }
-
-        .state-waiting {
-            background: rgba(100, 149, 237, 0.3);
-        }
-
-        .state-thinking {
-            background: rgba(255, 193, 7, 0.3);
-        }
-
-        .state-speaking {
-            background: rgba(76, 175, 80, 0.3);
         }
 
         .connection-status {
@@ -113,32 +83,16 @@
 
     <div class="container">
         <h1>ROSIE</h1>
-        <div class="status-message" id="status-message">
-            Connecting to ROSIE...
-        </div>
 
         <div class="gif-container" id="gif-container">
             <img id="status-gif" class="status-gif" src="/gifs/waiting.gif" alt="ROSIE Status" onerror="this.style.display='none'">
         </div>
-
-        <div class="state-indicator state-waiting" id="state-indicator">
-            Initializing
-        </div>
     </div>
 
     <script>
-        const statusMessage = document.getElementById('status-message');
         const statusGif = document.getElementById('status-gif');
-        const stateIndicator = document.getElementById('state-indicator');
         const gifContainer = document.getElementById('gif-container');
         const connectionIndicator = document.getElementById('connection-indicator');
-
-        // State to class mapping
-        const stateClasses = {
-            'waiting': 'state-waiting',
-            'thinking': 'state-thinking',
-            'speaking': 'state-speaking'
-        };
 
         // Image cycling state
         let currentImages = [];
@@ -240,28 +194,12 @@
             const data = JSON.parse(event.data);
             console.log('State update:', data);
 
-            // Update message
-            statusMessage.textContent = data.message;
-
             // Start cycling with new images
             if (data.images && data.images.length > 0) {
                 startImageCycling(data.images);
             } else {
                 stopImageCycling();
                 statusGif.style.display = 'none';
-            }
-
-            // Update state indicator
-            stateIndicator.textContent = data.state.toUpperCase();
-
-            // Remove all state classes
-            Object.values(stateClasses).forEach(cls => {
-                stateIndicator.classList.remove(cls);
-            });
-
-            // Add current state class
-            if (stateClasses[data.state]) {
-                stateIndicator.classList.add(stateClasses[data.state]);
             }
         };
 
