@@ -222,20 +222,10 @@ def format_event_markdown(event):
     location = event.get('location', '')
     location_str = f"\n  - **Location:** {location}" if location else ""
 
-    # Description (truncate if too long)
-    description = event.get('description', '')
-    if description:
-        if len(description) > 200:
-            description = description[:200] + "..."
-        description_str = f"\n  - **Details:** {description}"
-    else:
-        description_str = ""
-
-    # Build markdown
+    # Build markdown (excluding description for privacy)
     md = f"- **{summary}**{duration_str} [{calendar_name}]"
     md += f"\n  - **When:** {start_str}"
     md += location_str
-    md += description_str
 
     return md
 
