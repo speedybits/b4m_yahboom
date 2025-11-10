@@ -85,7 +85,7 @@
         <h1>ROSIE</h1>
 
         <div class="gif-container" id="gif-container">
-            <img id="status-gif" class="status-gif" src="/gifs/waiting.gif" alt="ROSIE Status" onerror="this.style.display='none'">
+            <img id="status-gif" class="status-gif" src="/animation/waiting.gif" alt="ROSIE Status" onerror="this.style.display='none'">
         </div>
     </div>
 
@@ -106,7 +106,7 @@
             images.forEach(img => {
                 if (!imageCache[img]) {
                     const imageObj = new Image();
-                    imageObj.src = '/gifs/' + img;
+                    imageObj.src = '/animation/' + img;
                     imageCache[img] = imageObj;
                 }
             });
@@ -139,7 +139,7 @@
             console.log(`Cycling to image ${currentImageIndex + 1}/${currentImages.length}: ${imageName}`);
 
             // Update image
-            statusGif.src = '/gifs/' + imageName;
+            statusGif.src = '/animation/' + imageName;
             statusGif.style.display = 'block';
 
             // Schedule next cycle (random 500-1000ms)

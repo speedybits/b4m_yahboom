@@ -32,8 +32,8 @@ MISSING_STATES=0
 
 for state in waiting thinking speaking; do
     # Check for at least one numbered image (PNG or JPG)
-    if ls "$SCRIPT_DIR/gifs/${state}"[0-9]*.{png,jpg,jpeg,PNG,JPG,JPEG} 2>/dev/null | grep -q .; then
-        COUNT=$(ls "$SCRIPT_DIR/gifs/${state}"[0-9]*.{png,jpg,jpeg,PNG,JPG,JPEG} 2>/dev/null | wc -l)
+    if ls "$SCRIPT_DIR/animation/${state}"[0-9]*.{png,jpg,jpeg,PNG,JPG,JPEG} 2>/dev/null | grep -q .; then
+        COUNT=$(ls "$SCRIPT_DIR/animation/${state}"[0-9]*.{png,jpg,jpeg,PNG,JPG,JPEG} 2>/dev/null | wc -l)
         echo -e "${GREEN}✓ Found $COUNT image(s) for '$state' state${NC}"
     else
         echo -e "${YELLOW}Warning: No images found for '$state' state${NC}"
@@ -45,7 +45,7 @@ done
 if [ $MISSING_STATES -gt 0 ]; then
     echo ""
     echo -e "${YELLOW}Note: $MISSING_STATES state(s) missing images. Web interface will display without images for those states.${NC}"
-    echo "See gifs/README.md for instructions on adding numbered image files."
+    echo "See animation/README.md for instructions on adding numbered image files."
     echo "Example: waiting1.png, waiting2.png, thinking1.jpg, speaking1.png"
     echo ""
     read -p "Continue anyway? (y/n) " -n 1 -r

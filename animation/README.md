@@ -1,4 +1,4 @@
-# ROSIE Image Animations
+# ROSIE Animation Images
 
 This directory contains numbered image files that are cycled randomly to create animated effects on the ROSIE web status interface.
 
@@ -154,7 +154,7 @@ After adding your images:
 **No images displaying:**
 - Check file names match pattern exactly: `waiting1.png` not `Waiting1.png`
 - Check browser console (F12) for errors
-- Verify images are in the `gifs/` directory
+- Verify images are in the `animation/` directory
 - Check web server startup output for "Found X images" messages
 
 **Images not cycling:**
@@ -170,7 +170,7 @@ After adding your images:
 ## Example Directory Structure
 
 ```
-gifs/
+animation/
 ├── .gitkeep
 ├── README.md (this file)
 ├── waiting1.png

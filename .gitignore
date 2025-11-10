@@ -149,10 +149,10 @@ knowledge_base/*
 # ROSIE vector database (generated embeddings)
 .rosie_vector_db/
 
-# ROSIE GIF animations (user-provided animated GIFs for web interface)
-gifs/*
-!gifs/.gitkeep
-!gifs/README.md
+# ROSIE animations (user-provided animation images for web interface)
+animation/*
+!animation/.gitkeep
+!animation/README.md
 
 # Unused/temporary files directory
 unused/

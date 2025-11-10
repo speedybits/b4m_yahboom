@@ -376,11 +376,11 @@ Images cycle randomly every 0.5-1 second, avoiding immediate repeats.
    speaking1.png, speaking2.png, speaking3.png, speaking4.png, ...
    ```
 
-2. Place them in the `gifs/` directory
+2. Place them in the `animation/` directory
 
 3. Each state can have a different number of images (minimum 1, recommended 3-5)
 
-4. See `gifs/README.md` for:
+4. See `animation/README.md` for:
    - File naming requirements
    - Image specifications
    - Creation tips and tools
@@ -388,7 +388,7 @@ Images cycle randomly every 0.5-1 second, avoiding immediate repeats.
 
 **Example:**
 ```bash
-gifs/
+animation/
 ├── waiting1.png    # Eyes open
 ├── waiting2.png    # Eyes blinking
 ├── waiting3.png    # Eyes closed
@@ -442,7 +442,7 @@ knowledge_base/                 # Markdown documents for RAG (not committed)
   ├── .gitkeep                  # Preserves directory structure
   └── README.md                 # Instructions for adding documents
 .rosie_vector_db/               # Vector embeddings database (not committed)
-gifs/                           # Numbered images for web display (not committed)
+animation/                      # Numbered images for web display (not committed)
   ├── .gitkeep                  # Preserves directory structure
   ├── README.md                 # Image requirements and instructions
   ├── waiting1.png              # LISTENING state images

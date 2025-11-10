@@ -31,7 +31,7 @@ SCRIPT_DIR = Path(__file__).parent
 STATE_FILE = SCRIPT_DIR / 'rosie_state.json'
 
 # Images directory
-IMAGES_DIR = SCRIPT_DIR / 'gifs'
+IMAGES_DIR = SCRIPT_DIR / 'animation'
 
 # Available images cache (populated on startup)
 available_images = {
@@ -118,7 +118,7 @@ def index():
     return render_template('rosie_status.html')
 
 
-@app.route('/gifs/<path:filename>')
+@app.route('/animation/<path:filename>')
 def serve_image(filename):
     """Serve image files"""
     return send_from_directory(str(IMAGES_DIR), filename)
