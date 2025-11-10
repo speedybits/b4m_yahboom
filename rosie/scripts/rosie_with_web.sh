@@ -84,6 +84,11 @@ echo ""
 echo "Starting ROSIE in 3 seconds..."
 sleep 3
 
+# Sync calendar events before starting ROSIE (if configured)
+echo "Syncing calendar events..."
+python3 "$ROSIE_DIR/src/rosie_calendar_sync.py" > /dev/null 2>&1 || true
+echo ""
+
 # Trap CTRL+C to clean up both processes
 cleanup() {
     echo ""
