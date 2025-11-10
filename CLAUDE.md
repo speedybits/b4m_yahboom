@@ -348,3 +348,96 @@ Standard ROS2 testing framework with pytest for Python nodes and gtest for C++ n
 - Motor control verification
 - Communication link testing
 - ESP32 Micro-ROS connectivity
+
+## ROSIE - Voice Assistant System
+
+ROSIE is the repository's voice-controlled conversational AI system, completely separate from the ROS2 robot navigation system.
+
+### File Organization
+
+All ROSIE-related files are organized under the `rosie/` directory:
+
+```
+rosie/
+├── src/                           # Python source code
+│   ├── rosie_conversation.py      # Main ROSIE application
+│   ├── rosie_web_status.py        # Flask web status server
+│   ├── rosie_calendar_setup.py    # Google Calendar setup wizard
+│   ├── rosie_calendar_sync.py     # Calendar event sync script
+│   └── rosie_calendar_create.py   # Calendar event creation handler
+├── scripts/                       # Launch scripts
+│   ├── rosie_launch.sh            # Basic launch script
+│   └── rosie_with_web.sh          # Launch with web interface
+├── templates/                     # Flask web templates
+│   └── rosie_status.html          # Web status display page
+├── animation/                     # Status display animations
+│   ├── waiting*.png/jpg           # Waiting state images
+│   ├── thinking*.png/jpg          # Thinking state images
+│   └── speaking*.png/jpg          # Speaking state images
+├── knowledge_base/                # RAG knowledge base (markdown files)
+│   ├── calendar_events.md         # Synced calendar events
+│   ├── family.md                  # Family information
+│   └── *.md                       # Other knowledge documents
+├── data/                          # Runtime data (not committed to git)
+│   ├── .rosie_vector_db/          # ChromaDB vector database
+│   ├── rosie_state.json           # Current state for web display
+│   ├── conversation_history.txt   # Conversation log
+│   ├── speak.txt                  # TTS buffer
+│   ├── calendar_config.json       # Calendar configuration
+│   ├── calendar_create_queue.json # Pending event creations
+│   └── calendar_create_log.txt    # Event creation log
+├── docs/                          # Documentation
+│   ├── ROSIE_README.md            # Main ROSIE documentation
+│   ├── ROSIE_CALENDAR.md          # Calendar integration docs
+│   ├── ROSIE_NEWS.md              # Release notes
+│   └── animation_README.md        # Animation image guide
+├── requirements_rosie.txt         # Python dependencies
+└── .gitignore                     # Excludes runtime data files
+```
+
+### Launch Commands
+
+**Basic launch:**
+```bash
+./rosie/scripts/rosie_launch.sh
+```
+
+**Launch with web interface:**
+```bash
+./rosie/scripts/rosie_with_web.sh
+```
+
+**Direct Python execution:**
+```bash
+python3 rosie/src/rosie_conversation.py
+```
+
+### File Path Architecture
+
+All Python files use relative paths from the rosie root directory:
+- **Scripts in `src/`**: Use `Path(__file__).parent.parent` to get rosie root
+- **Runtime data**: Stored in `rosie/data/`
+- **Knowledge base**: Located in `rosie/knowledge_base/`
+- **Templates**: Located in `rosie/templates/`
+- **Animations**: Located in `rosie/animation/`
+
+### Development Guidelines
+
+1. **Runtime files**: Never commit files in `rosie/data/` (excluded in .gitignore)
+2. **Documentation**: Keep ROSIE docs in `rosie/docs/`
+3. **Launch scripts**: All scripts must support being run from any directory
+4. **Path updates**: When moving ROSIE files, update paths in:
+   - Python scripts (rosie_conversation.py, rosie_web_status.py, calendar scripts)
+   - Shell scripts (rosie_launch.sh, rosie_with_web.sh)
+   - This CLAUDE.md documentation
+
+### Key Dependencies
+
+- **Whisper**: Speech-to-text (faster-whisper with GPU support)
+- **Ollama**: Local LLM for responses
+- **Piper**: Text-to-speech synthesis
+- **LlamaIndex + ChromaDB**: RAG knowledge base
+- **Flask**: Web status interface
+- **Google Calendar API**: Calendar integration
+
+See `rosie/docs/ROSIE_README.md` for complete setup and usage instructions.

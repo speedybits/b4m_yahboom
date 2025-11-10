@@ -44,7 +44,8 @@ except ImportError:
 
 # Load optional configuration from .env file (only if variables not already set)
 # Environment variables from .bashrc always take precedence
-env_file = Path(__file__).parent / '.env.rosie'
+# Look in the rosie root directory (parent of src/)
+env_file = Path(__file__).parent.parent / '.env.rosie'
 if env_file.exists():
     load_dotenv(env_file, override=False)
 
@@ -220,15 +221,15 @@ class RosieConversation:
         self.piper_model_path = os.getenv('PIPER_MODEL_PATH')
         self.piper_config_path = os.getenv('PIPER_CONFIG_PATH')
 
-        # File paths (default to script directory)
-        script_dir = Path(__file__).parent
-        self.history_file = Path(os.getenv('HISTORY_FILE', script_dir / 'conversation_history.txt'))
-        self.speak_file = Path(os.getenv('SPEAK_FILE', script_dir / 'speak.txt'))
-        self.state_file = Path(os.getenv('STATE_FILE', script_dir / 'rosie_state.json'))
+        # File paths (relative to rosie root directory - parent of src/)
+        rosie_dir = Path(__file__).parent.parent
+        self.history_file = Path(os.getenv('HISTORY_FILE', rosie_dir / 'data' / 'conversation_history.txt'))
+        self.speak_file = Path(os.getenv('SPEAK_FILE', rosie_dir / 'data' / 'speak.txt'))
+        self.state_file = Path(os.getenv('STATE_FILE', rosie_dir / 'data' / 'rosie_state.json'))
 
         # RAG knowledge base configuration
-        self.knowledge_base_dir = Path(os.getenv('KNOWLEDGE_BASE_DIR', script_dir / 'knowledge_base'))
-        self.chroma_db_dir = Path(os.getenv('CHROMA_DB_DIR', script_dir / '.rosie_vector_db'))
+        self.knowledge_base_dir = Path(os.getenv('KNOWLEDGE_BASE_DIR', rosie_dir / 'knowledge_base'))
+        self.chroma_db_dir = Path(os.getenv('CHROMA_DB_DIR', rosie_dir / 'data' / '.rosie_vector_db'))
         self.rag_system = None  # Initialized later if RAG is available
 
         # Conversation settings
@@ -1082,8 +1083,8 @@ class RosieConversation:
                     # Add timestamp
                     event_data['requested_at'] = now.isoformat()
 
-                    # Load existing queue
-                    queue_file = Path(__file__).parent / 'calendar_create_queue.json'
+                    # Load existing queue (in rosie/data/ directory)
+                    queue_file = Path(__file__).parent.parent / 'data' / 'calendar_create_queue.json'
                     if queue_file.exists():
                         with open(queue_file, 'r') as f:
                             content = f.read().strip()

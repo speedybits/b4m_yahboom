@@ -5,8 +5,9 @@
 # Source .bashrc to get all environment variables
 source ~/.bashrc
 
-# Get script directory
+# Get script directory (rosie/scripts/) and rosie root directory
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROSIE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Colors for output
 RED='\033[0;31m'
@@ -32,8 +33,8 @@ MISSING_STATES=0
 
 for state in waiting thinking speaking; do
     # Check for at least one numbered image (PNG or JPG)
-    if ls "$SCRIPT_DIR/animation/${state}"[0-9]*.{png,jpg,jpeg,PNG,JPG,JPEG} 2>/dev/null | grep -q .; then
-        COUNT=$(ls "$SCRIPT_DIR/animation/${state}"[0-9]*.{png,jpg,jpeg,PNG,JPG,JPEG} 2>/dev/null | wc -l)
+    if ls "$ROSIE_DIR/animation/${state}"[0-9]*.{png,jpg,jpeg,PNG,JPG,JPEG} 2>/dev/null | grep -q .; then
+        COUNT=$(ls "$ROSIE_DIR/animation/${state}"[0-9]*.{png,jpg,jpeg,PNG,JPG,JPEG} 2>/dev/null | wc -l)
         echo -e "${GREEN}✓ Found $COUNT image(s) for '$state' state${NC}"
     else
         echo -e "${YELLOW}Warning: No images found for '$state' state${NC}"
@@ -62,7 +63,7 @@ echo "======================================================================"
 echo ""
 
 # Start web server in background
-python3 "$SCRIPT_DIR/rosie_web_status.py" &
+python3 "$ROSIE_DIR/src/rosie_web_status.py" &
 WEB_PID=$!
 
 # Give web server time to start
@@ -96,7 +97,7 @@ cleanup() {
 trap cleanup SIGINT SIGTERM
 
 # Start ROSIE
-python3 "$SCRIPT_DIR/rosie_conversation.py" "$@"
+python3 "$ROSIE_DIR/src/rosie_conversation.py" "$@"
 
 # If ROSIE exits, clean up web server
 cleanup

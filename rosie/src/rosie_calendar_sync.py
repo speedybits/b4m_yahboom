@@ -23,10 +23,10 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-# File paths
-SCRIPT_DIR = Path(__file__).parent
-CONFIG_FILE = SCRIPT_DIR / 'calendar_config.json'
-KNOWLEDGE_BASE_DIR = SCRIPT_DIR / 'knowledge_base'
+# File paths (relative to rosie root directory - parent of src/)
+ROSIE_DIR = Path(__file__).parent.parent
+CONFIG_FILE = ROSIE_DIR / 'data' / 'calendar_config.json'
+KNOWLEDGE_BASE_DIR = ROSIE_DIR / 'knowledge_base'
 OUTPUT_FILE = KNOWLEDGE_BASE_DIR / 'calendar_events.md'
 
 # Scopes for read/write access

@@ -1,0 +1,33 @@
+# Runtime data files (not committed to git)
+data/rosie_state.json
+data/conversation_history.txt
+data/speak.txt
+data/calendar_config.json
+data/calendar_create_queue.json
+data/calendar_create_log.txt
+
+# Vector database (large binary files)
+data/.rosie_vector_db/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db

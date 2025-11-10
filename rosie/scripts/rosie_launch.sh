@@ -5,5 +5,8 @@
 # Source .bashrc to get all environment variables
 source ~/.bashrc
 
-# Run ROSIE with all environment variables available
-python3 "$(dirname "$0")/rosie_conversation.py" "$@"
+# Get the directory of this script (rosie/scripts/)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Run ROSIE from src/ directory
+python3 "$SCRIPT_DIR/../src/rosie_conversation.py" "$@"

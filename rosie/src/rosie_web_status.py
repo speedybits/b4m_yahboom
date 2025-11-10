@@ -15,7 +15,10 @@ from pathlib import Path
 from flask import Flask, render_template, Response, send_from_directory
 from threading import Lock
 
-app = Flask(__name__)
+# Flask needs to know where templates are (in rosie/templates/)
+# All paths relative to rosie root directory (parent of src/)
+ROSIE_DIR = Path(__file__).parent.parent
+app = Flask(__name__, template_folder=str(ROSIE_DIR / 'templates'))
 app.config['SECRET_KEY'] = 'rosie-status-display'
 
 # Current state tracking
@@ -27,11 +30,10 @@ current_state = {
 }
 
 # State file path - ROSIE writes to this file when state changes
-SCRIPT_DIR = Path(__file__).parent
-STATE_FILE = SCRIPT_DIR / 'rosie_state.json'
+STATE_FILE = ROSIE_DIR / 'data' / 'rosie_state.json'
 
 # Images directory
-IMAGES_DIR = SCRIPT_DIR / 'animation'
+IMAGES_DIR = ROSIE_DIR / 'animation'
 
 # Available images cache (populated on startup)
 available_images = {

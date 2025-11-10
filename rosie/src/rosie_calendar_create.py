@@ -23,11 +23,11 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-# File paths
-SCRIPT_DIR = Path(__file__).parent
-CONFIG_FILE = SCRIPT_DIR / 'calendar_config.json'
-QUEUE_FILE = SCRIPT_DIR / 'calendar_create_queue.json'
-LOG_FILE = SCRIPT_DIR / 'calendar_create_log.txt'
+# File paths (relative to rosie root directory - parent of src/)
+ROSIE_DIR = Path(__file__).parent.parent
+CONFIG_FILE = ROSIE_DIR / 'data' / 'calendar_config.json'
+QUEUE_FILE = ROSIE_DIR / 'data' / 'calendar_create_queue.json'
+LOG_FILE = ROSIE_DIR / 'data' / 'calendar_create_log.txt'
 
 # Scopes for read/write access
 SCOPES = ['https://www.googleapis.com/auth/calendar']

@@ -22,9 +22,9 @@ from googleapiclient.errors import HttpError
 # Scopes for read/write access to calendars
 SCOPES = ['https://www.googleapis.com/auth/calendar']
 
-# File paths
-SCRIPT_DIR = Path(__file__).parent
-CONFIG_FILE = SCRIPT_DIR / 'calendar_config.json'
+# File paths (relative to rosie root directory - parent of src/)
+ROSIE_DIR = Path(__file__).parent.parent
+CONFIG_FILE = ROSIE_DIR / 'data' / 'calendar_config.json'
 
 
 def get_client_config():
@@ -338,11 +338,11 @@ def main():
     print("=" * 80)
     print("\nNext steps:")
     print(f"1. Run the sync script to fetch calendar events:")
-    print(f"   python3 {SCRIPT_DIR}/rosie_calendar_sync.py")
+    print(f"   python3 {ROSIE_DIR}/src/rosie_calendar_sync.py")
     print(f"\n2. Check that events were added to your knowledge base:")
-    print(f"   cat {SCRIPT_DIR}/knowledge_base/calendar_events.md")
+    print(f"   cat {ROSIE_DIR}/knowledge_base/calendar_events.md")
     print(f"\n3. Set up automatic syncing with cron (optional):")
-    print(f"   */15 * * * * cd {SCRIPT_DIR} && python3 rosie_calendar_sync.py")
+    print(f"   */15 * * * * cd {ROSIE_DIR}/src && python3 rosie_calendar_sync.py")
     print("\n" + "=" * 80)
 
 
