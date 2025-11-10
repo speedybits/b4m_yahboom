@@ -71,7 +71,7 @@ See `bashrc_calendar_template.txt` for a template with detailed comments.
 ### Step 3: Run Setup Wizard
 ```bash
 cd /home/mike/projects/b4m_yahboom
-python3 rosie_calendar_setup.py
+python3 rosie/src/rosie_calendar_setup.py
 ```
 
 **What happens:**
@@ -137,12 +137,12 @@ Your selection: 2,3
 
 ### Step 4: Test Manual Sync
 ```bash
-python3 rosie_calendar_sync.py
+python3 rosie/src/rosie_calendar_sync.py
 ```
 
 **Check output:**
 ```bash
-cat knowledge_base/calendar_events.md
+cat rosie/knowledge_base/calendar_events.md
 ```
 
 You should see your calendar events formatted as markdown!
@@ -157,10 +157,10 @@ crontab -e
 Add these two lines at the bottom:
 ```bash
 # Sync calendar events every 15 minutes
-*/15 * * * * cd /home/mike/projects/b4m_yahboom && python3 rosie_calendar_sync.py >> /tmp/rosie_calendar_sync.log 2>&1
+*/15 * * * * cd /home/mike/projects/b4m_yahboom && python3 rosie/src/rosie_calendar_sync.py >> /tmp/rosie_calendar_sync.log 2>&1
 
 # Process event creation queue every 5 minutes
-*/5 * * * * cd /home/mike/projects/b4m_yahboom && python3 rosie_calendar_create.py >> /tmp/rosie_calendar_create.log 2>&1
+*/5 * * * * cd /home/mike/projects/b4m_yahboom && python3 rosie/src/rosie_calendar_create.py >> /tmp/rosie_calendar_create.log 2>&1
 ```
 
 Save and exit (Ctrl+X, then Y, then Enter in nano).
@@ -175,7 +175,7 @@ crontab -l
 Start ROSIE:
 ```bash
 cd /home/mike/projects/b4m_yahboom
-./rosie_with_web.sh
+./rosie/scripts/rosie_with_web.sh
 ```
 
 **Test reading calendar:**
@@ -210,14 +210,14 @@ Your calendar is now integrated with ROSIE.
 - `GOOGLE_CALENDAR_TOKEN` - Your access/refresh token (auto-generated)
 
 **Files created (DO NOT commit to git):**
-- `calendar_config.json` - Your calendar selections
-- `calendar_create_queue.json` - Pending events
-- `knowledge_base/calendar_events.md` - Synced events
+- `rosie/data/calendar_config.json` - Your calendar selections
+- `rosie/data/calendar_create_queue.json` - Pending events
+- `rosie/knowledge_base/calendar_events.md` - Synced events
 
 **Scripts you can run:**
-- `python3 rosie_calendar_setup.py` - Re-run setup
-- `python3 rosie_calendar_sync.py` - Manual sync
-- `python3 rosie_calendar_create.py` - Process queue manually
+- `python3 rosie/src/rosie_calendar_setup.py` - Re-run setup
+- `python3 rosie/src/rosie_calendar_sync.py` - Manual sync
+- `python3 rosie/src/rosie_calendar_create.py` - Process queue manually
 
 **Check logs:**
 ```bash
@@ -246,13 +246,13 @@ tail -f /tmp/rosie_calendar_create.log
 **Events not syncing:**
 - Check if cron job is running: `crontab -l`
 - View sync logs: `tail /tmp/rosie_calendar_sync.log`
-- Try manual sync: `python3 rosie_calendar_sync.py`
+- Try manual sync: `python3 rosie/src/rosie_calendar_sync.py`
 
 **ROSIE not creating events:**
 - Check detection: Look for `[CALENDAR]` in ROSIE console
-- Check queue: `cat calendar_create_queue.json`
+- Check queue: `cat rosie/data/calendar_create_queue.json`
 - Check logs: `tail /tmp/rosie_calendar_create.log`
-- Try manual: `python3 rosie_calendar_create.py`
+- Try manual: `python3 rosie/src/rosie_calendar_create.py`
 
 ## Full Documentation
 
