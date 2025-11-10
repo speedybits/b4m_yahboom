@@ -104,18 +104,6 @@
             color: #f44336;
         }
 
-        @keyframes pulse {
-            0%, 100% {
-                transform: scale(1);
-            }
-            50% {
-                transform: scale(1.05);
-            }
-        }
-
-        .gif-container.active {
-            animation: pulse 2s ease-in-out infinite;
-        }
     </style>
 </head>
 <body>
@@ -274,13 +262,6 @@
             // Add current state class
             if (stateClasses[data.state]) {
                 stateIndicator.classList.add(stateClasses[data.state]);
-            }
-
-            // Add pulse animation when speaking or thinking
-            if (data.state === 'speaking' || data.state === 'thinking') {
-                gifContainer.classList.add('active');
-            } else {
-                gifContainer.classList.remove('active');
             }
         };
 
