@@ -828,6 +828,15 @@ class RosieConversation:
             human_lines = [line for line in conversation_content.split('\n') if line.startswith('Human:')]
             last_human_statement = human_lines[-1] if human_lines else ""
 
+            # Check for calendar event creation request
+            calendar_create_pattern = r'\b(schedule|add|create|set up|book|make)\b.*\b(appointment|meeting|event|reminder)\b'
+            is_calendar_create = bool(re.search(calendar_create_pattern, last_human_statement, re.IGNORECASE))
+
+            if is_calendar_create:
+                # Handle calendar event creation
+                self._handle_calendar_creation(last_human_statement, conversation_content)
+                return
+
             # Check for factual question words (when, where, who)
             factual_question_pattern = r'\b(when|where|who)\b'
             is_factual_question = bool(re.search(factual_question_pattern, last_human_statement, re.IGNORECASE))
@@ -1001,6 +1010,130 @@ class RosieConversation:
         except Exception as e:
             print(f"[OLLAMA] Summarization error: {e}")
             return None
+
+    def _handle_calendar_creation(self, last_human_statement, conversation_content):
+        """
+        Handle calendar event creation request
+
+        Uses Ollama to extract event details and writes to queue file.
+        Provides optimistic confirmation to user.
+
+        Args:
+            last_human_statement: The most recent human statement
+            conversation_content: Full conversation history for context
+        """
+        print(f"[CALENDAR] Detected calendar creation request")
+
+        try:
+            # Use Ollama to extract structured event details
+            import datetime
+            now = datetime.datetime.now()
+            current_date_context = (
+                f"Current date and time: {now.strftime('%A, %B %d, %Y at %I:%M %p')}\n"
+                f"(Day of week: {now.strftime('%A')})\n"
+            )
+
+            extraction_prompt = (
+                f"{current_date_context}\n"
+                f"CONVERSATION:\n{conversation_content}\n\n"
+                f"The user wants to create a calendar event. Extract these details from the most recent request:\n"
+                f"- summary: Brief title for the event\n"
+                f"- date: Date (e.g., 'today', 'tomorrow', 'Friday', 'YYYY-MM-DD')\n"
+                f"- time: Time (e.g., '2pm', '14:30', '2:30 PM') or 'none' if not specified\n"
+                f"- duration_minutes: Duration in minutes (default 60 if not specified)\n"
+                f"- location: Location or 'none' if not specified\n\n"
+                f"Respond ONLY with a JSON object in this exact format:\n"
+                f'{{"summary": "...", "date": "...", "time": "...", "duration_minutes": 60, "location": "..."}}\n\n'
+                f"JSON response:"
+            )
+
+            print(f"[CALENDAR] Extracting event details with Ollama...")
+
+            response = requests.post(
+                self.ollama_url,
+                json={
+                    'model': self.ollama_model,
+                    'prompt': extraction_prompt,
+                    'temperature': 0.1,  # Low temperature for accurate extraction
+                    'max_tokens': 200,
+                    'stream': False
+                },
+                timeout=15
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                ollama_text = result.get('response', '').strip()
+
+                print(f"[CALENDAR] Ollama extraction response: {ollama_text}")
+
+                # Parse JSON from Ollama response
+                # Extract JSON from response (might have extra text)
+                json_match = re.search(r'\{.*\}', ollama_text, re.DOTALL)
+                if json_match:
+                    event_data = json.loads(json_match.group(0))
+
+                    # Clean up 'none' values
+                    if event_data.get('time') == 'none':
+                        event_data['time'] = None
+                    if event_data.get('location') == 'none':
+                        event_data['location'] = ''
+
+                    # Add timestamp
+                    event_data['requested_at'] = now.isoformat()
+
+                    # Load existing queue
+                    queue_file = Path(__file__).parent / 'calendar_create_queue.json'
+                    if queue_file.exists():
+                        with open(queue_file, 'r') as f:
+                            content = f.read().strip()
+                            queue = json.loads(content) if content else []
+                    else:
+                        queue = []
+
+                    # Add to queue
+                    queue.append(event_data)
+
+                    # Save queue
+                    with open(queue_file, 'w') as f:
+                        json.dump(queue, f, indent=2)
+
+                    print(f"[CALENDAR] ✓ Event queued: {event_data.get('summary')}")
+
+                    # Generate confirmation message
+                    confirmation = f"I've queued your {event_data.get('summary')} for {event_data.get('date')}"
+                    if event_data.get('time'):
+                        confirmation += f" at {event_data.get('time')}"
+                    confirmation += ". It will be added to your calendar shortly."
+
+                    # Write to speak.txt
+                    self.speak_file.write_text(confirmation)
+                    print(f"[CALENDAR] Robot will say: {confirmation}")
+
+                    # Transition to SPEAKING state
+                    self._set_state(ConversationState.SPEAKING)
+
+                    # Trigger speech output
+                    threading.Thread(target=self._piper_speak, daemon=True).start()
+
+                else:
+                    print(f"[CALENDAR] Error: Could not parse JSON from Ollama response")
+                    self._speak_error("I understood you want to create an event, but I couldn't extract the details. Please try again.")
+            else:
+                print(f"[CALENDAR] Error: Ollama API returned status {response.status_code}")
+                self._speak_error("I had trouble processing your calendar request. Please try again.")
+
+        except Exception as e:
+            print(f"[CALENDAR] Error: {e}")
+            import traceback
+            traceback.print_exc()
+            self._speak_error("I encountered an error processing your calendar request.")
+
+    def _speak_error(self, message):
+        """Speak an error message and return to listening"""
+        self.speak_file.write_text(message)
+        self._set_state(ConversationState.SPEAKING)
+        threading.Thread(target=self._piper_speak, daemon=True).start()
 
     # =====================================================================
     # STATE 3: SPEAKING - Piper TTS Output

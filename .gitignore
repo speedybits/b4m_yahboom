@@ -157,3 +157,9 @@ animation/*
 # Unused/temporary files directory
 unused/
 .env.rosie
+
+# Google Calendar API data files (NEVER commit these!)
+# Note: credentials and tokens are now stored in ~/.bashrc as environment variables
+calendar_config.json
+calendar_create_queue.json
+calendar_create_log.txt
