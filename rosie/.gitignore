@@ -12,6 +12,11 @@ data/.rosie_vector_db/
 # Environment configuration (actual config, not example)
 .env.rosie
 
+# Knowledge base (contains personal information)
+knowledge_base/*.md
+knowledge_base/**/*.md
+!knowledge_base/README.md
+
 # Python cache
 __pycache__/
 *.pyc
