@@ -9,6 +9,9 @@ data/calendar_create_log.txt
 # Vector database (large binary files)
 data/.rosie_vector_db/
 
+# Environment configuration (actual config, not example)
+.env.rosie
+
 # Python cache
 __pycache__/
 *.pyc
