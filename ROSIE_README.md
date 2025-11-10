@@ -583,22 +583,50 @@ Context Management:
 ### GPU Issues
 
 #### CUDA Not Working
-If you see `[WHISPER] ℹ Model loaded on CPU (GPU not available)`:
+If you see `[WHISPER] ℹ Model loaded on CPU (GPU not available)` or `CUDA initialization: CUDA unknown error`:
 
-**Quick Fix**: Reboot your system
+**Recommended Fix: Downgrade NVIDIA Driver**
+
+NVIDIA driver 580.x has compatibility issues with PyTorch CUDA initialization. Downgrade to stable driver 550:
+
 ```bash
+# Remove current driver
+sudo apt-get remove --purge nvidia-driver-580
+
+# Clean up
+sudo apt-get autoremove
+
+# Install stable driver
+sudo apt-get install nvidia-driver-550
+
+# Reboot
 sudo reboot
 ```
 
 **After reboot**, verify CUDA:
 ```bash
-python3 -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+./test_cuda.sh
 ```
 
-**If still not working**:
+Expected output:
+```
+CUDA available: True
+CUDA device name: NVIDIA GeForce RTX 4070 Laptop GPU
+✓ Successfully created tensor on GPU: cuda:0
+SUCCESS! CUDA is fully functional!
+```
+
+**Alternative Fixes** (if driver downgrade not desired):
 1. Check NVIDIA driver: `nvidia-smi`
 2. Reload nvidia_uvm module: `sudo rmmod nvidia_uvm && sudo modprobe nvidia_uvm`
-3. Run verification: `python3 verify_gpu_setup.py`
+3. Try different PyTorch version: `pip install torch==2.4.0+cu121 --index-url https://download.pytorch.org/whl/cu121`
+4. Run verification: `python3 verify_gpu_setup.py`
+
+**Known Issues**:
+- **NVIDIA Driver 580.x**: Incompatible with PyTorch CUDA initialization (tested 580.95.05)
+- **NVIDIA Driver 550.x**: Stable, excellent PyTorch compatibility (recommended)
+- **NVIDIA Driver 560.x**: Also stable for PyTorch
+- Symptoms: `torch.cuda.is_available()` returns False despite GPU being detected
 
 #### Ollama Not Using GPU
 ```bash
