@@ -857,8 +857,12 @@ class RosieConversation:
             import datetime
             now = datetime.datetime.now()
             current_date_context = (
-                f"Current date and time: {now.strftime('%A, %B %d, %Y at %I:%M %p')}\n"
-                f"(Day of week: {now.strftime('%A')})\n\n"
+                f"=== IMPORTANT: CURRENT DATE AND TIME ===\n"
+                f"RIGHT NOW it is: {now.strftime('%A, %B %d, %Y at %I:%M %p')}\n"
+                f"Day of week: {now.strftime('%A')}\n"
+                f"Date: {now.strftime('%B %d, %Y')}\n"
+                f"Time: {now.strftime('%I:%M %p')}\n"
+                f"=== USE THIS DATE/TIME FOR ALL TIME-RELATED QUESTIONS ===\n\n"
             )
 
             # Build prompt based on question type
@@ -877,7 +881,7 @@ class RosieConversation:
                     )
 
                 prompt += (
-                    "CONVERSATION HISTORY:\n"
+                    "CONVERSATION HISTORY (contains past conversations with timestamps):\n"
                     f"{conversation_content}\n\n"
                     "Answer the most recent question using information from the conversation above.\n"
                     "Look for facts (names, dates, places, etc.) that answer the question.\n"
@@ -887,7 +891,10 @@ class RosieConversation:
                     "The human's possessions/appointments are 'your' or 'yours', not 'my' or 'mine'.\n"
                     "Use 'you' when referring to what the human said.\n"
                     "Use 'I' when referring to what you (the robot) said.\n"
-                    "When answering questions about dates or times, use the current date context above.\n\n"
+                    "\n"
+                    "CRITICAL: When asked about the current time or date, ALWAYS use the 'CURRENT DATE AND TIME' shown at the top of this prompt.\n"
+                    "DO NOT use dates from the conversation history timestamps - those are from the PAST.\n"
+                    "The conversation history shows OLD conversations. The current time is shown at the TOP.\n\n"
                     "Answer ONLY the question asked:"
                 )
             else:
@@ -905,7 +912,7 @@ class RosieConversation:
                     )
 
                 prompt += (
-                    "CONVERSATION HISTORY:\n"
+                    "CONVERSATION HISTORY (contains past conversations with timestamps):\n"
                     f"{conversation_content}\n\n"
                     "Respond naturally to the most recent request or question.\n"
                     "You can be creative, tell jokes, share opinions, or have casual conversation.\n"
@@ -914,7 +921,10 @@ class RosieConversation:
                     "Keep your response conversational and friendly (1 sentence).\n"
                     "Use 'you' when referring to the human.\n"
                     "Use 'I' when referring to yourself.\n"
-                    "When discussing dates or times, use the current date context above.\n\n"
+                    "\n"
+                    "CRITICAL: When asked about the current time or date, ALWAYS use the 'CURRENT DATE AND TIME' shown at the top of this prompt.\n"
+                    "DO NOT use dates from the conversation history timestamps - those are from the PAST.\n"
+                    "The conversation history shows OLD conversations. The current time is shown at the TOP.\n\n"
                     "Your response:"
                 )
 
@@ -1030,13 +1040,17 @@ class RosieConversation:
             import datetime
             now = datetime.datetime.now()
             current_date_context = (
-                f"Current date and time: {now.strftime('%A, %B %d, %Y at %I:%M %p')}\n"
-                f"(Day of week: {now.strftime('%A')})\n"
+                f"=== IMPORTANT: CURRENT DATE AND TIME ===\n"
+                f"RIGHT NOW it is: {now.strftime('%A, %B %d, %Y at %I:%M %p')}\n"
+                f"Day of week: {now.strftime('%A')}\n"
+                f"Date: {now.strftime('%B %d, %Y')}\n"
+                f"Time: {now.strftime('%I:%M %p')}\n"
+                f"=== USE THIS DATE/TIME FOR EVENT SCHEDULING ===\n"
             )
 
             extraction_prompt = (
-                f"{current_date_context}\n"
-                f"CONVERSATION:\n{conversation_content}\n\n"
+                f"{current_date_context}\n\n"
+                f"CONVERSATION (contains past messages with timestamps):\n{conversation_content}\n\n"
                 f"The user wants to create a calendar event. Extract these details from the most recent request:\n"
                 f"- summary: Brief title for the event\n"
                 f"- date: Date (e.g., 'today', 'tomorrow', 'Friday', 'YYYY-MM-DD')\n"
