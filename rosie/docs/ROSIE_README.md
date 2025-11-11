@@ -13,6 +13,7 @@ ROSIE combines these components for a streamlined conversational experience:
 - **Dual-mode Intelligence** - Factual accuracy (temp 0.1) + Creative conversation (temp 0.7)
 - **RAG Knowledge Base** - Retrieval-Augmented Generation with markdown document support
 - **Web Status Display** - Real-time visual status with cycling images showing ROSIE's current state
+- **Web Audio Streaming** - Use tablets/phones as remote microphone/speakers via browser
 
 ## Architecture
 
@@ -413,14 +414,227 @@ python3 rosie_web_status.py
 
 ### Technical Details
 
-- **Server**: Flask web server on port 5000
-- **Update Method**: Server-Sent Events (SSE) for real-time state changes
+- **Server**: Flask-SocketIO web server on port 5000
+- **Update Method**: WebSocket (Socket.IO) for real-time state changes and audio streaming
 - **State File**: `rosie_state.json` (updated automatically by ROSIE)
 - **Image Detection**: Automatic scanning for `{state}{number}.{png|jpg}` pattern
 - **Cycling**: Client-side JavaScript, random selection without immediate repeats
 - **Interval**: 500-1000ms per image (randomized)
 - **Preloading**: All images cached for smooth transitions
 - **No Dependencies**: Works without images (gracefully handles missing images)
+
+## Web Audio Streaming
+
+ROSIE now supports **remote audio streaming** - use your tablet, phone, or any device with a web browser as ROSIE's microphone and speaker!
+
+### Overview
+
+The web audio feature enables bidirectional audio streaming between ROSIE and web browsers:
+- **Microphone Capture**: Browser captures audio and sends it to ROSIE for Whisper transcription
+- **TTS Playback**: Piper speech is delivered to the browser for playback on the remote device
+- **Dual-Mode Support**: Seamlessly switches between local audio and web audio
+- **Zero Configuration**: Works automatically when web interface is accessed
+
+### Quick Start
+
+1. **Launch ROSIE with web interface:**
+   ```bash
+   ./rosie_with_web.sh
+   ```
+
+2. **Open browser on remote device:**
+   ```
+   http://YOUR_SERVER_IP:5000
+   ```
+   (Find your server IP with `hostname -I` or `ip addr show`)
+
+3. **Enable web audio:**
+   - Click the "Enable Web Audio" button on the web page
+   - Grant microphone permission when prompted
+   - Audio indicator turns green when active
+
+4. **Use ROSIE remotely:**
+   - Speak into your device's microphone
+   - ROSIE responds through your device's speaker
+   - Visual status animations show ROSIE's current state
+
+### Architecture
+
+**Audio Mode Switching:**
+- **LOCAL Mode** (default): Uses system microphone/speakers via sounddevice/aplay
+- **WEB Mode**: Uses browser MediaStream API and Web Audio API for remote devices
+- Automatic switching when browser client enables/disables web audio
+
+**Audio Flow:**
+
+LOCAL Mode:
+```
+System Mic → sounddevice → Whisper → Ollama → Piper → aplay → System Speakers
+```
+
+WEB Mode:
+```
+Browser Mic → WebSocket → Whisper → Ollama → Piper → WebSocket → Browser Speakers
+```
+
+**Key Components:**
+- **WebSocket Communication**: Real-time bidirectional audio streaming (replaces SSE)
+- **MediaStream API**: Browser microphone capture at 16kHz mono
+- **Web Audio API**: Browser audio playback of Piper TTS
+- **Audio Routing**: Automatic mode detection and switching
+- **Format Conversion**: PCM ↔ WAV conversion for browser compatibility
+
+### HTTPS Setup (Required for Remote Devices)
+
+**Why HTTPS?**
+Modern browsers require HTTPS to access the microphone on remote devices (security requirement). Localhost works with HTTP, but tablets/phones on your network need HTTPS.
+
+**Quick Setup:**
+```bash
+# Generate self-signed certificate (one-time setup)
+cd ~/projects/b4m_yahboom/rosie
+./scripts/generate_ssl_cert.sh
+
+# Restart ROSIE (will auto-detect certificate)
+./scripts/rosie_with_web.sh
+
+# Access from tablet (note HTTPS)
+https://192.168.68.105:5000
+
+# Accept the security warning
+# (This is normal for self-signed certificates on local networks)
+```
+
+**Security Warning:**
+Your tablet will show a security warning because the certificate is self-signed. This is **safe for local network use**. Click "Advanced" → "Proceed" or "Accept Risk" to continue.
+
+### Browser Compatibility
+
+**Requirements:**
+- Modern browser with MediaStream API support (Chrome, Firefox, Safari, Edge)
+- HTTPS connection OR localhost (required for microphone access)
+- WebSocket support (all modern browsers)
+
+**Tested Devices:**
+- Desktop browsers (Chrome, Firefox, Safari, Edge)
+- Android tablets/phones (Chrome, Firefox)
+- iOS tablets/phones (Safari)
+
+### Technical Details
+
+**Audio Specifications:**
+- **Input**: 16kHz mono PCM, Int16 format (browser → ROSIE)
+- **Output**: 22.05kHz mono WAV format (ROSIE → browser)
+- **Buffer Size**: 4096 samples (~256ms at 16kHz)
+- **Latency**: ~200-500ms roundtrip (acceptable for voice assistant)
+- **Bandwidth**: ~32 KB/s per direction (low bandwidth requirement)
+
+**Security:**
+- WebSocket runs on same port as HTTP (5000)
+- CORS enabled for cross-origin access
+- Only one client can have audio enabled at a time
+- Microphone permission required by browser
+
+**Implementation:**
+- **Backend**: Flask-SocketIO WebSocket server (rosie_web_status.py)
+- **Frontend**: Socket.IO client, MediaStream + Web Audio API (rosie_status.html)
+- **Main Process**: Dual audio routing in rosie_conversation.py
+
+### Usage Scenarios
+
+**Scenario 1: Local Development**
+```bash
+# Server machine
+./rosie_with_web.sh
+
+# Open browser on same machine
+firefox http://localhost:5000
+
+# Click "Enable Web Audio" to test
+```
+
+**Scenario 2: Remote Tablet**
+```bash
+# Robot/server machine
+./rosie_with_web.sh
+
+# Find server IP
+hostname -I  # e.g., 192.168.1.100
+
+# On tablet browser
+http://192.168.1.100:5000
+
+# Enable web audio and use remotely
+```
+
+**Scenario 3: Mixed Mode**
+```bash
+# Start with local audio (default)
+./rosie_with_web.sh
+
+# ROSIE uses local mic/speakers
+
+# Someone connects with tablet and enables web audio
+# → ROSIE automatically switches to WEB mode
+# → Local audio paused, tablet audio active
+
+# Tablet disconnects or disables audio
+# → ROSIE automatically switches back to LOCAL mode
+# → Local audio resumes
+```
+
+### Troubleshooting
+
+**"Failed to access microphone" or "getUserMedia is undefined":**
+- **Root Cause**: Remote devices require HTTPS for microphone access
+- **Solution**: Generate SSL certificate with `./scripts/generate_ssl_cert.sh`
+- Restart ROSIE and access via `https://YOUR_IP:5000` (not http://)
+- Accept the security warning in your browser
+
+**"Microphone permission denied":**
+- Grant microphone permission in browser settings
+- Ensure using HTTPS or localhost (required for MediaStream API)
+- Check browser console for security errors
+
+**"No audio from ROSIE":**
+- Check audio indicator is green (web audio active)
+- Verify browser audio is not muted
+- Check browser console for WebSocket errors
+- Ensure Piper TTS is working (test in LOCAL mode first)
+
+**"Another client already has audio enabled":**
+- Only one browser can use web audio at a time
+- Disable web audio on other device first
+- Or refresh page to clear stale connection
+
+**"Audio cuts out or choppy":**
+- Check network connection quality
+- Reduce distance to WiFi router
+- Close other bandwidth-intensive applications
+- Check server CPU usage (Whisper/Ollama load)
+
+**"WebSocket connection failed":**
+- Verify web server is running (./rosie_with_web.sh)
+- Check firewall allows port 5000
+- Ensure correct server IP address
+- Try http://localhost:5000 on same machine first
+
+### Limitations
+
+- **Single Client**: Only one browser can use web audio at a time
+- **Network Dependent**: Requires stable WiFi/network connection
+- **Latency**: ~200-500ms roundtrip (higher than local audio)
+- **HTTPS Requirement**: Microphone access requires HTTPS or localhost
+- **No Wake Word in Browser**: Browser audio doesn't support wake word detection (use spacebar in ROSIE terminal)
+
+### Future Enhancements
+
+Potential improvements for web audio:
+- Multiple simultaneous clients with audio mixing
+- Lower latency with WebRTC peer connections
+- Browser-based wake word detection
+- Audio quality settings (bitrate/sample rate control)
+- Mobile app with native audio APIs
 
 ## File Structure
 

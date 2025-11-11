@@ -196,6 +196,12 @@ class ConversationState(Enum):
     SPEAKING = 3
 
 
+class AudioMode(Enum):
+    """Audio input/output mode"""
+    LOCAL = 1  # Use local microphone and speakers (default)
+    WEB = 2    # Use web browser audio (remote device)
+
+
 class RosieConversation:
     """
     Main ROSIE Conversational AI System
@@ -249,10 +255,17 @@ class RosieConversation:
         # Audio configuration for continuous streaming
         self.sample_rate = 16000
 
+        # Audio mode (LOCAL or WEB)
+        self.audio_mode = AudioMode.LOCAL
+        self.audio_mode_lock = threading.Lock()
+
         # Continuous audio buffer - collects audio while Whisper processes
         self.audio_queue = []  # List of numpy arrays (chunks)
         self.audio_lock = threading.Lock()
         self.audio_stream = None  # sounddevice InputStream
+
+        # Web audio integration
+        self.web_server_module = None  # rosie_web_status module (dynamically imported)
 
         # Whisper model (loaded lazily)
         self.whisper_model = None
@@ -339,6 +352,50 @@ class RosieConversation:
 
             # Update web status file
             self._update_web_status(new_state)
+
+    def _get_audio_mode(self):
+        """Thread-safe audio mode getter"""
+        with self.audio_mode_lock:
+            return self.audio_mode
+
+    def _set_audio_mode(self, new_mode):
+        """Thread-safe audio mode setter"""
+        with self.audio_mode_lock:
+            old_mode = self.audio_mode
+            self.audio_mode = new_mode
+            print(f"\n[AUDIO MODE] {old_mode.name} → {new_mode.name}")
+            self._log(f"Audio mode transition: {old_mode.name} -> {new_mode.name}")
+
+    def _check_web_audio_enabled(self):
+        """Check if web audio is currently enabled"""
+        if self.web_server_module is None:
+            return False
+        try:
+            return self.web_server_module.is_web_audio_enabled()
+        except Exception as e:
+            self._log(f"Error checking web audio status: {e}")
+            return False
+
+    def _import_web_server_module(self):
+        """Dynamically import the web server module for audio integration"""
+        if self.web_server_module is not None:
+            return True
+
+        try:
+            import sys
+            from pathlib import Path
+            # Add rosie/src to path
+            rosie_src_dir = Path(__file__).parent
+            if str(rosie_src_dir) not in sys.path:
+                sys.path.insert(0, str(rosie_src_dir))
+
+            import rosie_web_status
+            self.web_server_module = rosie_web_status
+            self._log("Web server module imported successfully")
+            return True
+        except ImportError as e:
+            self._log(f"Could not import web server module: {e}")
+            return False
 
     def _update_web_status(self, state, custom_message=None):
         """Update web status JSON file for real-time GIF display"""
@@ -504,19 +561,70 @@ class RosieConversation:
 
     def _audio_callback(self, indata, frames, time_info, status):
         """
-        Audio input callback - continuously captures audio
+        Audio input callback - continuously captures audio from LOCAL microphone
 
         This runs in a separate thread managed by sounddevice.
         Captures ALL audio without gaps.
+        Only used in LOCAL audio mode.
         """
         if status:
             self._log(f"Audio callback status: {status}")
 
-        # Only capture during LISTENING state
-        if self._get_state() == ConversationState.LISTENING:
+        # Only capture during LISTENING state and LOCAL audio mode
+        current_mode = self._get_audio_mode()
+        current_state = self._get_state()
+
+        if current_state == ConversationState.LISTENING and current_mode == AudioMode.LOCAL:
             # Append audio to queue (thread-safe)
             with self.audio_lock:
                 self.audio_queue.append(indata.copy().flatten())
+
+    def _web_audio_poll_worker(self):
+        """
+        Background worker that polls web server for audio input from browser.
+        Only runs when web audio mode is active.
+        Adds received audio to the same queue that _audio_callback uses.
+        """
+        self._log("Web audio poll worker started")
+
+        while not self.shutdown_event.is_set():
+            try:
+                # Check if web audio is enabled
+                if self._check_web_audio_enabled():
+                    # Switch to WEB mode if not already
+                    if self._get_audio_mode() != AudioMode.WEB:
+                        self._set_audio_mode(AudioMode.WEB)
+
+                    # Poll for audio data from web server
+                    if self.web_server_module:
+                        audio_data = self.web_server_module.get_web_audio_input()
+                        if audio_data is not None:
+                            # Convert Int16Array buffer to numpy array
+                            audio_array = np.frombuffer(audio_data, dtype=np.int16)
+                            # Convert to float32 [-1.0, 1.0] format (same as sounddevice)
+                            audio_float = audio_array.astype(np.float32) / 32768.0
+
+                            # Add to audio queue (same as _audio_callback)
+                            with self.audio_lock:
+                                self.audio_queue.append(audio_float)
+
+                else:
+                    # Switch back to LOCAL mode if not already
+                    if self._get_audio_mode() != AudioMode.LOCAL:
+                        self._set_audio_mode(AudioMode.LOCAL)
+
+                # Poll frequency: 25ms when active (40 polls/sec), 100ms when inactive
+                # Browser sends audio every ~256ms, so 25ms polling is plenty responsive
+                if self._get_audio_mode() == AudioMode.WEB:
+                    time.sleep(0.025)  # 25ms - poll 40 times/sec (was 5ms/200x which was overkill)
+                else:
+                    time.sleep(0.1)  # 100ms - slower polling when not in use
+
+            except Exception as e:
+                self._log(f"Error in web audio poll worker: {e}")
+                time.sleep(0.1)
+
+        self._log("Web audio poll worker stopped")
 
     def _whisper_worker(self):
         """
@@ -554,15 +662,17 @@ class RosieConversation:
                     time.sleep(vad_frame_duration / 1000.0)
 
                     # Get accumulated audio from queue
+                    audio_from_queue = False
                     with self.audio_lock:
-                        if len(self.audio_queue) == 0:
-                            continue
-
-                        # Get enough audio for VAD frame
-                        if len(self.audio_queue) > 0:
-                            audio_chunk = self.audio_queue.pop(0)
+                        queue_len = len(self.audio_queue)
+                        if queue_len == 0:
+                            # No new audio - treat as silence frame for VAD checking only
+                            # Critical for WEB mode where chunks arrive less frequently
+                            audio_chunk = np.zeros(vad_frames_per_check, dtype=np.float32)
                         else:
-                            continue
+                            # Get real audio from queue
+                            audio_chunk = self.audio_queue.pop(0)
+                            audio_from_queue = True
 
                     # Convert to int16 for VAD
                     audio_int16 = (audio_chunk * 32767).astype(np.int16)
@@ -573,21 +683,38 @@ class RosieConversation:
                     elif len(audio_int16) > vad_frames_per_check:
                         audio_int16 = audio_int16[:vad_frames_per_check]
 
-                    # Check if this frame contains speech
-                    try:
-                        is_speech = vad.is_speech(audio_int16.tobytes(), self.sample_rate)
-                    except:
-                        continue
+                    # Pre-filter very quiet audio (background noise) before VAD - WEB mode only
+                    # This helps WEB mode where browser sends continuous chunks with background noise
+                    # that confuses VAD and prevents silence detection
+                    if self._get_audio_mode() == AudioMode.WEB:
+                        audio_level = np.abs(audio_chunk).max()
+                        if audio_level < 0.005:  # Very quiet - treat as silence without VAD check
+                            is_speech = False
+                        else:
+                            # Check if this frame contains speech
+                            try:
+                                is_speech = vad.is_speech(audio_int16.tobytes(), self.sample_rate)
+                            except:
+                                continue
+                    else:
+                        # LOCAL mode - use VAD directly (no pre-filtering needed)
+                        try:
+                            is_speech = vad.is_speech(audio_int16.tobytes(), self.sample_rate)
+                        except:
+                            continue
 
                     if is_speech:
                         # Voice detected!
                         consecutive_silence = 0
                         is_speaking = True
-                        speech_buffer.append(audio_chunk)
+                        if audio_from_queue:
+                            speech_buffer.append(audio_chunk)
                     elif is_speaking:
                         # Silence while speaking - might be end of phrase
                         consecutive_silence += 1
-                        speech_buffer.append(audio_chunk)
+                        # Only add real audio to buffer, not generated silence frames
+                        if audio_from_queue:
+                            speech_buffer.append(audio_chunk)
 
                         # Check if enough silence to consider phrase complete
                         if consecutive_silence >= silence_frames_needed:
@@ -1177,7 +1304,9 @@ class RosieConversation:
         """
         Piper text-to-speech output
 
-        Converts speak.txt to speech and returns to LISTENING state.
+        Converts speak.txt to speech and routes audio based on audio mode:
+        - LOCAL mode: Play through system speakers via aplay
+        - WEB mode: Send audio to browser via WebSocket
         """
         self._log("Piper TTS started")
 
@@ -1192,15 +1321,55 @@ class RosieConversation:
 
             # Generate audio with Piper
             import subprocess
+            import io
+            import wave
 
-            # Piper command: echo text | piper --model path --output-raw | aplay
             # Escape quotes and special characters for shell safety
             text_escaped = text.replace('"', '\\"').replace('$', '\\$').replace('`', '\\`')
-            piper_cmd = f'echo "{text_escaped}" | piper --model {self.piper_model_path} --output-raw | aplay -r 22050 -f S16_LE -t raw -'
 
-            subprocess.run(piper_cmd, shell=True, check=True)
+            # Check audio mode
+            audio_mode = self._get_audio_mode()
 
-            self._log(f"Piper spoke: {text}")
+            if audio_mode == AudioMode.LOCAL:
+                # LOCAL mode: Use existing aplay pipeline
+                piper_cmd = f'echo "{text_escaped}" | piper --model {self.piper_model_path} --output-raw | aplay -r 22050 -f S16_LE -t raw -'
+                subprocess.run(piper_cmd, shell=True, check=True)
+                self._log(f"Piper spoke (LOCAL): {text}")
+
+            else:  # WEB mode
+                # Capture Piper output to buffer
+                piper_cmd = f'echo "{text_escaped}" | piper --model {self.piper_model_path} --output-raw'
+                result = subprocess.run(piper_cmd, shell=True, check=True, capture_output=True)
+                raw_audio = result.stdout
+
+                # Convert raw PCM to WAV format for browser
+                wav_buffer = io.BytesIO()
+                with wave.open(wav_buffer, 'wb') as wav_file:
+                    wav_file.setnchannels(1)  # Mono
+                    wav_file.setsampwidth(2)  # 16-bit
+                    wav_file.setframerate(22050)  # 22.05 kHz
+                    wav_file.writeframes(raw_audio)
+
+                wav_data = wav_buffer.getvalue()
+
+                # Calculate audio duration for animation sync
+                # raw_audio is PCM: sample_rate=22050, 16-bit (2 bytes), mono
+                audio_duration = len(raw_audio) / (22050 * 2)  # duration in seconds
+
+                # Send to browser via web server
+                if self.web_server_module:
+                    success = self.web_server_module.send_audio_output_to_browser(wav_data)
+                    if success:
+                        self._log(f"Piper spoke (WEB): {text}")
+                        # Keep SPEAKING state active while audio plays on browser
+                        # Sleep for audio duration to sync animation with actual playback
+                        time.sleep(audio_duration)
+                    else:
+                        print(f"[TTS] Failed to send audio to browser")
+                        self._log(f"Failed to send audio to browser, no clients connected")
+                else:
+                    print(f"[TTS] Web server module not available")
+                    self._log(f"Web server module not available, cannot send audio")
 
             # Append to conversation history with "Robot:" prefix
             self._append_to_history(f"Robot: {text}\n")
@@ -1213,6 +1382,8 @@ class RosieConversation:
 
         except Exception as e:
             self._log(f"Piper error: {e}")
+            import traceback
+            traceback.print_exc()
             self._set_state(ConversationState.LISTENING)
 
 
@@ -1224,6 +1395,9 @@ class RosieConversation:
         """Start ROSIE system (all threads)"""
         self._log("Starting ROSIE Conversational AI System...")
 
+        # Try to import web server module for audio integration
+        self._import_web_server_module()
+
         # Start Whisper worker
         self.whisper_thread = threading.Thread(target=self._whisper_worker, daemon=True)
         self.whisper_thread.start()
@@ -1232,11 +1406,16 @@ class RosieConversation:
         self.wake_word_thread = threading.Thread(target=self._wake_word_detector, daemon=True)
         self.wake_word_thread.start()
 
+        # Start web audio poll worker (monitors for web audio mode switching)
+        self.web_audio_thread = threading.Thread(target=self._web_audio_poll_worker, daemon=True)
+        self.web_audio_thread.start()
+
         # Always print startup message and instructions
         print("\n" + "="*70)
         print("ROSIE Conversational AI System - READY")
         print("="*70)
         print(f"Current State: {self._get_state().name}")
+        print(f"Audio Mode: {self._get_audio_mode().name}")
         print("\nSpeak naturally - everything is transcribed.")
         print("Say 'Rosie' to get a response.")
         print("Say 'Rosie, forget everything' to reset conversation history.")

@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ROSIE Status</title>
+    <!-- Socket.IO client library -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -74,6 +76,73 @@
             color: #f44336;
         }
 
+        .audio-controls {
+            margin-top: 30px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+        }
+
+        .audio-button {
+            padding: 15px 30px;
+            font-size: 1.1em;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: bold;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .audio-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .audio-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .enable-audio {
+            background: #4caf50;
+            color: white;
+        }
+
+        .disable-audio {
+            background: #f44336;
+            color: white;
+        }
+
+        .audio-status {
+            margin-top: 15px;
+            font-size: 0.9em;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .audio-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+            animation: pulse 2s infinite;
+        }
+
+        .audio-active {
+            background-color: #4caf50;
+        }
+
+        .audio-inactive {
+            background-color: #f44336;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
     </style>
 </head>
 <body>
@@ -87,12 +156,25 @@
         <div class="gif-container" id="gif-container">
             <img id="status-gif" class="status-gif" src="/animation/waiting.gif" alt="ROSIE Status" onerror="this.style.display='none'">
         </div>
+
+        <div class="audio-controls">
+            <button id="audio-toggle-btn" class="audio-button enable-audio" onclick="toggleWebAudio()">
+                Enable Web Audio
+            </button>
+            <div class="audio-status">
+                <span id="audio-indicator" class="audio-indicator audio-inactive"></span>
+                <span id="audio-status-text">Web audio disabled (using local microphone/speakers)</span>
+            </div>
+        </div>
     </div>
 
     <script>
         const statusGif = document.getElementById('status-gif');
         const gifContainer = document.getElementById('gif-container');
         const connectionIndicator = document.getElementById('connection-indicator');
+        const audioToggleBtn = document.getElementById('audio-toggle-btn');
+        const audioIndicator = document.getElementById('audio-indicator');
+        const audioStatusText = document.getElementById('audio-status-text');
 
         // Image cycling state
         let currentImages = [];
@@ -100,6 +182,13 @@
         let lastImageIndex = -1;
         let cycleTimer = null;
         let imageCache = {};  // Preloaded images
+
+        // Web audio state
+        let webAudioEnabled = false;
+        let audioContext = null;
+        let mediaStream = null;
+        let audioWorkletNode = null;
+        let socket = null;
 
         // Preload images for smooth transitions
         function preloadImages(images) {
@@ -181,17 +270,33 @@
             }
         }
 
-        // Connect to Server-Sent Events stream
-        const eventSource = new EventSource('/stream');
+        // ============================================================================
+        // WebSocket Connection
+        // ============================================================================
 
-        eventSource.onopen = function() {
+        // Connect to WebSocket server
+        socket = io();
+
+        socket.on('connect', function() {
             connectionIndicator.textContent = '● Connected';
             connectionIndicator.className = 'connected';
-            console.log('Connected to ROSIE status stream');
-        };
+            console.log('Connected to ROSIE WebSocket server');
+        });
 
-        eventSource.onmessage = function(event) {
-            const data = JSON.parse(event.data);
+        socket.on('disconnect', function() {
+            connectionIndicator.textContent = '● Disconnected';
+            connectionIndicator.className = 'disconnected';
+            console.log('Disconnected from WebSocket server');
+
+            stopImageCycling();
+
+            // Disable web audio if it was enabled
+            if (webAudioEnabled) {
+                disableWebAudio();
+            }
+        });
+
+        socket.on('state_update', function(data) {
             console.log('State update:', data);
 
             // Start cycling with new images
@@ -201,22 +306,194 @@
                 stopImageCycling();
                 statusGif.style.display = 'none';
             }
-        };
+        });
 
-        eventSource.onerror = function(error) {
-            connectionIndicator.textContent = '● Disconnected';
-            connectionIndicator.className = 'disconnected';
-            console.error('SSE error:', error);
+        socket.on('audio_enabled', function(data) {
+            console.log('Web audio enabled:', data);
+            updateAudioUI(true);
+        });
 
-            stopImageCycling();
+        socket.on('audio_disabled', function(data) {
+            console.log('Web audio disabled:', data);
+            updateAudioUI(false);
+        });
 
-            // Try to reconnect after 5 seconds
-            setTimeout(() => {
-                console.log('Attempting to reconnect...');
-                eventSource.close();
-                location.reload();
-            }, 5000);
-        };
+        socket.on('audio_error', function(data) {
+            console.error('Audio error:', data);
+            alert('Audio Error: ' + data.error);
+            disableWebAudio();
+        });
+
+        socket.on('audio_output', function(audioData) {
+            console.log('Received TTS audio from server, type:', typeof audioData, 'length:', audioData?.byteLength || audioData?.length);
+            playAudioOutput(audioData);
+        });
+
+        // ============================================================================
+        // Web Audio Functions
+        // ============================================================================
+
+        function updateAudioUI(enabled) {
+            webAudioEnabled = enabled;
+
+            if (enabled) {
+                audioToggleBtn.textContent = 'Disable Web Audio';
+                audioToggleBtn.className = 'audio-button disable-audio';
+                audioIndicator.className = 'audio-indicator audio-active';
+                audioStatusText.textContent = 'Web audio active (using this device)';
+            } else {
+                audioToggleBtn.textContent = 'Enable Web Audio';
+                audioToggleBtn.className = 'audio-button enable-audio';
+                audioIndicator.className = 'audio-indicator audio-inactive';
+                audioStatusText.textContent = 'Web audio disabled (using local microphone/speakers)';
+            }
+        }
+
+        async function toggleWebAudio() {
+            if (webAudioEnabled) {
+                disableWebAudio();
+            } else {
+                await enableWebAudio();
+            }
+        }
+
+        async function enableWebAudio() {
+            try {
+                console.log('Requesting microphone access...');
+                audioToggleBtn.disabled = true;
+
+                // Request microphone access
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        channelCount: 1,
+                        sampleRate: 16000,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                });
+
+                console.log('Microphone access granted');
+
+                // Create audio context
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                const source = audioContext.createMediaStreamSource(mediaStream);
+
+                // Create script processor for audio capture (4096 buffer size = ~256ms at 16kHz)
+                const processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+                processor.onaudioprocess = function(e) {
+                    if (!webAudioEnabled) return;
+
+                    // Get audio data
+                    const inputData = e.inputBuffer.getChannelData(0);
+
+                    // Convert Float32Array to Int16Array (PCM 16-bit)
+                    const pcmData = new Int16Array(inputData.length);
+                    for (let i = 0; i < inputData.length; i++) {
+                        const s = Math.max(-1, Math.min(1, inputData[i]));
+                        pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                    }
+
+                    // Send to server via WebSocket
+                    socket.emit('audio_input', pcmData.buffer);
+                };
+
+                source.connect(processor);
+                processor.connect(audioContext.destination);
+
+                // Notify server
+                socket.emit('enable_web_audio', {});
+                audioToggleBtn.disabled = false;
+
+                console.log('Web audio enabled successfully');
+
+            } catch (error) {
+                console.error('Failed to enable web audio:', error);
+                alert('Failed to access microphone: ' + error.message);
+                audioToggleBtn.disabled = false;
+                disableWebAudio();
+            }
+        }
+
+        function disableWebAudio() {
+            console.log('Disabling web audio...');
+
+            // Stop microphone
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream = null;
+            }
+
+            // Close audio context
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+
+            // Notify server
+            if (socket && socket.connected) {
+                socket.emit('disable_web_audio', {});
+            }
+
+            updateAudioUI(false);
+            audioToggleBtn.disabled = false;
+        }
+
+        async function playAudioOutput(audioData) {
+            try {
+                console.log('[Audio Output] Starting playback...');
+
+                if (!audioContext) {
+                    // Create audio context for playback only
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    console.log('[Audio Output] Created AudioContext, state:', audioContext.state);
+                }
+
+                // Resume audio context if suspended (browser autoplay policy)
+                if (audioContext.state === 'suspended') {
+                    await audioContext.resume();
+                    console.log('[Audio Output] Resumed AudioContext');
+                }
+
+                // Convert to ArrayBuffer if needed
+                let arrayBuffer;
+                if (audioData instanceof ArrayBuffer) {
+                    arrayBuffer = audioData;
+                } else if (audioData instanceof Blob) {
+                    arrayBuffer = await audioData.arrayBuffer();
+                } else if (audioData.buffer) {
+                    // Typed array (like Uint8Array)
+                    arrayBuffer = audioData.buffer;
+                } else {
+                    console.error('[Audio Output] Unexpected audio data type:', typeof audioData);
+                    return;
+                }
+
+                console.log('[Audio Output] ArrayBuffer size:', arrayBuffer.byteLength, 'bytes');
+
+                // Decode audio data (expecting WAV format from server)
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                console.log('[Audio Output] Decoded audio:', audioBuffer.duration.toFixed(2), 'seconds,', audioBuffer.numberOfChannels, 'channels,', audioBuffer.sampleRate, 'Hz');
+
+                // Create buffer source
+                const source = audioContext.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(audioContext.destination);
+
+                // Add event listener for when playback ends
+                source.onended = function() {
+                    console.log('[Audio Output] Playback finished');
+                };
+
+                // Play
+                source.start(0);
+                console.log('[Audio Output] Started playback');
+
+            } catch (error) {
+                console.error('[Audio Output] Failed to play audio:', error);
+                console.error('[Audio Output] Error details:', error.message);
+            }
+        }
 
         // Handle page visibility changes
         document.addEventListener('visibilitychange', function() {
