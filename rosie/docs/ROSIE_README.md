@@ -43,14 +43,17 @@ LISTENING → RESPONDING → SPEAKING → LISTENING
 ```
 
 ### File-Based Communication
-- `conversation_history.txt` - Complete conversation transcript (human and robot, stored in script directory)
-- `speak.txt` - Temporary TTS output buffer (stored in script directory)
-- `knowledge_base/` - Markdown documents for RAG retrieval (user's knowledge base)
-- `.rosie_vector_db/` - Vector embeddings database (ChromaDB persistence)
+- `rosie/data/conversation_history.txt` - Complete conversation transcript (human and robot)
+- `rosie/data/speak.txt` - Temporary TTS output buffer
+- `rosie/knowledge_base/` - Markdown documents for RAG retrieval (user's knowledge base)
+- `rosie/data/.rosie_vector_db/` - Vector embeddings database (ChromaDB persistence)
+- `rosie/data/rosie_state.json` - Current state for web display
+- `rosie/data/calendar_config.json` - Google Calendar configuration
+- `rosie/data/calendar_create_queue.json` - Pending calendar event creations
 
 ### Intelligent Context Management
 - **Purpose**: Maintain conversation context without exceeding LLM limits
-- **Storage**: Plain text conversation history in script directory (`conversation_history.txt`)
+- **Storage**: Plain text conversation history in `rosie/data/conversation_history.txt`
 - **Persistence**: Conversation survives reboots, restarts, and system shutdowns
 - **Continuous Memory**: ROSIE continues previous conversations on startup (no clearing)
 - **Script-Format Summarization**: When context approaches token limit, Ollama condenses conversation
@@ -60,7 +63,7 @@ LISTENING → RESPONDING → SPEAKING → LISTENING
   - Seamless continuation - ROSIE doesn't know it's condensed
 - **Process**: Piper says "Let me think" → Ollama condenses script → History replaced with condensed version
 - **Token limit**: Configurable limit (default: 6000 tokens ≈ 4,600 words)
-- **Reset**: Say "Rosie, forget everything" or delete `conversation_history.txt` to start fresh
+- **Reset**: Say "Rosie, forget everything" or delete `rosie/data/conversation_history.txt` to start fresh
 - **Transparency**: All conversation visible in plain text file
 
 ### Intelligent Response Modes
@@ -184,6 +187,18 @@ Expected output with GPU:
 
    **Note**: RAG features are optional. ROSIE works without these dependencies, but won't have document retrieval capabilities. The LLM is only used internally by LlamaIndex's query engine structure; actual response generation still uses your configured Ollama model.
 
+8. **Google Calendar integration dependencies** (optional, for calendar features)
+   ```bash
+   pip install google-auth-oauthlib google-auth-httplib2 google-api-python-client
+   ```
+
+   Then run the setup wizard to authenticate:
+   ```bash
+   python3 rosie/src/rosie_calendar_setup.py
+   ```
+
+   **Note**: Calendar integration is optional. ROSIE works without these dependencies, but won't have calendar awareness or event creation capabilities. See `rosie/docs/ROSIE_CALENDAR.md` for complete setup instructions.
+
 ### Setup
 
 1. **Configure environment variables in ~/.bashrc:**
@@ -226,15 +241,17 @@ Expected output with GPU:
 ### Start the System
 
 ```bash
-# Run ROSIE
-python3 rosie_conversation.py
+# Recommended: Use the launch script (handles environment and calendar sync)
+./rosie/scripts/rosie_launch.sh
 
-# Or make it executable and run
-chmod +x rosie_conversation.py
-./rosie_conversation.py
+# Or launch with web interface
+./rosie/scripts/rosie_with_web.sh
+
+# Direct Python execution (requires environment variables in .bashrc)
+python3 rosie/src/rosie_conversation.py
 
 # View help for all options
-python3 rosie_conversation.py --help
+python3 rosie/src/rosie_conversation.py --help
 ```
 
 **Important**: Ensure your environment variables are exported in `.bashrc` **before** the interactive shell check:
@@ -245,10 +262,10 @@ export PIPER_CONFIG_PATH="/path/to/model.onnx.json"  # Required
 ```
 
 **Note**:
-- ROSIE preserves conversation_history.txt on startup (continues previous conversations)
-- All conversation is stored in plain text in the script directory (`conversation_history.txt`)
+- ROSIE preserves conversation history on startup (continues previous conversations)
+- All conversation is stored in plain text in `rosie/data/conversation_history.txt`
 - Conversation persists across reboots and restarts
-- To start fresh: Delete `conversation_history.txt` or say "Rosie, forget everything"
+- To start fresh: Delete `rosie/data/conversation_history.txt` or say "Rosie, forget everything"
 - Check the console output to monitor conversation flow
 
 ### Interaction
@@ -299,10 +316,10 @@ ROSIE automatically retrieves relevant information from your markdown documents:
 **Adding Documents:**
 ```bash
 # Place markdown files in the knowledge_base directory
-echo "# My Notes\nThe robot is located in the basement." > knowledge_base/my_notes.md
+echo "# My Notes\nThe robot is located in the basement." > rosie/knowledge_base/my_notes.md
 
 # Restart ROSIE to index new documents
-./rosie_conversation.py
+./rosie/scripts/rosie_launch.sh
 ```
 
 **Example Interaction:**
@@ -322,6 +339,72 @@ an IMU for pose estimation, and a camera for computer vision tasks."
 
 **Tip:** For facts that should always be available (user preferences, persistent reminders, etc.), create a dedicated markdown file like `knowledge_base/persistent_facts.md`.
 
+### Calendar Integration
+
+ROSIE integrates with Google Calendar to provide intelligent calendar awareness and event management:
+
+**Features:**
+- **Automatic Event Sync**: Calendar events synced to knowledge base on startup
+- **Natural Language Queries**: Ask about appointments, schedules, and upcoming events
+- **Event Creation**: Create calendar events through natural conversation
+- **Smart Context**: Calendar information available for all queries
+- **Persistent Knowledge**: Events stored in `knowledge_base/calendar_events.md` for RAG retrieval
+
+**Setup:**
+
+1. **Run the setup wizard:**
+   ```bash
+   python3 rosie/src/rosie_calendar_setup.py
+   ```
+   This will guide you through Google Calendar API authentication.
+
+2. **Configure environment variables:**
+   Add to your `~/.bashrc`:
+   ```bash
+   export ROSIE_CALENDAR_CREDENTIALS="/path/to/credentials.json"
+   export ROSIE_CALENDAR_TOKEN="/path/to/token.json"
+   export ROSIE_CALENDAR_ID="primary"  # or specific calendar ID
+   ```
+
+3. **Reload environment:**
+   ```bash
+   source ~/.bashrc
+   ```
+
+**Usage:**
+
+**Querying Events:**
+```
+User: "Rosie, what's on my calendar today?"
+Rosie: "You have a dentist appointment at 2:00 PM and a team meeting at 4:30 PM."
+
+User: "When is my next doctor's appointment?"
+Rosie: "Your next doctor's appointment is on Friday, November 15th at 10:00 AM."
+```
+
+**Creating Events:**
+```
+User: "Rosie, schedule a haircut appointment for Tuesday at 3 PM"
+Rosie: "I've added 'haircut appointment' to your calendar for Tuesday at 3:00 PM."
+
+User: "Add a reminder to call mom next Sunday at noon"
+Rosie: "I've created 'call mom' on Sunday at 12:00 PM."
+```
+
+**Automatic Sync:**
+- Calendar events are synced automatically when ROSIE starts (via launch scripts)
+- Events are stored in `rosie/knowledge_base/calendar_events.md`
+- Manual sync: `python3 rosie/src/rosie_calendar_sync.py`
+
+**Event Creation Queue:**
+- Created events are queued in `rosie/data/calendar_create_queue.json`
+- Background process adds them to Google Calendar
+- Creation log: `rosie/data/calendar_create_log.txt`
+
+**For detailed setup instructions, see:**
+- `rosie/docs/ROSIE_CALENDAR.md` - Complete integration guide
+- `rosie/docs/CALENDAR_SETUP_INSTRUCTIONS.md` - Step-by-step setup
+
 ### Memory Reset
 
 To clear all conversation history (two methods):
@@ -335,11 +418,11 @@ User: "Rosie, forget everything"
 
 **Method 2: Delete the file**
 ```bash
-rm conversation_history.txt
+rm rosie/data/conversation_history.txt
 # Next ROSIE launch will start with empty history
 ```
 
-**Note**: Memory reset does NOT clear important_information.txt or the knowledge base.
+**Note**: Memory reset does NOT clear the knowledge base (including calendar events).
 
 ### Shutdown
 
@@ -353,7 +436,7 @@ ROSIE includes a real-time web interface that cycles through numbered images to 
 
 1. **Launch with web interface:**
    ```bash
-   ./rosie_with_web.sh
+   ./rosie/scripts/rosie_with_web.sh
    ```
 
 2. **Open browser:**
@@ -377,11 +460,11 @@ Images cycle randomly every 0.5-1 second, avoiding immediate repeats.
    speaking1.png, speaking2.png, speaking3.png, speaking4.png, ...
    ```
 
-2. Place them in the `animation/` directory
+2. Place them in the `rosie/animation/` directory
 
 3. Each state can have a different number of images (minimum 1, recommended 3-5)
 
-4. See `animation/README.md` for:
+4. See `rosie/docs/animation_README.md` for:
    - File naming requirements
    - Image specifications
    - Creation tips and tools
@@ -406,10 +489,10 @@ You can also run the web server separately:
 
 ```bash
 # Terminal 1: Start web server
-python3 rosie_web_status.py
+python3 rosie/src/rosie_web_status.py
 
 # Terminal 2: Start ROSIE
-./rosie_launch.sh
+./rosie/scripts/rosie_launch.sh
 ```
 
 ### Technical Details
@@ -639,35 +722,50 @@ Potential improvements for web audio:
 ## File Structure
 
 ```
-rosie_conversation.py           # Main application
-rosie_web_status.py             # Web status display server
-rosie_launch.sh                 # Standard launch script
-rosie_with_web.sh               # Launch with web interface
-verify_gpu_setup.py             # GPU verification utility
-test_ollama_latency.py          # Ollama performance testing
-test_new_rosie.py               # Validation test suite
-.env.rosie.example              # Configuration template
-.env.rosie                      # Your configuration (not committed)
-ROSIE_README.md                 # This file (includes GPU troubleshooting)
-conversation_history.txt        # Plain text conversation history (not committed)
-speak.txt                       # Temporary TTS buffer (not committed)
-rosie_state.json                # Current state for web display (not committed)
-knowledge_base/                 # Markdown documents for RAG (not committed)
-  ├── .gitkeep                  # Preserves directory structure
-  └── README.md                 # Instructions for adding documents
-.rosie_vector_db/               # Vector embeddings database (not committed)
-animation/                      # Numbered images for web display (not committed)
-  ├── .gitkeep                  # Preserves directory structure
-  ├── README.md                 # Image requirements and instructions
-  ├── waiting1.png              # LISTENING state images
-  ├── waiting2.png              # (cycle randomly)
-  ├── thinking1.jpg             # RESPONDING state images
-  ├── thinking2.jpg             # (cycle randomly)
-  ├── speaking1.png             # SPEAKING state images
-  ├── speaking2.png             # (cycle randomly)
-  └── speaking3.png             # ...
-templates/                      # Flask HTML templates
-  └── rosie_status.html         # Web status display page
+rosie/
+├── src/                           # Python source code
+│   ├── rosie_conversation.py      # Main ROSIE application
+│   ├── rosie_web_status.py        # Flask web status server
+│   ├── rosie_calendar_setup.py    # Google Calendar setup wizard
+│   ├── rosie_calendar_sync.py     # Calendar event sync script
+│   └── rosie_calendar_create.py   # Calendar event creation handler
+├── scripts/                       # Launch scripts
+│   ├── rosie_launch.sh            # Basic launch script
+│   ├── rosie_with_web.sh          # Launch with web interface
+│   └── generate_ssl_cert.sh       # SSL certificate generator for HTTPS
+├── templates/                     # Flask web templates
+│   └── rosie_status.html          # Web status display page
+├── animation/                     # Status display animations
+│   ├── waiting*.png/jpg           # Waiting state images (cycle randomly)
+│   ├── thinking*.png/jpg          # Thinking state images (cycle randomly)
+│   └── speaking*.png/jpg          # Speaking state images (cycle randomly)
+├── knowledge_base/                # RAG knowledge base (markdown files)
+│   ├── .gitkeep                   # Preserves directory structure
+│   ├── calendar_events.md         # Synced calendar events (auto-generated)
+│   └── *.md                       # Your knowledge documents
+├── data/                          # Runtime data (not committed to git)
+│   ├── .rosie_vector_db/          # ChromaDB vector database
+│   ├── rosie_state.json           # Current state for web display
+│   ├── conversation_history.txt   # Conversation log
+│   ├── speak.txt                  # TTS buffer
+│   ├── web_audio_status.json      # Web audio connection state
+│   ├── web_audio_input/           # Browser microphone data
+│   ├── web_audio_output/          # Piper TTS for browser
+│   ├── ssl/                       # HTTPS certificates (self-signed)
+│   ├── calendar_config.json       # Google Calendar configuration
+│   ├── calendar_create_queue.json # Pending event creations
+│   └── calendar_create_log.txt    # Event creation log
+├── docs/                          # Documentation
+│   ├── ROSIE_README.md            # Main ROSIE documentation (this file)
+│   ├── ROSIE_CALENDAR.md          # Calendar integration guide
+│   ├── ROSIE_NEWS.md              # Release notes and changelog
+│   ├── animation_README.md        # Animation image guide
+│   └── CALENDAR_SETUP_INSTRUCTIONS.md  # Calendar setup walkthrough
+├── requirements_rosie.txt         # Python dependencies
+├── .env.rosie.example             # Configuration template
+├── .env.rosie                     # Your configuration (not committed)
+├── .gitignore                     # Excludes runtime data files
+└── bashrc_calendar_template.txt   # Environment variable template for calendar
 ```
 
 ## Configuration
@@ -683,10 +781,16 @@ templates/                      # Flask HTML templates
 - `OLLAMA_MODEL` - Ollama model to use (default: llama3.1:8b, see model recommendations below)
 - `OLLAMA_TEMPERATURE` - LLM temperature (default: 0.7, overridden dynamically for factual questions)
 - `CONTEXT_LIMIT` - Token limit before summarization (default: 6000)
-- `HISTORY_FILE` - Path to conversation history (default: ./conversation_history.txt)
-- `SPEAK_FILE` - Path to TTS buffer (default: ./speak.txt)
-- `KNOWLEDGE_BASE_DIR` - Path to markdown documents (default: ./knowledge_base)
-- `CHROMA_DB_DIR` - Path to vector database (default: ./.rosie_vector_db)
+- `HISTORY_FILE` - Path to conversation history (default: rosie/data/conversation_history.txt)
+- `SPEAK_FILE` - Path to TTS buffer (default: rosie/data/speak.txt)
+- `KNOWLEDGE_BASE_DIR` - Path to markdown documents (default: rosie/knowledge_base)
+- `CHROMA_DB_DIR` - Path to vector database (default: rosie/data/.rosie_vector_db)
+
+**Calendar Integration (optional, for Google Calendar features):**
+- `ROSIE_CALENDAR_CREDENTIALS` - Path to Google Calendar credentials JSON file
+- `ROSIE_CALENDAR_TOKEN` - Path to OAuth token JSON file
+- `ROSIE_CALENDAR_ID` - Calendar ID to use (default: "primary")
+- `ROSIE_CALENDAR_DAYS_AHEAD` - Days to look ahead for events (default: 30)
 
 **Dual-Mode Intelligence:**
 ROSIE automatically adjusts temperature based on question type:
@@ -786,8 +890,8 @@ Human speaks → Whisper → Append to conversation_history.txt
                          Resume listening (all speech continuously transcribed)
 
 Context Management:
-  - All conversation in plain text: conversation_history.txt (script directory)
-  - Persists across reboots (not in /tmp)
+  - All conversation in plain text: rosie/data/conversation_history.txt
+  - Persists across reboots (stored in data directory)
   - Automatic summarization when approaching token limit
   - Transparent, simple, fully local
 ```
@@ -876,10 +980,10 @@ sudo systemctl restart ollama
 - Verify GPU usage: `python3 test_ollama_latency.py`
 
 ### Context management issues
-- Conversation history stored in script directory (`conversation_history.txt`)
+- Conversation history stored in `rosie/data/conversation_history.txt`
 - System automatically summarizes when approaching token limit
 - Manual reset: Say "Rosie, forget everything"
-- Check file with: `cat conversation_history.txt` (from script directory)
+- Check file with: `cat rosie/data/conversation_history.txt`
 
 ### RAG knowledge base issues
 
