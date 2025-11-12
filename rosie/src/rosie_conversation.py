@@ -274,6 +274,10 @@ class RosieConversation:
         self.wake_word_detected = False
         self.wake_word_lock = threading.Lock()
 
+        # Demo mode flag (when True, responds to any speech without wake word)
+        self.demo_mode = False
+        self.demo_mode_lock = threading.Lock()
+
         # Initialize files
         self._initialize_files()
 
@@ -647,8 +651,6 @@ class RosieConversation:
         vad_frame_duration = 30  # ms per frame (must be 10, 20, or 30)
         vad_frames_per_check = int(self.sample_rate * vad_frame_duration / 1000)
         speech_buffer = []  # Accumulates audio while speaking
-        silence_threshold = 0.5  # seconds of silence to end phrase
-        silence_frames_needed = int(silence_threshold * 1000 / vad_frame_duration)
         consecutive_silence = 0
         is_speaking = False
 
@@ -717,6 +719,12 @@ class RosieConversation:
                             speech_buffer.append(audio_chunk)
 
                         # Check if enough silence to consider phrase complete
+                        # Demo mode: 3 seconds silence, Normal mode: 0.5 seconds silence
+                        with self.demo_mode_lock:
+                            in_demo_mode = self.demo_mode
+                        silence_threshold = 2.0 if in_demo_mode else 0.5  # seconds
+                        silence_frames_needed = int(silence_threshold * 1000 / vad_frame_duration)
+
                         if consecutive_silence >= silence_frames_needed:
                             # Phrase complete! Transcribe it
                             if len(speech_buffer) > 0:
@@ -742,29 +750,43 @@ class RosieConversation:
 
                                     # Filter out common Whisper hallucinations
                                     if transcription and not self._is_hallucination(transcription):
-                                        # Check for wake word BEFORE storing
-                                        wake_word_pattern = r'\b(rosie|rose|rosy|rosee)\b'
-                                        wake_word_match = re.search(wake_word_pattern, transcription, re.IGNORECASE)
+                                        # Check if in demo mode
+                                        with self.demo_mode_lock:
+                                            in_demo_mode = self.demo_mode
 
-                                        if wake_word_match:
-                                            # Wake word detected! Set flag and remove it from transcription
+                                        if in_demo_mode:
+                                            # Demo mode: Respond to ANY speech without wake word
                                             with self.wake_word_lock:
                                                 self.wake_word_detected = True
 
-                                            # Remove wake word from transcription before storing
-                                            cleaned_transcription = re.sub(wake_word_pattern, '', transcription, flags=re.IGNORECASE).strip()
-
-                                            print(f"[WHISPER] Human: {transcription} (wake word detected and removed)")
-                                            self._log(f"Wake word detected in: {transcription}")
-
-                                            # Store cleaned version (without wake word)
-                                            if cleaned_transcription:
-                                                self._append_to_history(f"Human: {cleaned_transcription}\n")
-                                        else:
-                                            # No wake word, store as-is
+                                            # Store transcription as-is
                                             self._append_to_history(f"Human: {transcription}\n")
-                                            print(f"[WHISPER] Human: {transcription}")
-                                            self._log(f"Transcribed: {transcription}")
+                                            print(f"[WHISPER] [DEMO MODE] Human: {transcription}")
+                                            self._log(f"Demo mode transcribed: {transcription}")
+                                        else:
+                                            # Normal mode: Check for wake word BEFORE storing
+                                            wake_word_pattern = r'\b(rosie|rose|rosy|rosee)\b'
+                                            wake_word_match = re.search(wake_word_pattern, transcription, re.IGNORECASE)
+
+                                            if wake_word_match:
+                                                # Wake word detected! Set flag and remove it from transcription
+                                                with self.wake_word_lock:
+                                                    self.wake_word_detected = True
+
+                                                # Remove wake word from transcription before storing
+                                                cleaned_transcription = re.sub(wake_word_pattern, '', transcription, flags=re.IGNORECASE).strip()
+
+                                                print(f"[WHISPER] Human: {transcription} (wake word detected and removed)")
+                                                self._log(f"Wake word detected in: {transcription}")
+
+                                                # Store cleaned version (without wake word)
+                                                if cleaned_transcription:
+                                                    self._append_to_history(f"Human: {cleaned_transcription}\n")
+                                            else:
+                                                # No wake word, store as-is
+                                                self._append_to_history(f"Human: {transcription}\n")
+                                                print(f"[WHISPER] Human: {transcription}")
+                                                self._log(f"Transcribed: {transcription}")
                                     elif transcription:
                                         self._log(f"Filtered hallucination: {transcription}")
 
@@ -864,8 +886,32 @@ class RosieConversation:
                             print(f"\n[WAKE WORD] Detected! Processing...")
                             self._log(f"Wake word flag detected!")
 
-                            # Check for memory reset command in recent history
+                            # Read conversation history for command detection
                             content = self.history_file.read_text()
+
+                            # Check for demo mode FIRST (before memory reset)
+                            demo_pattern = r'\bdemo\b'
+                            demo_match = re.search(demo_pattern, content, re.IGNORECASE)
+
+                            if demo_match:
+                                print(f"\n[DEMO MODE] Detected! Starting AI conversation mode...")
+                                # Clear conversation history
+                                self.history_file.write_text('')
+                                # Enable demo mode (auto-respond without wake word)
+                                with self.demo_mode_lock:
+                                    self.demo_mode = True
+                                print(f"[DEMO MODE] Auto-response enabled (no wake word required)")
+                                # Set demo response
+                                ai_intro = "Ok, I'm ready! Five, four, three, two, one. Hello my name is Rosie and I am an AI. I would like to have a conversation with you!"
+                                self.speak_file.write_text(ai_intro)
+                                print(f"[DEMO MODE] Robot will say: {ai_intro}")
+                                # Transition to SPEAKING state
+                                self._set_state(ConversationState.SPEAKING)
+                                # Trigger speech output
+                                threading.Thread(target=self._piper_speak, daemon=True).start()
+                                continue
+
+                            # Check for memory reset command in recent history
                             forget_pattern = r'\b(forget everything|clear memory|reset memory)\b'
                             forget_match = re.search(forget_pattern, content, re.IGNORECASE)
 
@@ -952,8 +998,8 @@ class RosieConversation:
                     print(f"[OLLAMA] Warning: Summarization failed, using full context")
 
             # Detect question type from most recent Human statement
-            # Extract last Human: line from conversation
-            human_lines = [line for line in conversation_content.split('\n') if line.startswith('Human:')]
+            # Extract last Human line from conversation (format: "Human [timestamp]: text")
+            human_lines = [line for line in conversation_content.split('\n') if line.startswith('Human ')]
             last_human_statement = human_lines[-1] if human_lines else ""
 
             # Check for calendar event creation request
@@ -1021,6 +1067,7 @@ class RosieConversation:
                     "\n"
                     "CRITICAL: When asked about the current time or date, ALWAYS use the 'CURRENT DATE AND TIME' shown at the top of this prompt.\n"
                     "DO NOT use dates from the conversation history timestamps - those are from the PAST.\n"
+                    "DO NOT mention the date or time unless it was part of the question.\n"
                     "The conversation history shows OLD conversations. The current time is shown at the TOP.\n\n"
                     "Answer ONLY the question asked:"
                 )
