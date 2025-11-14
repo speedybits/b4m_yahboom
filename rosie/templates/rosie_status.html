@@ -143,6 +143,152 @@
             50% { opacity: 0.5; }
         }
 
+        /* Private Mode Styles */
+        .private-mode-controls {
+            margin-top: 20px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+        }
+
+        .private-mode-button {
+            padding: 12px 25px;
+            font-size: 1em;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: bold;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            margin: 5px;
+        }
+
+        .private-mode-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .private-mode-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .lock-button-locked {
+            background: #f44336;
+            color: white;
+        }
+
+        .lock-button-unlocked {
+            background: #4caf50;
+            color: white;
+        }
+
+        .toggle-button {
+            background: #2196F3;
+            color: white;
+        }
+
+        .private-status {
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        /* PIN Modal Styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-overlay.show {
+            display: flex;
+        }
+
+        .modal-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            text-align: center;
+            min-width: 300px;
+        }
+
+        .modal-title {
+            font-size: 1.5em;
+            margin-bottom: 20px;
+            color: white;
+        }
+
+        .pin-input {
+            width: 200px;
+            padding: 15px;
+            font-size: 1.5em;
+            text-align: center;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            margin-bottom: 20px;
+            letter-spacing: 10px;
+        }
+
+        .pin-input:focus {
+            outline: none;
+            border-color: rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .pin-input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+            letter-spacing: normal;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .modal-button {
+            padding: 12px 30px;
+            font-size: 1em;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: bold;
+        }
+
+        .modal-button:hover {
+            transform: translateY(-2px);
+        }
+
+        .submit-button {
+            background: #4caf50;
+            color: white;
+        }
+
+        .cancel-button {
+            background: #f44336;
+            color: white;
+        }
+
+        .error-message {
+            color: #ffcdd2;
+            margin-top: 10px;
+            font-size: 0.9em;
+        }
+
     </style>
 </head>
 <body>
@@ -166,6 +312,35 @@
                 <span id="audio-status-text">Web audio disabled (using local microphone/speakers)</span>
             </div>
         </div>
+
+        <div class="private-mode-controls">
+            <div>
+                <button id="lock-btn" class="private-mode-button lock-button-locked" onclick="handleLockButton()">
+                    🔒 Unlock Private Mode
+                </button>
+                <button id="toggle-btn" class="private-mode-button toggle-button" onclick="togglePrivateMode()" disabled>
+                    Enable Private Mode
+                </button>
+            </div>
+            <div class="private-status">
+                <span id="private-status-text">Private mode locked (authentication required)</span>
+                <br>
+                <span id="private-timer-text"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- PIN Modal -->
+    <div id="pin-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h2 class="modal-title">Enter Private Mode PIN</h2>
+            <input type="password" id="pin-input" class="pin-input" maxlength="4" placeholder="****" inputmode="numeric" pattern="[0-9]*">
+            <div id="pin-error" class="error-message"></div>
+            <div class="modal-buttons">
+                <button class="modal-button submit-button" onclick="submitPin()">Submit</button>
+                <button class="modal-button cancel-button" onclick="closeModal()">Cancel</button>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -175,6 +350,21 @@
         const audioToggleBtn = document.getElementById('audio-toggle-btn');
         const audioIndicator = document.getElementById('audio-indicator');
         const audioStatusText = document.getElementById('audio-status-text');
+
+        // Private mode elements
+        const pinModal = document.getElementById('pin-modal');
+        const pinInput = document.getElementById('pin-input');
+        const pinError = document.getElementById('pin-error');
+        const lockBtn = document.getElementById('lock-btn');
+        const toggleBtn = document.getElementById('toggle-btn');
+        const privateStatusText = document.getElementById('private-status-text');
+        const privateTimerText = document.getElementById('private-timer-text');
+
+        // Private mode state
+        let isAuthenticated = false;
+        let isPrivateModeEnabled = false;
+        let lastActivityTimestamp = 0;
+        let countdownTimer = null;
 
         // Image cycling state
         let currentImages = [];
@@ -271,6 +461,165 @@
         }
 
         // ============================================================================
+        // Private Mode Functions
+        // ============================================================================
+
+        function handleLockButton() {
+            if (isAuthenticated) {
+                // Already authenticated - this is a "lock" action
+                logout();
+            } else {
+                // Not authenticated - show PIN modal
+                showModal();
+            }
+        }
+
+        function showModal() {
+            pinModal.classList.add('show');
+            pinInput.value = '';
+            pinError.textContent = '';
+            pinInput.focus();
+        }
+
+        function closeModal() {
+            pinModal.classList.remove('show');
+            pinInput.value = '';
+            pinError.textContent = '';
+        }
+
+        function submitPin() {
+            const pin = pinInput.value;
+
+            if (pin.length !== 4) {
+                pinError.textContent = 'PIN must be 4 digits';
+                return;
+            }
+
+            if (!/^\d+$/.test(pin)) {
+                pinError.textContent = 'PIN must contain only numbers';
+                return;
+            }
+
+            // Send PIN to server for verification
+            console.log('[Private Mode] Submitting PIN for verification');
+            socket.emit('verify_private_pin', { pin: pin });
+        }
+
+        function togglePrivateMode() {
+            if (!isAuthenticated) {
+                alert('Please authenticate first by unlocking private mode');
+                return;
+            }
+
+            // Toggle the state
+            const newEnabled = !isPrivateModeEnabled;
+
+            console.log('[Private Mode] Toggling private mode to:', newEnabled);
+            socket.emit('toggle_private_mode', {
+                enabled: newEnabled,
+                authenticated: isAuthenticated
+            });
+        }
+
+        function logout() {
+            console.log('[Private Mode] Logging out');
+            isAuthenticated = false;
+            if (isPrivateModeEnabled) {
+                // Turn off private mode when logging out
+                socket.emit('toggle_private_mode', {
+                    enabled: false,
+                    authenticated: false
+                });
+            }
+            updatePrivateModeUI();
+        }
+
+        function updatePrivateModeUI() {
+            // Update lock button
+            if (isAuthenticated) {
+                lockBtn.textContent = '🔓 Lock Private Mode';
+                lockBtn.className = 'private-mode-button lock-button-unlocked';
+                toggleBtn.disabled = false;
+            } else {
+                lockBtn.textContent = '🔒 Unlock Private Mode';
+                lockBtn.className = 'private-mode-button lock-button-locked';
+                toggleBtn.disabled = true;
+            }
+
+            // Update toggle button
+            if (isPrivateModeEnabled) {
+                toggleBtn.textContent = 'Disable Private Mode';
+            } else {
+                toggleBtn.textContent = 'Enable Private Mode';
+            }
+
+            // Update status text
+            let statusText = '';
+            if (!isAuthenticated) {
+                statusText = 'Private mode locked (authentication required)';
+            } else if (isPrivateModeEnabled) {
+                statusText = 'Private mode ACTIVE - private documents included';
+            } else {
+                statusText = 'Private mode unlocked but OFF';
+            }
+            privateStatusText.textContent = statusText;
+
+            // Update countdown timer
+            if (isAuthenticated && isPrivateModeEnabled) {
+                startCountdownTimer();
+            } else {
+                stopCountdownTimer();
+                privateTimerText.textContent = '';
+            }
+        }
+
+        function startCountdownTimer() {
+            // Stop existing timer if any
+            stopCountdownTimer();
+
+            // Update every second
+            countdownTimer = setInterval(function() {
+                if (!isAuthenticated || !isPrivateModeEnabled) {
+                    stopCountdownTimer();
+                    return;
+                }
+
+                const currentTime = Date.now() / 1000; // Convert to seconds
+                const timeElapsed = currentTime - lastActivityTimestamp;
+                const timeoutSeconds = 30 * 60; // 30 minutes
+                const timeRemaining = Math.max(0, timeoutSeconds - timeElapsed);
+
+                if (timeRemaining <= 0) {
+                    // Timeout occurred
+                    privateTimerText.textContent = 'Session timed out';
+                    stopCountdownTimer();
+                    isAuthenticated = false;
+                    isPrivateModeEnabled = false;
+                    updatePrivateModeUI();
+                } else {
+                    // Display remaining time
+                    const minutes = Math.floor(timeRemaining / 60);
+                    const seconds = Math.floor(timeRemaining % 60);
+                    privateTimerText.textContent = `Auto-logout in ${minutes}:${seconds.toString().padStart(2, '0')}`;
+                }
+            }, 1000);
+        }
+
+        function stopCountdownTimer() {
+            if (countdownTimer) {
+                clearInterval(countdownTimer);
+                countdownTimer = null;
+            }
+        }
+
+        // Allow Enter key in PIN input
+        pinInput.addEventListener('keyup', function(event) {
+            if (event.key === 'Enter') {
+                submitPin();
+            }
+        });
+
+        // ============================================================================
         // WebSocket Connection
         // ============================================================================
 
@@ -306,6 +655,19 @@
                 stopImageCycling();
                 statusGif.style.display = 'none';
             }
+
+            // Update private mode state from server
+            if (data.hasOwnProperty('private_mode_enabled')) {
+                isPrivateModeEnabled = data.private_mode_enabled;
+            }
+            if (data.hasOwnProperty('private_mode_authenticated')) {
+                isAuthenticated = data.private_mode_authenticated;
+            }
+            if (data.hasOwnProperty('last_activity_timestamp')) {
+                lastActivityTimestamp = data.last_activity_timestamp;
+            }
+
+            updatePrivateModeUI();
         });
 
         socket.on('audio_enabled', function(data) {
@@ -327,6 +689,36 @@
         socket.on('audio_output', function(audioData) {
             console.log('Received TTS audio from server, type:', typeof audioData, 'length:', audioData?.byteLength || audioData?.length);
             playAudioOutput(audioData);
+        });
+
+        socket.on('pin_verification_result', function(data) {
+            console.log('[Private Mode] PIN verification result:', data);
+
+            if (data.success) {
+                // Authentication successful
+                isAuthenticated = true;
+                closeModal();
+                updatePrivateModeUI();
+                console.log('[Private Mode] Authentication successful');
+            } else {
+                // Authentication failed
+                pinError.textContent = data.error || 'Incorrect PIN';
+                pinInput.value = '';
+                pinInput.focus();
+                console.log('[Private Mode] Authentication failed:', data.error);
+            }
+        });
+
+        socket.on('private_mode_changed', function(data) {
+            console.log('[Private Mode] Mode changed:', data);
+            isPrivateModeEnabled = data.enabled;
+            isAuthenticated = data.authenticated;
+            updatePrivateModeUI();
+        });
+
+        socket.on('private_mode_error', function(data) {
+            console.error('[Private Mode] Error:', data.error);
+            alert('Private Mode Error: ' + data.error);
         });
 
         // ============================================================================

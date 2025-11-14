@@ -53,19 +53,21 @@ if env_file.exists():
 class RosieRAG:
     """RAG (Retrieval-Augmented Generation) knowledge base for ROSIE"""
 
-    def __init__(self, knowledge_base_dir, chroma_db_dir):
+    def __init__(self, knowledge_base_dir, chroma_db_dir, private_mode=False):
         """
         Initialize RAG system with LlamaIndex and ChromaDB
 
         Args:
             knowledge_base_dir: Path to directory containing .md files
             chroma_db_dir: Path to directory for ChromaDB persistence
+            private_mode: If True, include private/ folder documents. If False, exclude them.
         """
         if not RAG_AVAILABLE:
             raise ImportError("RAG dependencies not installed")
 
         self.knowledge_base_dir = Path(knowledge_base_dir)
         self.chroma_db_dir = Path(chroma_db_dir)
+        self.private_mode = private_mode
         self.index = None
         self.retriever = None
 
@@ -94,8 +96,8 @@ class RosieRAG:
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
         print(f"[RAG] ChromaDB initialized")
 
-        # Check for .md files in knowledge base
-        md_files = list(self.knowledge_base_dir.glob("*.md"))
+        # Check for .md files in knowledge base (recursively to include private/)
+        md_files = list(self.knowledge_base_dir.rglob("*.md"))
 
         if not md_files:
             print(f"[RAG] No .md files found in {self.knowledge_base_dir}")
@@ -107,14 +109,26 @@ class RosieRAG:
             )
         else:
             print(f"[RAG] Found {len(md_files)} markdown files")
+            if self.private_mode:
+                print(f"[RAG] Private mode ENABLED - including private/ folder documents")
+            else:
+                print(f"[RAG] Private mode DISABLED - excluding private/ folder documents")
 
             # Load and index documents
             try:
                 print(f"[RAG] Loading documents...")
-                documents = SimpleDirectoryReader(
-                    str(self.knowledge_base_dir),
-                    required_exts=[".md"]
-                ).load_data()
+                # Build exclude pattern for private/ folder when not in private mode
+                reader_kwargs = {
+                    "input_dir": str(self.knowledge_base_dir),
+                    "required_exts": [".md"],
+                    "recursive": True
+                }
+
+                # Exclude private/ folder when private_mode is False
+                if not self.private_mode:
+                    reader_kwargs["exclude"] = ["**/private/*", "**/private/**/*"]
+
+                documents = SimpleDirectoryReader(**reader_kwargs).load_data()
 
                 print(f"[RAG] Loaded {len(documents)} document chunks")
                 print(f"[RAG] Creating vector embeddings (this may take a moment)...")
@@ -188,6 +202,76 @@ class RosieRAG:
             traceback.print_exc()
             return ""
 
+    def reload_with_private_mode(self, private_mode):
+        """
+        Reload RAG system with new private mode setting
+
+        Args:
+            private_mode: New private mode setting (True/False)
+
+        Returns:
+            True if reload successful, False otherwise
+        """
+        try:
+            print(f"[RAG] Reloading with private_mode={private_mode}")
+
+            # Update private mode flag
+            self.private_mode = private_mode
+
+            # Re-initialize ChromaDB (clearing old collection)
+            chroma_client = chromadb.PersistentClient(path=str(self.chroma_db_dir))
+
+            # Delete existing collection to force re-indexing
+            try:
+                chroma_client.delete_collection("rosie_knowledge")
+                print(f"[RAG] Deleted existing collection")
+            except Exception as e:
+                print(f"[RAG] Collection didn't exist or couldn't delete: {e}")
+
+            # Create new collection
+            chroma_collection = chroma_client.get_or_create_collection("rosie_knowledge")
+            vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
+            storage_context = StorageContext.from_defaults(vector_store=vector_store)
+
+            # Load documents with new private mode setting
+            print(f"[RAG] Loading documents...")
+            reader_kwargs = {
+                "input_dir": str(self.knowledge_base_dir),
+                "required_exts": [".md"],
+                "recursive": True
+            }
+
+            # Exclude private/ folder when private_mode is False
+            if not self.private_mode:
+                reader_kwargs["exclude"] = ["**/private/*", "**/private/**/*"]
+                print(f"[RAG] Excluding private/ folder")
+            else:
+                print(f"[RAG] Including private/ folder")
+
+            documents = SimpleDirectoryReader(**reader_kwargs).load_data()
+
+            print(f"[RAG] Loaded {len(documents)} document chunks")
+            print(f"[RAG] Creating vector embeddings...")
+
+            # Create new index
+            self.index = VectorStoreIndex.from_documents(
+                documents,
+                storage_context=storage_context,
+                show_progress=True
+            )
+
+            # Update retriever
+            self.retriever = self.index.as_retriever(similarity_top_k=3)
+
+            print(f"[RAG] Reload complete")
+            return True
+
+        except Exception as e:
+            print(f"[RAG] Error reloading: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
 
 class ConversationState(Enum):
     """State machine states"""
@@ -232,11 +316,18 @@ class RosieConversation:
         self.history_file = Path(os.getenv('HISTORY_FILE', rosie_dir / 'data' / 'conversation_history.txt'))
         self.speak_file = Path(os.getenv('SPEAK_FILE', rosie_dir / 'data' / 'speak.txt'))
         self.state_file = Path(os.getenv('STATE_FILE', rosie_dir / 'data' / 'rosie_state.json'))
+        self.private_mode_change_file = rosie_dir / 'data' / 'private_mode_change.json'
 
         # RAG knowledge base configuration
         self.knowledge_base_dir = Path(os.getenv('KNOWLEDGE_BASE_DIR', rosie_dir / 'knowledge_base'))
         self.chroma_db_dir = Path(os.getenv('CHROMA_DB_DIR', rosie_dir / 'data' / '.rosie_vector_db'))
         self.rag_system = None  # Initialized later if RAG is available
+
+        # Private mode state (always starts disabled per requirements)
+        self.private_mode_enabled = False
+        self.private_mode_authenticated = False
+        self.last_activity_timestamp = time.time()
+        self.private_mode_lock = threading.Lock()
 
         # Conversation settings
         self.debug = int(os.getenv('DEBUG', '0')) == 1
@@ -318,9 +409,11 @@ class RosieConversation:
             return
 
         try:
+            # Always start with private mode OFF
             self.rag_system = RosieRAG(
                 knowledge_base_dir=self.knowledge_base_dir,
-                chroma_db_dir=self.chroma_db_dir
+                chroma_db_dir=self.chroma_db_dir,
+                private_mode=False
             )
             print("RAG knowledge base initialized successfully")
         except Exception as e:
@@ -429,6 +522,12 @@ class RosieConversation:
             if custom_message:
                 status['message'] = custom_message
 
+            # Add private mode fields
+            with self.private_mode_lock:
+                status['private_mode_enabled'] = self.private_mode_enabled
+                status['private_mode_authenticated'] = self.private_mode_authenticated
+                status['last_activity_timestamp'] = self.last_activity_timestamp
+
             # Write to JSON file
             with open(self.state_file, 'w') as f:
                 json.dump(status, f, indent=2)
@@ -436,6 +535,45 @@ class RosieConversation:
         except Exception as e:
             # Don't let web status updates crash the main system
             self._log(f"Warning: Could not update web status: {e}")
+
+    def _check_private_timeout(self):
+        """
+        Check if private mode should timeout due to inactivity (30 minutes)
+
+        Returns True if timeout occurred and private mode was disabled
+        """
+        with self.private_mode_lock:
+            # Only check if private mode is enabled and authenticated
+            if not (self.private_mode_enabled and self.private_mode_authenticated):
+                return False
+
+            # Check if 30 minutes have passed since last activity
+            current_time = time.time()
+            time_elapsed = current_time - self.last_activity_timestamp
+            timeout_seconds = 30 * 60  # 30 minutes
+
+            if time_elapsed >= timeout_seconds:
+                print(f"\n[PRIVATE MODE] Timeout after {time_elapsed/60:.1f} minutes of inactivity")
+                print(f"[PRIVATE MODE] Disabling private mode...")
+
+                # Disable private mode
+                self.private_mode_enabled = False
+                self.private_mode_authenticated = False
+
+                # Reload RAG without private documents
+                if self.rag_system:
+                    success = self.rag_system.reload_with_private_mode(False)
+                    if success:
+                        print(f"[PRIVATE MODE] RAG reloaded without private documents")
+                    else:
+                        print(f"[PRIVATE MODE] Warning: RAG reload failed")
+
+                # Update web status
+                self._update_web_status(self._get_state())
+
+                return True
+
+            return False
 
     # =====================================================================
     # STATE 1: LISTENING - Whisper STT and Wake Word Detection
@@ -947,6 +1085,10 @@ class RosieConversation:
         """
         print(f"[OLLAMA] Processing started...")
         self._log("Ollama processing started")
+
+        # Update last activity timestamp (for private mode timeout)
+        with self.private_mode_lock:
+            self.last_activity_timestamp = time.time()
 
         try:
             # Read conversation history
@@ -1471,9 +1613,55 @@ class RosieConversation:
 
         self._log("ROSIE system started. Say 'Rosie' to get a response.")
 
-        # Main loop (keep alive)
+        # Main loop (keep alive and monitor private mode)
         try:
             while not self.shutdown_event.is_set():
+                # Check for private mode timeout (every 0.5 seconds)
+                self._check_private_timeout()
+
+                # Check for private mode change signal from web interface
+                if self.private_mode_change_file.exists():
+                    try:
+                        # Read change request
+                        with open(self.private_mode_change_file, 'r') as f:
+                            change_request = json.load(f)
+
+                        new_enabled = change_request.get('enabled', False)
+                        new_authenticated = change_request.get('authenticated', False)
+
+                        print(f"\n[PRIVATE MODE] Change request: enabled={new_enabled}, authenticated={new_authenticated}")
+
+                        # Update state
+                        with self.private_mode_lock:
+                            old_enabled = self.private_mode_enabled
+                            self.private_mode_enabled = new_enabled
+                            self.private_mode_authenticated = new_authenticated
+                            self.last_activity_timestamp = time.time()
+
+                        # Reload RAG if mode changed
+                        if old_enabled != new_enabled and self.rag_system:
+                            print(f"[PRIVATE MODE] Reloading RAG system...")
+                            success = self.rag_system.reload_with_private_mode(new_enabled)
+                            if success:
+                                print(f"[PRIVATE MODE] RAG reloaded successfully")
+                            else:
+                                print(f"[PRIVATE MODE] Warning: RAG reload failed")
+
+                        # Update web status
+                        self._update_web_status(self._get_state())
+
+                        # Delete signal file
+                        self.private_mode_change_file.unlink()
+                        print(f"[PRIVATE MODE] Change applied and signal file deleted")
+
+                    except Exception as e:
+                        print(f"[PRIVATE MODE] Error processing change request: {e}")
+                        # Try to delete file anyway
+                        try:
+                            self.private_mode_change_file.unlink()
+                        except:
+                            pass
+
                 time.sleep(0.5)
         except KeyboardInterrupt:
             self.shutdown()

@@ -36,11 +36,20 @@ current_state_lock = Lock()
 current_state = {
     'state': 'waiting',  # waiting, thinking, speaking
     'images': [],  # List of available images for current state
-    'message': 'Waiting for voice input...'
+    'message': 'Waiting for voice input...',
+    'private_mode_enabled': False,
+    'private_mode_authenticated': False,
+    'last_activity_timestamp': 0
 }
+
+# Private mode PIN (loaded from environment)
+PRIVATE_PIN = os.getenv('ROSIE_PRIVATE_PIN', None)
 
 # State file path - ROSIE writes to this file when state changes
 STATE_FILE = ROSIE_DIR / 'data' / 'rosie_state.json'
+
+# Private mode change file - signals ROSIE to reload RAG
+PRIVATE_MODE_CHANGE_FILE = ROSIE_DIR / 'data' / 'private_mode_change.json'
 
 # Web audio status file - shared between web server and ROSIE main process
 WEB_AUDIO_STATUS_FILE = ROSIE_DIR / 'data' / 'web_audio_status.json'
@@ -166,6 +175,11 @@ def state_broadcast_thread():
                     # Get available images for this state
                     current_state['images'] = available_images.get(state_name, [])
 
+                    # Update private mode fields
+                    current_state['private_mode_enabled'] = file_state.get('private_mode_enabled', False)
+                    current_state['private_mode_authenticated'] = file_state.get('private_mode_authenticated', False)
+                    current_state['last_activity_timestamp'] = file_state.get('last_activity_timestamp', 0)
+
                     # If no images found, log warning
                     if not current_state['images']:
                         print(f"[WebSocket] Warning: No images available for state '{state_name}'")
@@ -261,6 +275,79 @@ def handle_audio_input(data):
         _write_audio_input_to_file(data)
     except Exception as e:
         print(f"[WebSocket] Error writing audio input: {e}")
+
+
+@socketio.on('verify_private_pin')
+def handle_verify_pin(data):
+    """Verify 4-digit PIN for private mode access"""
+    client_id = request.sid
+    pin_attempt = data.get('pin', '')
+
+    print(f"[Private Mode] Client {client_id} attempting PIN verification")
+
+    # Check if PIN is configured
+    if PRIVATE_PIN is None:
+        print(f"[Private Mode] ERROR: ROSIE_PRIVATE_PIN not configured in environment")
+        emit('pin_verification_result', {'success': False, 'error': 'PIN not configured on server'})
+        return
+
+    # Verify PIN
+    if pin_attempt == PRIVATE_PIN:
+        print(f"[Private Mode] Client {client_id} authenticated successfully")
+        emit('pin_verification_result', {'success': True})
+    else:
+        print(f"[Private Mode] Client {client_id} failed authentication (incorrect PIN)")
+        emit('pin_verification_result', {'success': False, 'error': 'Incorrect PIN'})
+
+
+@socketio.on('toggle_private_mode')
+def handle_toggle_private_mode(data):
+    """Toggle private mode on/off (requires authentication)"""
+    client_id = request.sid
+    enabled = data.get('enabled', False)
+    authenticated = data.get('authenticated', False)
+
+    print(f"[Private Mode] Client {client_id} toggling private mode: enabled={enabled}, authenticated={authenticated}")
+
+    # If enabling, must be authenticated
+    if enabled and not authenticated:
+        print(f"[Private Mode] ERROR: Cannot enable without authentication")
+        emit('private_mode_error', {'error': 'Authentication required'})
+        return
+
+    # Write to private mode change file to signal ROSIE main process
+    try:
+        update_private_mode_state(enabled, authenticated)
+        print(f"[Private Mode] State updated successfully")
+        emit('private_mode_changed', {'enabled': enabled, 'authenticated': authenticated})
+    except Exception as e:
+        print(f"[Private Mode] ERROR updating state: {e}")
+        emit('private_mode_error', {'error': str(e)})
+
+
+def update_private_mode_state(enabled, authenticated):
+    """
+    Write private mode state change to file for IPC with ROSIE main process
+
+    Args:
+        enabled: Boolean - private mode enabled/disabled
+        authenticated: Boolean - user authenticated or not
+    """
+    try:
+        state = {
+            'enabled': enabled,
+            'authenticated': authenticated,
+            'timestamp': time.time()
+        }
+
+        with open(PRIVATE_MODE_CHANGE_FILE, 'w') as f:
+            json.dump(state, f, indent=2)
+
+        print(f"[Private Mode] Wrote state change file: {PRIVATE_MODE_CHANGE_FILE}")
+
+    except Exception as e:
+        print(f"[Private Mode] Error writing state change file: {e}")
+        raise
 
 
 # Function to send audio output to browser (called by ROSIE main process)
