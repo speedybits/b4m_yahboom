@@ -62,9 +62,12 @@ echo "Starting web server on http://localhost:5000"
 echo "======================================================================"
 echo ""
 
-# Start web server in background
-python3 "$ROSIE_DIR/src/rosie_web_status.py" &
+# Start web server in background (redirect output to log file)
+WEB_LOG="$ROSIE_DIR/data/web_server.log"
+python3 "$ROSIE_DIR/src/rosie_web_status.py" > "$WEB_LOG" 2>&1 &
 WEB_PID=$!
+
+echo "Web server output being logged to: $WEB_LOG"
 
 # Give web server time to start
 sleep 2
@@ -72,14 +75,30 @@ sleep 2
 # Check if web server started successfully
 if ! kill -0 $WEB_PID 2>/dev/null; then
     echo -e "${RED}Error: Web server failed to start${NC}"
+    echo "Check log file for errors: $WEB_LOG"
+    if [ -f "$WEB_LOG" ]; then
+        echo ""
+        echo "Last 20 lines of web server log:"
+        tail -20 "$WEB_LOG"
+    fi
     exit 1
 fi
 
 echo -e "${GREEN}Web server started successfully (PID: $WEB_PID)${NC}"
-echo ""
-echo "======================================================================"
-echo "Open your browser to: http://localhost:5000"
-echo "======================================================================"
+
+# Check if HTTPS or HTTP by looking at the log
+if grep -q "https://" "$WEB_LOG" 2>/dev/null; then
+    echo ""
+    echo "======================================================================"
+    echo "🌐 Open your browser to: https://localhost:5000"
+    echo "   (Accept the security warning for self-signed certificate)"
+    echo "======================================================================"
+else
+    echo ""
+    echo "======================================================================"
+    echo "🌐 Open your browser to: http://localhost:5000"
+    echo "======================================================================"
+fi
 echo ""
 echo "Starting ROSIE in 3 seconds..."
 sleep 3

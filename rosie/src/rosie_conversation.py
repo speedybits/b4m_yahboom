@@ -75,26 +75,19 @@ class RosieRAG:
         self.knowledge_base_dir.mkdir(exist_ok=True)
         self.chroma_db_dir.mkdir(exist_ok=True)
 
-        print(f"[RAG] Initializing knowledge base from: {self.knowledge_base_dir}")
-        print(f"[RAG] Vector database location: {self.chroma_db_dir}")
+        print(f"[RAG] Initializing knowledge base...")
 
         # Setup Ollama embeddings (no LLM needed for retrieval-only RAG)
-        print(f"[RAG] Configuring Ollama embedding model (nomic-embed-text)...")
         Settings.embed_model = OllamaEmbedding(
             model_name="nomic-embed-text",
             base_url="http://localhost:11434"
         )
-        print(f"[RAG] Embedding model configured")
 
         # Initialize ChromaDB
-        print(f"[RAG] Initializing ChromaDB...")
         chroma_client = chromadb.PersistentClient(path=str(self.chroma_db_dir))
-        print(f"[RAG] Getting/creating collection...")
         chroma_collection = chroma_client.get_or_create_collection("rosie_knowledge")
-        print(f"[RAG] Setting up vector store...")
         vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
-        print(f"[RAG] ChromaDB initialized")
 
         # Check for .md files in knowledge base (recursively to include private/)
         md_files = list(self.knowledge_base_dir.rglob("*.md"))
@@ -108,15 +101,8 @@ class RosieRAG:
                 storage_context=storage_context
             )
         else:
-            print(f"[RAG] Found {len(md_files)} markdown files")
-            if self.private_mode:
-                print(f"[RAG] Private mode ENABLED - including private/ folder documents")
-            else:
-                print(f"[RAG] Private mode DISABLED - excluding private/ folder documents")
-
             # Load and index documents
             try:
-                print(f"[RAG] Loading documents...")
                 # Build exclude pattern for private/ folder when not in private mode
                 reader_kwargs = {
                     "input_dir": str(self.knowledge_base_dir),
@@ -129,18 +115,14 @@ class RosieRAG:
                     reader_kwargs["exclude"] = ["**/private/*", "**/private/**/*"]
 
                 documents = SimpleDirectoryReader(**reader_kwargs).load_data()
-
-                print(f"[RAG] Loaded {len(documents)} document chunks")
-                print(f"[RAG] Creating vector embeddings (this may take a moment)...")
+                print(f"[RAG] Loading {len(documents)} document chunks...")
 
                 # Create or update index
                 self.index = VectorStoreIndex.from_documents(
                     documents,
                     storage_context=storage_context,
-                    show_progress=True
+                    show_progress=False
                 )
-
-                print(f"[RAG] Index created successfully")
 
             except Exception as e:
                 print(f"[RAG] Error loading documents: {e}")
@@ -156,7 +138,19 @@ class RosieRAG:
             similarity_top_k=3
         )
 
-        print(f"[RAG] Initialization complete (using embedding-only retrieval)")
+        # Check if Ollama is using GPU by examining recent logs
+        import subprocess
+        try:
+            result = subprocess.run(
+                ["journalctl", "-u", "ollama", "--since", "1 minute ago", "-n", "50"],
+                capture_output=True, text=True, timeout=2
+            )
+            if "library=cuda" in result.stdout:
+                print(f"[RAG] Ready ({len(md_files)} knowledge base files) - Using CUDA for embeddings ✓")
+            else:
+                print(f"[RAG] Ready ({len(md_files)} knowledge base files) - Using CPU for embeddings")
+        except:
+            print(f"[RAG] Ready ({len(md_files)} knowledge base files)\n")
 
     def query(self, question, top_k=3):
         """
@@ -312,15 +306,15 @@ class RosieConversation:
         self.piper_config_path = os.getenv('PIPER_CONFIG_PATH')
 
         # File paths (relative to rosie root directory - parent of src/)
-        rosie_dir = Path(__file__).parent.parent
-        self.history_file = Path(os.getenv('HISTORY_FILE', rosie_dir / 'data' / 'conversation_history.txt'))
-        self.speak_file = Path(os.getenv('SPEAK_FILE', rosie_dir / 'data' / 'speak.txt'))
-        self.state_file = Path(os.getenv('STATE_FILE', rosie_dir / 'data' / 'rosie_state.json'))
-        self.private_mode_change_file = rosie_dir / 'data' / 'private_mode_change.json'
+        self.rosie_dir = Path(__file__).parent.parent
+        self.history_file = Path(os.getenv('HISTORY_FILE', self.rosie_dir / 'data' / 'conversation_history.txt'))
+        self.speak_file = Path(os.getenv('SPEAK_FILE', self.rosie_dir / 'data' / 'speak.txt'))
+        self.state_file = Path(os.getenv('STATE_FILE', self.rosie_dir / 'data' / 'rosie_state.json'))
+        self.private_mode_change_file = self.rosie_dir / 'data' / 'private_mode_change.json'
 
         # RAG knowledge base configuration
-        self.knowledge_base_dir = Path(os.getenv('KNOWLEDGE_BASE_DIR', rosie_dir / 'knowledge_base'))
-        self.chroma_db_dir = Path(os.getenv('CHROMA_DB_DIR', rosie_dir / 'data' / '.rosie_vector_db'))
+        self.knowledge_base_dir = Path(os.getenv('KNOWLEDGE_BASE_DIR', self.rosie_dir / 'knowledge_base'))
+        self.chroma_db_dir = Path(os.getenv('CHROMA_DB_DIR', self.rosie_dir / 'data' / '.rosie_vector_db'))
         self.rag_system = None  # Initialized later if RAG is available
 
         # Private mode state (always starts disabled per requirements)
@@ -914,16 +908,15 @@ class RosieConversation:
                                                 # Remove wake word from transcription before storing
                                                 cleaned_transcription = re.sub(wake_word_pattern, '', transcription, flags=re.IGNORECASE).strip()
 
-                                                print(f"[WHISPER] Human: {transcription} (wake word detected and removed)")
                                                 self._log(f"Wake word detected in: {transcription}")
 
                                                 # Store cleaned version (without wake word)
                                                 if cleaned_transcription:
                                                     self._append_to_history(f"Human: {cleaned_transcription}\n")
+                                                    # Only show what was said to ROSIE (without wake word)
                                             else:
-                                                # No wake word, store as-is
+                                                # No wake word, store as-is (but don't show - not speaking to ROSIE)
                                                 self._append_to_history(f"Human: {transcription}\n")
-                                                print(f"[WHISPER] Human: {transcription}")
                                                 self._log(f"Transcribed: {transcription}")
                                     elif transcription:
                                         self._log(f"Filtered hallucination: {transcription}")
@@ -1083,7 +1076,6 @@ class RosieConversation:
 
         Automatically summarizes context if it exceeds token limit.
         """
-        print(f"[OLLAMA] Processing started...")
         self._log("Ollama processing started")
 
         # Update last activity timestamp (for private mode timeout)
@@ -1093,12 +1085,10 @@ class RosieConversation:
         try:
             # Read conversation history
             conversation_content = self.history_file.read_text()
-            print(f"[OLLAMA] Read conversation_history.txt: {len(conversation_content)} chars")
 
             # Query RAG knowledge base if available
             rag_context = ""
             if self.rag_system:
-                print(f"[RAG] System available, querying...", flush=True)
                 # Extract last human statement to use as query
                 # Note: Format is "Human [timestamp]: ..." not "Human:..."
                 human_lines = [line for line in conversation_content.split('\n') if line.startswith('Human ')]
@@ -1107,23 +1097,12 @@ class RosieConversation:
                 if last_human_statement:
                     # Remove "Human [timestamp]:" prefix to get just the question
                     question = re.sub(r'^Human\s+\[.*?\]:\s*', '', last_human_statement)
-                    print(f"[RAG] Querying knowledge base with: '{question[:50]}...'", flush=True)
-
                     rag_context = self.rag_system.query(question, top_k=3)
-                    if rag_context:
-                        print(f"[RAG] Retrieved context: {len(rag_context)} chars", flush=True)
-                    else:
-                        print(f"[RAG] No relevant context found", flush=True)
-                else:
-                    print(f"[RAG] No human statement found to query", flush=True)
-            else:
-                print(f"[RAG] System not available (self.rag_system is None)", flush=True)
 
             # Check if context exceeds limit - if so, summarize first
             # Note: important_info and RAG context are NOT included in token count for summarization
             # as they should always be preserved
             token_count = self._estimate_token_count(conversation_content)
-            print(f"[OLLAMA] Estimated tokens: {token_count} (limit: {self.context_limit})")
 
             if token_count > self.context_limit:
                 print(f"[OLLAMA] Context exceeds limit! Summarizing...")
@@ -1165,8 +1144,8 @@ class RosieConversation:
                 temperature = 0.7  # Higher temperature for conversational/creative responses
                 mode = "CONVERSATIONAL"
 
-            print(f"[OLLAMA] Question type: {mode} (temperature: {temperature})")
-            print(f"[OLLAMA] Last human statement: {last_human_statement}")
+            # Show what the user just said
+            print(f"\n→ You: {last_human_statement}")
 
             # Get current date and time for context
             import datetime
@@ -1244,11 +1223,7 @@ class RosieConversation:
                     "Your response:"
                 )
 
-            print(f"[OLLAMA] Total prompt length: {len(prompt)} chars")
-            print(f"\n[OLLAMA] ===== PROMPT BEING SENT =====")
-            print(prompt)
-            print(f"[OLLAMA] ===== END PROMPT =====\n")
-            print(f"[OLLAMA] Sending request to Ollama...")
+            # Prompt ready - send to Ollama
 
             # Call Ollama API
             response = requests.post(
@@ -1270,8 +1245,8 @@ class RosieConversation:
                 if ollama_text:
                     # Write to speak.txt
                     self.speak_file.write_text(ollama_text)
-                    # Always print Ollama response to console
-                    print(f"[OLLAMA] Robot will say: {ollama_text}")
+                    # Show robot response
+                    print(f"← ROSIE: {ollama_text}\n")
                     self._log(f"Ollama response: {ollama_text}")
 
                     # Transition to SPEAKING state
@@ -1599,12 +1574,47 @@ class RosieConversation:
         self.web_audio_thread = threading.Thread(target=self._web_audio_poll_worker, daemon=True)
         self.web_audio_thread.start()
 
+        # Check Ollama GPU status
+        import subprocess
+        ollama_gpu_status = "Unknown"
+        try:
+            result = subprocess.run(
+                ["journalctl", "-u", "ollama", "--since", "2 minutes ago"],
+                capture_output=True, text=True, timeout=2
+            )
+            if "library=cuda" in result.stdout:
+                ollama_gpu_status = "CUDA ✓"
+            elif "library=cpu" in result.stdout:
+                ollama_gpu_status = "CPU"
+        except:
+            pass
+
+        # Get hostname for web URL
+        import socket
+        try:
+            hostname = socket.gethostname()
+        except:
+            hostname = "localhost"
+
+        # Check if web server is using HTTPS (SSL certificate exists)
+        ssl_cert_path = self.rosie_dir / 'data' / 'ssl' / 'rosie.crt'
+        protocol = "https" if ssl_cert_path.exists() else "http"
+
         # Always print startup message and instructions
         print("\n" + "="*70)
         print("ROSIE Conversational AI System - READY")
         print("="*70)
         print(f"Current State: {self._get_state().name}")
         print(f"Audio Mode: {self._get_audio_mode().name}")
+        print(f"LLM (Ollama): {ollama_gpu_status}")
+
+        # Show web interface URL if web server is available
+        if self.web_server_module:
+            print(f"\n🌐 Web Interface: {protocol}://{hostname}:5000")
+            print(f"   (or use {protocol}://localhost:5000 on this machine)")
+            if protocol == "https":
+                print(f"   (Accept security warning for self-signed certificate)")
+
         print("\nSpeak naturally - everything is transcribed.")
         print("Say 'Rosie' to get a response.")
         print("Say 'Rosie, forget everything' to reset conversation history.")
