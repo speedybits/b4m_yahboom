@@ -114,7 +114,7 @@ After adding your images:
 
 3. Start ROSIE:
    ```bash
-   ./rosie_launch.sh
+   ./run.sh
    ```
 
 4. Watch the browser - images should cycle randomly based on ROSIE's state

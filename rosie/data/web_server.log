@@ -1,0 +1,31 @@
+Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+======================================================================
+ROSIE Web Status Display Server (WebSocket Edition)
+======================================================================
+Images directory: /home/mike/projects/b4m_yahboom/rosie/animation
+State file: /home/mike/projects/b4m_yahboom/rosie/data/rosie_state.json
+Web audio status file: /home/mike/projects/b4m_yahboom/rosie/data/web_audio_status.json
+
+Web audio status initialized (disabled)
+Web audio input directory initialized: /home/mike/projects/b4m_yahboom/rosie/data/web_audio_input
+
+Scanning for available images...
+
+✓ SSL certificate found
+  Certificate: /home/mike/projects/b4m_yahboom/rosie/data/ssl/rosie.crt
+  Key: /home/mike/projects/b4m_yahboom/rosie/data/ssl/rosie.key
+
+Starting WebSocket state broadcast thread...
+Starting audio output sender thread...
+Server starting at https://0.0.0.0:5000
+Access from tablet: https://192.168.68.105:5000
+(Accept security warning for self-signed certificate)
+WebSocket endpoint available for audio streaming
+Press CTRL+C to stop
+======================================================================
+ * Serving Flask app 'rosie_web_status'
+ * Debug mode: off
+[WebSocket] Client connected: MJIUjMAP8HxWFH7eAAAB
+[WebSocket] Client MJIUjMAP8HxWFH7eAAAB enabled web audio mode
+
+Shutting down web server...

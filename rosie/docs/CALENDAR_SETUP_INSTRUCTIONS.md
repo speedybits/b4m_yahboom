@@ -175,7 +175,7 @@ crontab -l
 Start ROSIE:
 ```bash
 cd /home/mike/projects/b4m_yahboom
-./rosie/scripts/rosie_with_web.sh
+./rosie/scripts/run.sh
 ```
 
 **Test reading calendar:**

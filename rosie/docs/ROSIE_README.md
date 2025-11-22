@@ -242,10 +242,10 @@ Expected output with GPU:
 
 ```bash
 # Recommended: Use the launch script (handles environment and calendar sync)
-./rosie/scripts/rosie_launch.sh
+./rosie/scripts/run.sh
 
 # Or launch with web interface
-./rosie/scripts/rosie_with_web.sh
+./rosie/scripts/run.sh
 
 # Direct Python execution (requires environment variables in .bashrc)
 python3 rosie/src/rosie_conversation.py
@@ -319,7 +319,7 @@ ROSIE automatically retrieves relevant information from your markdown documents:
 echo "# My Notes\nThe robot is located in the basement." > rosie/knowledge_base/my_notes.md
 
 # Restart ROSIE to index new documents
-./rosie/scripts/rosie_launch.sh
+./rosie/scripts/run.sh
 ```
 
 **Example Interaction:**
@@ -436,7 +436,7 @@ ROSIE includes a real-time web interface that cycles through numbered images to 
 
 1. **Launch with web interface:**
    ```bash
-   ./rosie/scripts/rosie_with_web.sh
+   ./rosie/scripts/run.sh
    ```
 
 2. **Open browser:**
@@ -492,7 +492,7 @@ You can also run the web server separately:
 python3 rosie/src/rosie_web_status.py
 
 # Terminal 2: Start ROSIE
-./rosie/scripts/rosie_launch.sh
+./rosie/scripts/run.sh
 ```
 
 ### Technical Details
@@ -522,7 +522,7 @@ The web audio feature enables bidirectional audio streaming between ROSIE and we
 
 1. **Launch ROSIE with web interface:**
    ```bash
-   ./rosie_with_web.sh
+   ./run.sh
    ```
 
 2. **Open browser on remote device:**
@@ -579,7 +579,7 @@ cd ~/projects/b4m_yahboom/rosie
 ./scripts/generate_ssl_cert.sh
 
 # Restart ROSIE (will auto-detect certificate)
-./scripts/rosie_with_web.sh
+./scripts/run.sh
 
 # Access from tablet (note HTTPS)
 https://192.168.68.105:5000
@@ -628,7 +628,7 @@ Your tablet will show a security warning because the certificate is self-signed.
 **Scenario 1: Local Development**
 ```bash
 # Server machine
-./rosie_with_web.sh
+./run.sh
 
 # Open browser on same machine
 firefox http://localhost:5000
@@ -639,7 +639,7 @@ firefox http://localhost:5000
 **Scenario 2: Remote Tablet**
 ```bash
 # Robot/server machine
-./rosie_with_web.sh
+./run.sh
 
 # Find server IP
 hostname -I  # e.g., 192.168.1.100
@@ -653,7 +653,7 @@ http://192.168.1.100:5000
 **Scenario 3: Mixed Mode**
 ```bash
 # Start with local audio (default)
-./rosie_with_web.sh
+./run.sh
 
 # ROSIE uses local mic/speakers
 
@@ -697,7 +697,7 @@ http://192.168.1.100:5000
 - Check server CPU usage (Whisper/Ollama load)
 
 **"WebSocket connection failed":**
-- Verify web server is running (./rosie_with_web.sh)
+- Verify web server is running (./run.sh)
 - Check firewall allows port 5000
 - Ensure correct server IP address
 - Try http://localhost:5000 on same machine first
@@ -730,8 +730,8 @@ rosie/
 │   ├── rosie_calendar_sync.py     # Calendar event sync script
 │   └── rosie_calendar_create.py   # Calendar event creation handler
 ├── scripts/                       # Launch scripts
-│   ├── rosie_launch.sh            # Basic launch script
-│   ├── rosie_with_web.sh          # Launch with web interface
+│   ├── run.sh            # Basic launch script
+│   ├── run.sh          # Launch with web interface
 │   └── generate_ssl_cert.sh       # SSL certificate generator for HTTPS
 ├── templates/                     # Flask web templates
 │   └── rosie_status.html          # Web status display page

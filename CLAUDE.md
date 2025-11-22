@@ -366,8 +366,7 @@ rosie/
 │   ├── rosie_calendar_sync.py     # Calendar event sync script
 │   └── rosie_calendar_create.py   # Calendar event creation handler
 ├── scripts/                       # Launch scripts
-│   ├── rosie_launch.sh            # Basic launch script
-│   └── rosie_with_web.sh          # Launch with web interface
+│   └── run.sh                     # Unified launch script (with --no-web flag)
 ├── templates/                     # Flask web templates
 │   └── rosie_status.html          # Web status display page
 ├── animation/                     # Status display animations
@@ -397,14 +396,14 @@ rosie/
 
 ### Launch Commands
 
-**Basic launch:**
+**Launch with web interface (default):**
 ```bash
-./rosie/scripts/rosie_launch.sh
+./rosie/scripts/run.sh
 ```
 
-**Launch with web interface:**
+**Launch without web interface:**
 ```bash
-./rosie/scripts/rosie_with_web.sh
+./rosie/scripts/run.sh --no-web
 ```
 
 **Direct Python execution:**
@@ -428,7 +427,7 @@ All Python files use relative paths from the rosie root directory:
 3. **Launch scripts**: All scripts must support being run from any directory
 4. **Path updates**: When moving ROSIE files, update paths in:
    - Python scripts (rosie_conversation.py, rosie_web_status.py, calendar scripts)
-   - Shell scripts (rosie_launch.sh, rosie_with_web.sh)
+   - Shell scripts (run.sh, run.sh)
    - This CLAUDE.md documentation
 
 ### Key Dependencies
