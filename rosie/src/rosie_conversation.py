@@ -367,6 +367,14 @@ class RosieConversation:
         self.test_transcription_event = threading.Event()  # Signals transcription complete
         self.test_transcription_lock = threading.Lock()
 
+        # TTS interrupt detection (stop speaking when human talks)
+        self.tts_interrupt_event = threading.Event()  # Signals interrupt request
+        self.tts_process = None  # Current TTS subprocess (Piper + aplay)
+        self.tts_process_lock = threading.Lock()  # Protects TTS process access
+
+        # Conversation depth tracking (for transition display)
+        self.last_conversation_depth = None
+
         # Initialize files
         self._initialize_files()
 
@@ -848,17 +856,6 @@ class RosieConversation:
             # Only process in LISTENING state
             if current_state == ConversationState.LISTENING:
                 try:
-                    # NEW: Skip audio processing when ROSIE is speaking (prevents echo/feedback)
-                    with self.state_lock:
-                        current_state = self.state
-                    if current_state == ConversationState.SPEAKING:
-                        # Clear audio queue to prevent accumulation during TTS playback
-                        with self.audio_lock:
-                            if len(self.audio_queue) > 0:
-                                self.audio_queue.clear()
-                        time.sleep(vad_frame_duration / 1000.0)
-                        continue
-
                     # Debug: Show mode at beginning of processing
                     if not hasattr(self, '_mode_check_count'):
                         self._mode_check_count = 0
@@ -1070,8 +1067,66 @@ class RosieConversation:
                     import traceback
                     traceback.print_exc()
 
+            elif current_state == ConversationState.SPEAKING:
+                # Monitor for human speech during TTS playback to enable interrupts
+
+                # Check audio queue every 30ms
+                time.sleep(0.03)
+
+                # Get audio chunk from queue
+                audio_from_queue = False
+                with self.audio_lock:
+                    if len(self.audio_queue) > 0:
+                        audio_chunk = self.audio_queue.pop(0)
+                        audio_from_queue = True
+                    else:
+                        continue  # No audio, keep waiting
+
+                # Convert to int16 for VAD
+                audio_int16 = (audio_chunk * 32767).astype(np.int16)
+
+                # Pad or trim to VAD frame size (480 samples for 30ms at 16kHz)
+                vad_frames_per_check = 480
+                if len(audio_int16) < vad_frames_per_check:
+                    audio_int16 = np.pad(audio_int16, (0, vad_frames_per_check - len(audio_int16)))
+                elif len(audio_int16) > vad_frames_per_check:
+                    audio_int16 = audio_int16[:vad_frames_per_check]
+
+                # Pre-filter to reduce TTS echo false positives
+                audio_level = np.abs(audio_chunk).max()
+
+                # Higher threshold during SPEAKING to avoid detecting TTS echo
+                if audio_level > 0.02:  # Louder than background/echo
+                    try:
+                        is_speech = vad.is_speech(audio_int16.tobytes(), self.sample_rate)
+
+                        # Require 2 consecutive detections for reliability
+                        if is_speech:
+                            if not hasattr(self, '_interrupt_speech_count'):
+                                self._interrupt_speech_count = 0
+                            self._interrupt_speech_count += 1
+
+                            if self._interrupt_speech_count >= 2:  # 60ms total
+                                print("[INTERRUPT] Human speech detected during TTS playback")
+                                self.tts_interrupt_event.set()
+                                self._interrupt_speech_count = 0
+                                # Clear audio queue and reset speech tracking
+                                with self.audio_lock:
+                                    self.audio_queue.clear()
+                                speech_buffer = []
+                                is_speaking = False
+                                consecutive_silence = 0
+                                # Transition back to LISTENING
+                                self._set_state(ConversationState.LISTENING)
+                        else:
+                            self._interrupt_speech_count = 0
+                    except Exception as e:
+                        self._log(f"Interrupt detection error: {e}")
+                else:
+                    self._interrupt_speech_count = 0
+
             else:
-                # Clear queue during RESPONDING/SPEAKING (don't transcribe robot speech)
+                # RESPONDING state - clear queue, don't transcribe LLM processing
                 with self.audio_lock:
                     self.audio_queue.clear()
                 speech_buffer = []
@@ -1381,6 +1436,121 @@ class RosieConversation:
 
         self._log("Wake word detector stopped")
 
+    def _analyze_conversation_depth(self, conversation_content, last_human_statement):
+        """
+        Analyze conversation depth to determine appropriate response length
+
+        Args:
+            conversation_content: Full conversation history text
+            last_human_statement: Most recent human statement
+
+        Returns:
+            str: 'shallow', 'medium', or 'deep'
+        """
+        # Count total exchanges (Human + Robot pairs)
+        human_lines = [line for line in conversation_content.split('\n') if line.startswith('Human ')]
+        robot_lines = [line for line in conversation_content.split('\n') if line.startswith('Robot ')]
+        exchange_count = min(len(human_lines), len(robot_lines))
+
+        # Extract the actual text from last human statement (remove timestamp prefix)
+        last_text = re.sub(r'^Human\s+\[.*?\]:\s*', '', last_human_statement).strip().lower()
+
+        # SHALLOW indicators - First priority
+
+        # Very first exchange
+        if exchange_count < 2:
+            return 'shallow'
+
+        # Simple greetings
+        greeting_patterns = [r'\b(hello|hi|hey|good morning|good afternoon|good evening)\b']
+        if any(re.search(pattern, last_text) for pattern in greeting_patterns):
+            return 'shallow'
+
+        # Single fact questions (what time, what's the weather, etc.)
+        simple_fact_patterns = [
+            r'\b(what time|what\'s the time|what date)\b',
+            r'\b(what\'s the weather|weather)\b',
+            r'^\w+\?$'  # Single word questions
+        ]
+        if any(re.search(pattern, last_text) for pattern in simple_fact_patterns):
+            return 'shallow'
+
+        # Topic change detection - compare last 2-3 human statements
+        if len(human_lines) >= 3:
+            # Extract last 3 human statements
+            recent_statements = human_lines[-3:]
+            recent_texts = [re.sub(r'^Human\s+\[.*?\]:\s*', '', s).strip().lower() for s in recent_statements]
+
+            # Simple keyword overlap check between last statement and previous ones
+            last_words = set(re.findall(r'\b\w+\b', recent_texts[-1]))
+            previous_words = set()
+            for text in recent_texts[:-1]:
+                previous_words.update(re.findall(r'\b\w+\b', text))
+
+            # Remove common stop words for better comparison
+            stop_words = {'the', 'a', 'an', 'is', 'are', 'was', 'were', 'what', 'how', 'when', 'where', 'who', 'why', 'do', 'does', 'did', 'can', 'could', 'would', 'should', 'i', 'you', 'me', 'my', 'your', 'it', 'that', 'this'}
+            last_words = last_words - stop_words
+            previous_words = previous_words - stop_words
+
+            # If less than 15% word overlap, likely a topic change
+            if len(last_words) > 0:
+                overlap = len(last_words & previous_words) / len(last_words)
+                if overlap < 0.15:
+                    return 'shallow'
+
+        # DEEP indicators - Second priority
+
+        # 5+ consecutive exchanges
+        if exchange_count >= 5:
+            # Additional deep indicators
+            deep_patterns = [
+                r'\b(also|furthermore|additionally|moreover|besides)\b',
+                r'\b(but what about|what if|how about)\b',
+                r'\b(what do you think|why does|how does|why do|what makes)\b',
+                r'\b(explain|tell me more|elaborate|describe)\b',
+                # Pronouns referring to previous context
+                r'\b(it|that|they|them|those|these)\b.*\?',
+                # Why/How questions
+                r'\b(why|how)\b.*\?'
+            ]
+
+            if any(re.search(pattern, last_text) for pattern in deep_patterns):
+                return 'deep'
+
+        # Follow-up questions with pronouns (even with fewer exchanges)
+        pronoun_followup_patterns = [
+            r'\b(it|that|they|them|those|these)\b.*\?',
+            r'^(and |but |so )',  # Sentence continuation
+            r'\b(what about it|why is that|how does that)\b'
+        ]
+        if any(re.search(pattern, last_text) for pattern in pronoun_followup_patterns):
+            return 'deep'
+
+        # Why/How questions (complex reasoning)
+        if re.search(r'\b(why|how)\b.*\?', last_text):
+            return 'deep'
+
+        # Continuity words
+        continuity_patterns = [
+            r'\b(also|furthermore|additionally|moreover|besides)\b',
+            r'\b(but what about|what if|how about)\b',
+            r'\b(tell me more|elaborate|explain further)\b'
+        ]
+        if any(re.search(pattern, last_text) for pattern in continuity_patterns):
+            return 'deep'
+
+        # Requests for opinions/reasoning
+        opinion_patterns = [
+            r'\b(what do you think|do you think|your opinion|what would you)\b',
+            r'\b(why does that|what makes that|how come)\b'
+        ]
+        if any(re.search(pattern, last_text) for pattern in opinion_patterns):
+            return 'deep'
+
+        # MEDIUM is the default for everything in between
+        return 'medium'
+
+
     # =====================================================================
     # STATE 2: RESPONDING - Ollama Immediate Response
     # =====================================================================
@@ -1437,6 +1607,31 @@ class RosieConversation:
             # Extract last Human line from conversation (format: "Human [timestamp]: text")
             human_lines = [line for line in conversation_content.split('\n') if line.startswith('Human ')]
             last_human_statement = human_lines[-1] if human_lines else ""
+
+            # Analyze conversation depth for dynamic response length
+            conversation_depth = self._analyze_conversation_depth(conversation_content, last_human_statement)
+
+            # Set dynamic token limits based on depth
+            depth_token_limits = {
+                'shallow': 100,   # 1-2 sentences
+                'medium': 200,    # 2-3 sentences
+                'deep': 400       # 3-5 sentences with reasoning
+            }
+            max_tokens = depth_token_limits.get(conversation_depth, 200)
+
+            # Display depth transitions or current depth
+            if self.last_conversation_depth is None:
+                # First conversation, just show depth
+                print(f"[{conversation_depth.upper()}] max_tokens: {max_tokens}")
+            elif self.last_conversation_depth != conversation_depth:
+                # Depth changed - show transition
+                print(f"[{self.last_conversation_depth.upper()} → {conversation_depth.upper()}] max_tokens: {max_tokens}")
+            else:
+                # Same depth - just show current
+                print(f"[{conversation_depth.upper()}] max_tokens: {max_tokens}")
+
+            # Update last depth for next comparison
+            self.last_conversation_depth = conversation_depth
 
             # Check for calendar event creation request
             calendar_create_pattern = r'\b(schedule|add|create|set up|book|make)\b.*\b(appointment|meeting|event|reminder)\b'
@@ -1521,10 +1716,18 @@ class RosieConversation:
                         f"{rag_context}\n\n"
                     )
 
+                # Add depth-specific guidance
+                depth_guidance = {
+                    'shallow': "Keep your response brief (1-2 sentences).\n",
+                    'medium': "Provide a concise answer (2-3 sentences).\n",
+                    'deep': "Provide a thoughtful, detailed response with reasoning (3-5 sentences).\n"
+                }
+
                 prompt += (
                     "CONVERSATION HISTORY (contains past conversations with timestamps):\n"
                     f"{conversation_content}\n\n"
                     "Respond naturally to the most recent request or question.\n"
+                    f"{depth_guidance.get(conversation_depth, depth_guidance['medium'])}"
                     "IMPORTANT CONVERSATION GUIDELINES:\n"
                     "- Engage deeply with the topic being discussed\n"
                     "- When asked for your thoughts or opinions, give substantive answers with reasoning (2-3 sentences)\n"
@@ -1554,7 +1757,7 @@ class RosieConversation:
                     'model': self.ollama_model,
                     'prompt': prompt,
                     'temperature': temperature,  # Dynamic temperature based on question type
-                    'max_tokens': self.ollama_max_tokens,
+                    'max_tokens': max_tokens,
                     'stream': False
                 },
                 timeout=30  # Increased from 5 to 30 seconds for longer contexts
@@ -1793,6 +1996,8 @@ class RosieConversation:
         Converts speak.txt to speech and routes audio based on audio mode:
         - LOCAL mode: Play through system speakers via aplay
         - WEB mode: Send audio to browser via WebSocket
+
+        Supports interrupts via self.tts_interrupt_event
         """
         self._log("Piper TTS started")
 
@@ -1815,12 +2020,40 @@ class RosieConversation:
 
             # Check audio mode
             audio_mode = self._get_audio_mode()
+            interrupted = False
 
             if audio_mode == AudioMode.LOCAL:
-                # LOCAL mode: Use existing aplay pipeline
+                # LOCAL mode: Use aplay pipeline with interrupt support
                 piper_cmd = f'echo "{text_escaped}" | piper --model {self.piper_model_path} --output-raw | aplay -r 22050 -f S16_LE -t raw -'
-                subprocess.run(piper_cmd, shell=True, check=True)
-                self._log(f"Piper spoke (LOCAL): {text}")
+
+                # Start TTS process (non-blocking)
+                with self.tts_process_lock:
+                    self.tts_process = subprocess.Popen(
+                        piper_cmd,
+                        shell=True,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL
+                    )
+
+                # Monitor for interrupts
+                while self.tts_process.poll() is None:  # Process still running
+                    if self.tts_interrupt_event.is_set():
+                        print("[INTERRUPT] Stopping TTS playback (LOCAL mode)...")
+                        self.tts_process.terminate()
+                        time.sleep(0.1)
+                        if self.tts_process.poll() is None:
+                            self.tts_process.kill()
+                        self.tts_interrupt_event.clear()
+                        interrupted = True
+                        break
+                    time.sleep(0.05)  # Check every 50ms
+
+                # Cleanup
+                with self.tts_process_lock:
+                    self.tts_process = None
+
+                if not interrupted:
+                    self._log(f"Piper spoke (LOCAL): {text}")
 
             else:  # WEB mode
                 # Capture Piper output to buffer
@@ -1847,9 +2080,22 @@ class RosieConversation:
                     success = self.web_server_module.send_audio_output_to_browser(wav_data)
                     if success:
                         self._log(f"Piper spoke (WEB): {text}")
+
                         # Keep SPEAKING state active while audio plays on browser
-                        # Sleep for audio duration to sync animation with actual playback
-                        time.sleep(audio_duration)
+                        # Sleep in small increments to allow interrupt checking
+                        sleep_time = 0
+                        sleep_increment = 0.05  # Check every 50ms
+
+                        while sleep_time < audio_duration:
+                            if self.tts_interrupt_event.is_set():
+                                print("[INTERRUPT] Stopping TTS playback (WEB mode)...")
+                                # Note: Browser will finish playing buffered audio
+                                # TODO: Implement browser-side audio stop if needed
+                                self.tts_interrupt_event.clear()
+                                interrupted = True
+                                break
+                            time.sleep(sleep_increment)
+                            sleep_time += sleep_increment
                     else:
                         print(f"[TTS] Failed to send audio to browser")
                         self._log(f"Failed to send audio to browser, no clients connected")
@@ -1857,8 +2103,10 @@ class RosieConversation:
                     print(f"[TTS] Web server module not available")
                     self._log(f"Web server module not available, cannot send audio")
 
-            # Append to conversation history with "Robot:" prefix
-            self._append_to_history(f"Robot: {text}\n")
+            # Only update history if not interrupted
+            if not interrupted:
+                # Append to conversation history with "Robot:" prefix
+                self._append_to_history(f"Robot: {text}\n")
 
             # Clear speak.txt
             self.speak_file.write_text('')
@@ -1871,6 +2119,14 @@ class RosieConversation:
             import traceback
             traceback.print_exc()
             self._set_state(ConversationState.LISTENING)
+            # Cleanup on error
+            with self.tts_process_lock:
+                if self.tts_process:
+                    try:
+                        self.tts_process.terminate()
+                    except:
+                        pass
+                    self.tts_process = None
 
 
     # =====================================================================
