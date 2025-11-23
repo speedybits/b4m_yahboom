@@ -136,20 +136,20 @@ class RosieRAG:
         # Create retriever (NO LLM calls - embeddings only for fast retrieval)
         # This completely bypasses LLM synthesis and only uses vector similarity
         self.retriever = self.index.as_retriever(
-            similarity_top_k=3
+            similarity_top_k=5
         )
 
         # Check if Ollama is using GPU by examining recent logs
         # Skip journalctl check (can cause hangs) - just print ready message
         print(f"[RAG] Ready ({len(md_files)} knowledge base files)")
 
-    def query(self, question, top_k=3):
+    def query(self, question, top_k=5):
         """
         Retrieve relevant context for a question using ONLY embeddings (no LLM calls)
 
         Args:
             question: The question to search for
-            top_k: Number of relevant chunks to retrieve
+            top_k: Number of relevant chunks to retrieve (default: 5)
 
         Returns:
             String containing relevant context, or empty string if no results
@@ -159,7 +159,7 @@ class RosieRAG:
 
         try:
             # Update top_k if different from default
-            if top_k != 3:
+            if top_k != 5:
                 self.retriever = self.index.as_retriever(
                     similarity_top_k=top_k
                 )
@@ -170,15 +170,22 @@ class RosieRAG:
             # Extract text from retrieved nodes
             if nodes:
                 contexts = []
-                for node in nodes:
+                print(f"[RAG] Query: '{question}'")
+                print(f"[RAG] Retrieved {len(nodes)} chunks:")
+                for i, node in enumerate(nodes):
                     # Get the text content from each node
                     text = node.node.get_content()
                     # Include source file info if available
                     source = node.node.metadata.get('file_name', 'unknown')
+                    # Get similarity score if available
+                    score = getattr(node, 'score', None)
+                    score_str = f" (score: {score:.3f})" if score is not None else ""
+                    print(f"[RAG]   {i+1}. {source}{score_str}: {text[:80].replace(chr(10), ' ')}...")
                     contexts.append(f"[From {source}]\n{text}")
 
                 return "\n\n".join(contexts)
             else:
+                print(f"[RAG] Query: '{question}' - No chunks retrieved")
                 return ""
 
         except Exception as e:
@@ -246,7 +253,7 @@ class RosieRAG:
             )
 
             # Update retriever
-            self.retriever = self.index.as_retriever(similarity_top_k=3)
+            self.retriever = self.index.as_retriever(similarity_top_k=5)
 
             print(f"[RAG] Reload complete")
             return True
@@ -1582,7 +1589,16 @@ class RosieConversation:
                 if last_human_statement:
                     # Remove "Human [timestamp]:" prefix to get just the question
                     question = re.sub(r'^Human\s+\[.*?\]:\s*', '', last_human_statement)
-                    rag_context = self.rag_system.query(question, top_k=3)
+                    rag_context = self.rag_system.query(question, top_k=5)
+
+                    # Debug logging to show what RAG retrieved
+                    if rag_context.strip():
+                        print(f"[RAG] Retrieved context ({len(rag_context)} chars)")
+                        # Show first 200 chars of context for debugging
+                        preview = rag_context[:200].replace('\n', ' ')
+                        print(f"[RAG] Preview: {preview}...")
+                    else:
+                        print(f"[RAG] No relevant context found for: {question}")
 
             # Check if context exceeds limit - if so, summarize first
             # Note: important_info and RAG context are NOT included in token count for summarization
@@ -1612,12 +1628,13 @@ class RosieConversation:
             conversation_depth = self._analyze_conversation_depth(conversation_content, last_human_statement)
 
             # Set dynamic token limits based on depth
+            # Increased limits to allow proper knowledge base processing
             depth_token_limits = {
-                'shallow': 100,   # 1-2 sentences
-                'medium': 200,    # 2-3 sentences
+                'shallow': 150,   # 1-2 sentences (increased from 100 for KB extraction)
+                'medium': 250,    # 2-3 sentences (increased from 200)
                 'deep': 400       # 3-5 sentences with reasoning
             }
-            max_tokens = depth_token_limits.get(conversation_depth, 200)
+            max_tokens = depth_token_limits.get(conversation_depth, 250)
 
             # Display depth transitions or current depth
             if self.last_conversation_depth is None:
@@ -1642,8 +1659,8 @@ class RosieConversation:
                 self._handle_calendar_creation(last_human_statement, conversation_content)
                 return
 
-            # Check for factual question words (when, where, who)
-            factual_question_pattern = r'\b(when|where|who)\b'
+            # Check for factual question words (what, when, where, who, which)
+            factual_question_pattern = r'\b(what|when|where|who|which)\b'
             is_factual_question = bool(re.search(factual_question_pattern, last_human_statement, re.IGNORECASE))
 
             # Set temperature based on question type
@@ -1680,27 +1697,37 @@ class RosieConversation:
                 # Add RAG context if available
                 if rag_context.strip():
                     prompt += (
-                        "KNOWLEDGE BASE (Relevant Information):\n"
-                        f"{rag_context}\n\n"
+                        "=== KNOWLEDGE BASE (AUTHORITATIVE SOURCE OF TRUTH) ===\n"
+                        "The following information is factually correct and must be used when available:\n"
+                        f"{rag_context}\n"
+                        "=== END KNOWLEDGE BASE ===\n\n"
                     )
+
+                # Extract the actual question text (without timestamp prefix)
+                question_text = re.sub(r'^Human\s+\[.*?\]:\s*', '', last_human_statement).strip()
 
                 prompt += (
                     "CONVERSATION HISTORY (contains past conversations with timestamps):\n"
                     f"{conversation_content}\n\n"
-                    "Answer the most recent question using information from the conversation above.\n"
-                    "Look for facts (names, dates, places, etc.) that answer the question.\n"
-                    "Keep your response short and direct (1-2 sentences).\n"
-                    "Find ONLY the specific information needed to answer that question.\n"
-                    "Do NOT include extra facts that weren't asked for.\n"
-                    "The human's possessions/appointments are 'your' or 'yours', not 'my' or 'mine'.\n"
-                    "Use 'you' when referring to what the human said.\n"
-                    "Use 'I' when referring to what you (the robot) said.\n"
+                    "INSTRUCTIONS:\n"
+                    "1. The KNOWLEDGE BASE above contains verified facts - ALWAYS use it when answering factual questions\n"
+                    "2. NEVER make up facts - only use information from the KNOWLEDGE BASE or CONVERSATION HISTORY\n"
+                    "3. If the answer is in the KNOWLEDGE BASE, extract the exact fact (name, date, etc.)\n"
+                    "4. If not in knowledge base, check the CONVERSATION HISTORY\n"
+                    "5. Keep your response short and direct (1-2 sentences)\n"
+                    "6. Find ONLY the specific information needed - do NOT include extra facts\n"
                     "\n"
-                    "CRITICAL: When asked about the current time or date, ALWAYS use the 'CURRENT DATE AND TIME' shown at the top of this prompt.\n"
-                    "DO NOT use dates from the conversation history timestamps - those are from the PAST.\n"
-                    "DO NOT mention the date or time unless it was part of the question.\n"
-                    "The conversation history shows OLD conversations. The current time is shown at the TOP.\n\n"
-                    "Answer ONLY the question asked:"
+                    "PRONOUNS:\n"
+                    "- The human's possessions/appointments are 'your' or 'yours', not 'my' or 'mine'\n"
+                    "- Use 'you' when referring to what the human said\n"
+                    "- Use 'I' when referring to what you (the robot) said\n"
+                    "\n"
+                    "TIME/DATE:\n"
+                    "- For current time/date questions, use 'CURRENT DATE AND TIME' shown at top\n"
+                    "- DO NOT use dates from conversation timestamps - those are from the PAST\n"
+                    "- DO NOT mention date/time unless it was part of the question\n\n"
+                    f"QUESTION: {question_text}\n\n"
+                    "Your answer:"
                 )
             else:
                 # CONVERSATIONAL MODE: Natural, friendly responses
@@ -1712,8 +1739,10 @@ class RosieConversation:
                 # Add RAG context if available
                 if rag_context.strip():
                     prompt += (
-                        "KNOWLEDGE BASE (Relevant Information):\n"
-                        f"{rag_context}\n\n"
+                        "=== KNOWLEDGE BASE (AUTHORITATIVE SOURCE OF TRUTH) ===\n"
+                        "The following information is factually correct and must be used when available:\n"
+                        f"{rag_context}\n"
+                        "=== END KNOWLEDGE BASE ===\n\n"
                     )
 
                 # Add depth-specific guidance
@@ -1723,12 +1752,18 @@ class RosieConversation:
                     'deep': "Provide a thoughtful, detailed response with reasoning (3-5 sentences).\n"
                 }
 
+                # Extract the actual request/question text (without timestamp prefix)
+                question_text = re.sub(r'^Human\s+\[.*?\]:\s*', '', last_human_statement).strip()
+
                 prompt += (
                     "CONVERSATION HISTORY (contains past conversations with timestamps):\n"
                     f"{conversation_content}\n\n"
                     "Respond naturally to the most recent request or question.\n"
                     f"{depth_guidance.get(conversation_depth, depth_guidance['medium'])}"
-                    "IMPORTANT CONVERSATION GUIDELINES:\n"
+                    "CRITICAL: The KNOWLEDGE BASE above contains verified facts - ALWAYS use it for factual information.\n"
+                    "NEVER make up names, dates, or other facts - only use information from KNOWLEDGE BASE or CONVERSATION HISTORY.\n"
+                    "\n"
+                    "CONVERSATION GUIDELINES:\n"
                     "- Engage deeply with the topic being discussed\n"
                     "- When asked for your thoughts or opinions, give substantive answers with reasoning (2-3 sentences)\n"
                     "- Answer questions directly and thoroughly before adding follow-up thoughts\n"
@@ -1737,35 +1772,66 @@ class RosieConversation:
                     "- Avoid generic phrases like 'I'm a friendly voice assistant' - engage authentically\n"
                     "- You can ask thoughtful follow-up questions to deepen the conversation\n"
                     "- Avoid suggesting physical activities unless directly relevant to the topic\n"
-                    "- Use the conversation history for context and build on previous discussion\n"
+                    "- Use both the knowledge base and conversation history for context\n"
                     "- Keep responses focused but allow depth (2-4 sentences as needed)\n"
                     "- Use 'you' when referring to the human.\n"
                     "- Use 'I' when referring to yourself.\n"
                     "\n"
-                    "CRITICAL: When asked about the current time or date, ALWAYS use the 'CURRENT DATE AND TIME' shown at the top of this prompt.\n"
-                    "DO NOT use dates from the conversation history timestamps - those are from the PAST.\n"
-                    "The conversation history shows OLD conversations. The current time is shown at the TOP.\n\n"
+                    "TIME/DATE:\n"
+                    "- For current time/date, use 'CURRENT DATE AND TIME' shown at top\n"
+                    "- DO NOT use dates from conversation timestamps - those are from the PAST\n\n"
+                    f"HUMAN: {question_text}\n\n"
                     "Your response:"
                 )
 
             # Prompt ready - send to Ollama
 
+            # Debug: Log prompt details
+            print(f"[PROMPT] Mode: {mode}, Temperature: {temperature}, Max tokens: {max_tokens}")
+            print(f"[PROMPT] Has RAG context: {bool(rag_context.strip())}")
+            if rag_context.strip():
+                print(f"[PROMPT] RAG context length: {len(rag_context)} chars")
+            print(f"[PROMPT] Total prompt length: {len(prompt)} chars")
+            # Show first AND last parts of prompt for debugging
+            print(f"[PROMPT] First 500 chars:\n{prompt[:500]}...")
+            print(f"[PROMPT] Last 300 chars:\n...{prompt[-300:]}")
+
+            # DEBUG: Write full prompt to file for manual testing
+            debug_prompt_file = self.rosie_dir / "data" / "last_prompt.txt"
+            debug_prompt_file.write_text(prompt)
+            print(f"[DEBUG] Full prompt written to: {debug_prompt_file}")
+
             # Call Ollama API
+            # Note: Ollama uses 'num_predict' not 'max_tokens', 'num_ctx' for context window
             response = requests.post(
                 self.ollama_url,
                 json={
                     'model': self.ollama_model,
                     'prompt': prompt,
                     'temperature': temperature,  # Dynamic temperature based on question type
-                    'max_tokens': max_tokens,
+                    'num_predict': max_tokens,  # Ollama-specific parameter name
+                    'num_ctx': 4096,  # Context window size (default is often 2048, increase for longer prompts)
                     'stream': False
                 },
                 timeout=30  # Increased from 5 to 30 seconds for longer contexts
             )
 
+            # Debug: Log Ollama response details
+            print(f"[OLLAMA] Status code: {response.status_code}")
+
             if response.status_code == 200:
                 result = response.json()
+                print(f"[OLLAMA] Response keys: {result.keys()}")
+
+                # Log token counts to check for truncation
+                prompt_eval_count = result.get('prompt_eval_count', 0)
+                eval_count = result.get('eval_count', 0)
+                print(f"[OLLAMA] Prompt tokens evaluated: {prompt_eval_count}")
+                print(f"[OLLAMA] Response tokens generated: {eval_count}")
+
                 ollama_text = result.get('response', '').strip()
+                print(f"[OLLAMA] Response text length: {len(ollama_text)} chars")
+                print(f"[OLLAMA] Response text: '{ollama_text}'")
 
                 if ollama_text:
                     # Write to speak.txt
@@ -1819,7 +1885,7 @@ class RosieConversation:
                     'model': self.ollama_model,
                     'prompt': summary_prompt,
                     'temperature': 0.7,
-                    'max_tokens': 500,
+                    'num_predict': 500,  # Ollama-specific parameter name
                     'stream': False
                 },
                 timeout=30
@@ -1886,7 +1952,7 @@ class RosieConversation:
                     'model': self.ollama_model,
                     'prompt': extraction_prompt,
                     'temperature': 0.1,  # Low temperature for accurate extraction
-                    'max_tokens': 200,
+                    'num_predict': 200,  # Ollama-specific parameter name
                     'stream': False
                 },
                 timeout=15
