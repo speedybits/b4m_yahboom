@@ -16,6 +16,7 @@ Wake word: "Rosie"
 import os
 import sys
 import signal
+import subprocess
 import threading
 import time
 import json
@@ -139,18 +140,8 @@ class RosieRAG:
         )
 
         # Check if Ollama is using GPU by examining recent logs
-        import subprocess
-        try:
-            result = subprocess.run(
-                ["journalctl", "-u", "ollama", "--since", "1 minute ago", "-n", "50"],
-                capture_output=True, text=True, timeout=2
-            )
-            if "library=cuda" in result.stdout:
-                print(f"[RAG] Ready ({len(md_files)} knowledge base files) - Using CUDA for embeddings ✓")
-            else:
-                print(f"[RAG] Ready ({len(md_files)} knowledge base files) - Using CPU for embeddings")
-        except:
-            print(f"[RAG] Ready ({len(md_files)} knowledge base files)\n")
+        # Skip journalctl check (can cause hangs) - just print ready message
+        print(f"[RAG] Ready ({len(md_files)} knowledge base files)")
 
     def query(self, question, top_k=3):
         """
@@ -287,8 +278,16 @@ class RosieConversation:
     Simplified architecture with plain text conversation history.
     """
 
-    def __init__(self):
-        """Initialize ROSIE system with configuration from environment"""
+    def __init__(self, test_mode=False, test_input=None):
+        """Initialize ROSIE system with configuration from environment
+
+        Args:
+            test_mode: If True, bypass microphone/Whisper and accept text input
+            test_input: In test mode, the text to inject (None for interactive)
+        """
+        # Test mode configuration
+        self.test_mode = test_mode
+        self.test_input = test_input
 
         # Load configuration from environment
         self.whisper_model_name = os.getenv('WHISPER_MODEL', 'base')
@@ -296,7 +295,7 @@ class RosieConversation:
 
         self.ollama_model = os.getenv('OLLAMA_MODEL', 'llama3.1:8b')
         self.ollama_temperature = float(os.getenv('OLLAMA_TEMPERATURE', '0.7'))  # Default (overridden dynamically)
-        self.ollama_max_tokens = int(os.getenv('OLLAMA_MAX_TOKENS', '100'))  # Short, focused responses
+        self.ollama_max_tokens = int(os.getenv('OLLAMA_MAX_TOKENS', '350'))  # Allow deeper, more substantive responses
         self.ollama_url = 'http://localhost:11434/api/generate'
         self.context_limit = int(os.getenv('CONTEXT_LIMIT', '6000'))  # Token limit before summarization
         #self.context_limit = int(os.getenv('CONTEXT_LIMIT', '1000'))  # Token limit before summarization
@@ -362,6 +361,11 @@ class RosieConversation:
         # Demo mode flag (when True, responds to any speech without wake word)
         self.demo_mode = False
         self.demo_mode_lock = threading.Lock()
+
+        # Test mode transcription capture (for audio pipeline testing)
+        self.test_last_transcription = None
+        self.test_transcription_event = threading.Event()  # Signals transcription complete
+        self.test_transcription_lock = threading.Lock()
 
         # Initialize files
         self._initialize_files()
@@ -466,6 +470,18 @@ class RosieConversation:
         except Exception as e:
             self._log(f"Error checking web audio status: {e}")
             return False
+
+    def _disable_web_audio_status(self):
+        """Disable web audio status (clear status file) - for LOCAL mode only"""
+        try:
+            web_audio_status_file = self.rosie_dir / 'data' / 'web_audio_status.json'
+            if web_audio_status_file.exists():
+                import json
+                with open(web_audio_status_file, 'w') as f:
+                    json.dump({'enabled': False, 'client_count': 0, 'timestamp': 0}, f)
+                self._log("Web audio status disabled (LOCAL mode)")
+        except Exception as e:
+            self._log(f"Error disabling web audio status: {e}")
 
     def _import_web_server_module(self):
         """Dynamically import the web server module for audio integration"""
@@ -604,6 +620,25 @@ class RosieConversation:
             if re.search(pattern, text_lower):
                 return True
 
+        # NEW: Detect excessive repetition (hallucination symptom)
+        # Split into words and check for repeated sequences
+        words = text.split()
+        if len(words) > 10:
+            # Check for same word repeated 4+ times in a row
+            for i in range(len(words) - 3):
+                if words[i] == words[i+1] == words[i+2] == words[i+3]:
+                    print(f"[HALLUCINATION] Detected 4x repetition: '{words[i]}'")
+                    return True
+
+            # Check for same 2-word phrase repeated 3+ times
+            for i in range(len(words) - 5):
+                phrase = f"{words[i]} {words[i+1]}"
+                phrase2 = f"{words[i+2]} {words[i+3]}"
+                phrase3 = f"{words[i+4]} {words[i+5]}"
+                if phrase == phrase2 == phrase3:
+                    print(f"[HALLUCINATION] Detected 3x phrase repetition: '{phrase}'")
+                    return True
+
         # Check for very short transcriptions (single punctuation or short nonsense)
         if len(text.strip()) <= 2:
             return True
@@ -629,27 +664,34 @@ class RosieConversation:
 
     def _load_whisper_model(self):
         """Load faster-whisper model with GPU auto-detection and superior hallucination suppression"""
+        print("[LOAD MODEL] Checking if model already loaded...", flush=True)
         if self.whisper_model is None:
+            print("[LOAD MODEL] Model not loaded, starting load process...", flush=True)
             self._log(f"Loading faster-whisper model: {self.whisper_model_name}")
 
             try:
+                print("[LOAD MODEL] Importing WhisperModel...", flush=True)
                 from faster_whisper import WhisperModel
 
                 # Auto-detect best available device
+                print("[LOAD MODEL] Detecting best device...", flush=True)
                 device = self._detect_best_device()
 
                 # Use float16 with CUDA (now that cuDNN is installed), int8 for CPU
                 compute_type = "float16" if device == "cuda" else "int8"
 
+                print(f"[LOAD MODEL] Using device: {device}, compute_type: {compute_type}", flush=True)
                 self._log(f"Using device: {device}, compute_type: {compute_type}")
 
                 # Load faster-whisper model with optimizations
+                print(f"[LOAD MODEL] Creating WhisperModel instance (THIS MAY TAKE 10-30 SECONDS)...", flush=True)
                 self.whisper_model = WhisperModel(
                     self.whisper_model_name,
                     device=device,
                     compute_type=compute_type,
                     num_workers=1  # Single worker for real-time
                 )
+                print("[LOAD MODEL] WhisperModel instance created", flush=True)
 
                 if device == "cuda":
                     print(f"[WHISPER] ✓ Faster-Whisper loaded on GPU (CUDA, {compute_type}) - 4-6x faster!")
@@ -705,10 +747,18 @@ class RosieConversation:
         """
         if status:
             self._log(f"Audio callback status: {status}")
+            print(f"[AUDIO] Callback status: {status}")
 
         # Only capture during LISTENING state and LOCAL audio mode
         current_mode = self._get_audio_mode()
         current_state = self._get_state()
+
+        # Debug: Print first few callbacks to verify audio stream is working
+        if not hasattr(self, '_callback_count'):
+            self._callback_count = 0
+        if self._callback_count < 3:
+            print(f"[AUDIO CALLBACK] #{self._callback_count}: state={current_state}, mode={current_mode}, frames={frames}, max_level={np.abs(indata).max():.4f}")
+            self._callback_count += 1
 
         if current_state == ConversationState.LISTENING and current_mode == AudioMode.LOCAL:
             # Append audio to queue (thread-safe)
@@ -769,8 +819,14 @@ class RosieConversation:
         Uses VAD to detect when user finishes speaking, then transcribes complete phrases.
         NO MORE PARTIAL PHRASES!
         """
-        self._log("Whisper worker started")
-        self._load_whisper_model()
+        try:
+            self._log("Whisper worker started")
+            self._load_whisper_model()
+        except Exception as e:
+            print(f"[WHISPER WORKER ERROR] Failed to start: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
+            return
 
         # Import VAD
         import webrtcvad
@@ -792,6 +848,26 @@ class RosieConversation:
             # Only process in LISTENING state
             if current_state == ConversationState.LISTENING:
                 try:
+                    # NEW: Skip audio processing when ROSIE is speaking (prevents echo/feedback)
+                    with self.state_lock:
+                        current_state = self.state
+                    if current_state == ConversationState.SPEAKING:
+                        # Clear audio queue to prevent accumulation during TTS playback
+                        with self.audio_lock:
+                            if len(self.audio_queue) > 0:
+                                self.audio_queue.clear()
+                        time.sleep(vad_frame_duration / 1000.0)
+                        continue
+
+                    # Debug: Show mode at beginning of processing
+                    if not hasattr(self, '_mode_check_count'):
+                        self._mode_check_count = 0
+                    if self._mode_check_count < 5:
+                        current_mode = self._get_audio_mode()
+                        queue_len = len(self.audio_queue)
+                        print(f"[WHISPER WORKER] Mode: {current_mode}, Queue length: {queue_len}")
+                        self._mode_check_count += 1
+
                     # Check audio queue every 30ms
                     time.sleep(vad_frame_duration / 1000.0)
 
@@ -821,28 +897,71 @@ class RosieConversation:
                     # This helps WEB mode where browser sends continuous chunks with background noise
                     # that confuses VAD and prevents silence detection
                     if self._get_audio_mode() == AudioMode.WEB:
-                        audio_level = np.abs(audio_chunk).max()
-                        if audio_level < 0.005:  # Very quiet - treat as silence without VAD check
+                        # Safety check for empty audio chunks
+                        if len(audio_chunk) == 0:
                             is_speech = False
                         else:
-                            # Check if this frame contains speech
-                            try:
-                                is_speech = vad.is_speech(audio_int16.tobytes(), self.sample_rate)
-                            except:
-                                continue
+                            audio_level = np.abs(audio_chunk).max()
+                            if audio_level < 0.005:  # Very quiet - treat as silence without VAD check
+                                is_speech = False
+                            else:
+                                # Check if this frame contains speech
+                                try:
+                                    is_speech = vad.is_speech(audio_int16.tobytes(), self.sample_rate)
+                                except:
+                                    continue
                     else:
                         # LOCAL mode - use VAD directly (no pre-filtering needed)
                         try:
+                            # Debug: Show VAD attempt
+                            if not hasattr(self, '_vad_attempt_count'):
+                                self._vad_attempt_count = 0
+                            if self._vad_attempt_count < 5:
+                                audio_level = np.abs(audio_chunk).max() if len(audio_chunk) > 0 else 0
+                                print(f"[VAD ATTEMPT] #{self._vad_attempt_count}: audio_level={audio_level:.4f}, chunk_len={len(audio_chunk)}, int16_len={len(audio_int16)}, from_queue={audio_from_queue}")
+                                self._vad_attempt_count += 1
+
                             is_speech = vad.is_speech(audio_int16.tobytes(), self.sample_rate)
-                        except:
+
+                            # Debug: Show VAD results for first few checks
+                            if not hasattr(self, '_vad_check_count'):
+                                self._vad_check_count = 0
+                            if self._vad_check_count < 10:
+                                print(f"[VAD CHECK] #{self._vad_check_count}: is_speech={is_speech}")
+                                self._vad_check_count += 1
+                        except Exception as e:
+                            if not hasattr(self, '_vad_error_count'):
+                                self._vad_error_count = 0
+                            if self._vad_error_count < 5:
+                                print(f"[VAD ERROR] #{self._vad_error_count}: {e}, chunk_len={len(audio_chunk)}, int16_len={len(audio_int16)}")
+                                self._vad_error_count += 1
                             continue
 
                     if is_speech:
                         # Voice detected!
-                        consecutive_silence = 0
-                        is_speaking = True
+                        if not is_speaking:
+                            # First detection of speech - START of new phrase
+                            is_speaking = True
+                            consecutive_silence = 0  # Reset counter for new phrase
+                            print(f"[SPEECH START] is_speaking set to True, resetting consecutive_silence")
+                        else:
+                            # Continuing speech - do NOT reset counter
+                            # Allow brief silence during speech to accumulate toward threshold
+                            pass
                         if audio_from_queue:
                             speech_buffer.append(audio_chunk)
+                            # Debug: Show when speech is detected
+                            if len(speech_buffer) <= 3:
+                                print(f"[VAD] Speech detected! Buffer size: {len(speech_buffer)}")
+
+                            # NEW: Prevent buffer overflow - limit to ~3 seconds of audio
+                            # Each chunk is ~100ms, so 30 chunks = 3 seconds
+                            # Prevents Whisper hallucinations on excessively long audio
+                            MAX_BUFFER_CHUNKS = 30
+                            if len(speech_buffer) > MAX_BUFFER_CHUNKS:
+                                print(f"[BUFFER LIMIT] Reached max buffer size ({MAX_BUFFER_CHUNKS} chunks), forcing transcription")
+                                # Force transcription by simulating silence threshold
+                                consecutive_silence = 999
                     elif is_speaking:
                         # Silence while speaking - might be end of phrase
                         consecutive_silence += 1
@@ -859,12 +978,16 @@ class RosieConversation:
 
                         if consecutive_silence >= silence_frames_needed:
                             # Phrase complete! Transcribe it
+                            print(f"[TRANSCRIBE] Silence threshold reached! consecutive_silence={consecutive_silence}, threshold={silence_frames_needed}")
                             if len(speech_buffer) > 0:
                                 audio_data = np.concatenate(speech_buffer)
+                                print(f"[TRANSCRIBE] Concatenated {len(speech_buffer)} chunks into {len(audio_data)} samples")
 
                                 # Check if there's actual speech (double-check)
                                 audio_level = np.abs(audio_data).max()
+                                print(f"[TRANSCRIBE] Audio level check: {audio_level:.4f} (threshold: 0.01)")
                                 if audio_level > 0.01:
+                                    print(f"[TRANSCRIBE] Starting Whisper transcription...")
                                     # Transcribe with faster-whisper (superior hallucination suppression)
                                     segments, info = self.whisper_model.transcribe(
                                         audio_data,
@@ -874,14 +997,29 @@ class RosieConversation:
                                         temperature=0.0,
                                         condition_on_previous_text=False,
                                         vad_filter=True,  # Extra VAD filtering from faster-whisper
-                                        vad_parameters=dict(min_silence_duration_ms=500)
+                                        vad_parameters=dict(min_silence_duration_ms=500),
+                                        # CRITICAL: Skip segments with >50% silence to prevent hallucinations
+                                        hallucination_silence_threshold=0.5,  # Skip if >50% silence
+                                        # Additional anti-hallucination measures
+                                        compression_ratio_threshold=2.4,  # Default, but explicit
+                                        log_prob_threshold=-1.0,  # Skip low-confidence segments
+                                        no_speech_threshold=0.6  # Higher threshold for "no speech" detection
                                     )
 
                                     # Extract text from segments generator
                                     transcription = ' '.join([segment.text for segment in segments]).strip()
+                                    print(f"[TRANSCRIBE] Whisper returned: '{transcription}'")
+
+                                    # In test mode, capture transcription for validation
+                                    if self.test_mode:
+                                        with self.test_transcription_lock:
+                                            self.test_last_transcription = transcription
+                                            self.test_transcription_event.set()  # Signal transcription ready
+                                        print(f"[TEST] Captured transcription: '{transcription}'")
 
                                     # Filter out common Whisper hallucinations
                                     if transcription and not self._is_hallucination(transcription):
+                                        print(f"[TRANSCRIBE] Passed hallucination filter")
                                         # Check if in demo mode
                                         with self.demo_mode_lock:
                                             in_demo_mode = self.demo_mode
@@ -915,13 +1053,14 @@ class RosieConversation:
                                                     self._append_to_history(f"Human: {cleaned_transcription}\n")
                                                     # Only show what was said to ROSIE (without wake word)
                                             else:
-                                                # No wake word, store as-is (but don't show - not speaking to ROSIE)
+                                                # No wake word, store as-is (ambient conversation for context)
                                                 self._append_to_history(f"Human: {transcription}\n")
                                                 self._log(f"Transcribed: {transcription}")
                                     elif transcription:
                                         self._log(f"Filtered hallucination: {transcription}")
 
                             # Reset for next phrase
+                            print(f"[TRANSCRIBE] Resetting speech buffer and state")
                             speech_buffer = []
                             consecutive_silence = 0
                             is_speaking = False
@@ -948,15 +1087,30 @@ class RosieConversation:
         """Start continuous audio capture stream"""
         if self.audio_stream is None:
             self._log("Starting continuous audio stream")
-            self.audio_stream = sd.InputStream(
-                samplerate=self.sample_rate,
-                channels=1,
-                dtype='float32',
-                callback=self._audio_callback,
-                blocksize=int(self.sample_rate * 0.1)  # 100ms blocks
-            )
-            self.audio_stream.start()
-            self._log("Audio stream started")
+
+            # Get default input device info for debugging
+            try:
+                default_device = sd.query_devices(kind='input')
+                self._log(f"Using audio device: {default_device['name']} (index {default_device['index']})")
+            except Exception as e:
+                self._log(f"Error querying audio device: {e}")
+
+            try:
+                self.audio_stream = sd.InputStream(
+                    samplerate=self.sample_rate,
+                    channels=1,
+                    dtype='float32',
+                    callback=self._audio_callback,
+                    blocksize=int(self.sample_rate * 0.1)  # 100ms blocks
+                )
+                self.audio_stream.start()
+                self._log(f"Audio stream started successfully - sample_rate={self.sample_rate}")
+                print(f"\n[AUDIO MODE] LOCAL microphone enabled")
+            except Exception as e:
+                self._log(f"ERROR starting audio stream: {e}")
+                print(f"\n[ERROR] Failed to start audio stream: {e}")
+                import traceback
+                traceback.print_exc()
 
     def _stop_audio_stream(self):
         """Stop continuous audio capture stream"""
@@ -990,6 +1144,167 @@ class RosieConversation:
                 f.write(text)
         except Exception as e:
             self._log(f"Error writing to conversation_history.txt: {e}")
+
+    def _calculate_transcription_accuracy(self, original, transcribed):
+        """
+        Calculate accuracy between original text and transcribed text
+
+        Uses character-level and word-level comparison with normalization
+
+        Args:
+            original: The original input text
+            transcribed: The transcribed text from Whisper
+
+        Returns:
+            tuple: (character_accuracy, word_accuracy) as percentages (0-100)
+        """
+        # Normalize both strings for comparison (lowercase, strip)
+        orig_normalized = original.lower().strip()
+        trans_normalized = transcribed.lower().strip()
+
+        # Character-level accuracy (using simple character comparison)
+        if len(orig_normalized) == 0:
+            char_accuracy = 100.0 if len(trans_normalized) == 0 else 0.0
+        else:
+            # Calculate Levenshtein distance (edit distance)
+            # For simplicity, use character matching
+            max_len = max(len(orig_normalized), len(trans_normalized))
+            matching_chars = sum(1 for i in range(min(len(orig_normalized), len(trans_normalized)))
+                               if orig_normalized[i] == trans_normalized[i])
+            char_accuracy = (matching_chars / max_len) * 100.0
+
+        # Word-level accuracy
+        orig_words = orig_normalized.split()
+        trans_words = trans_normalized.split()
+
+        if len(orig_words) == 0:
+            word_accuracy = 100.0 if len(trans_words) == 0 else 0.0
+        else:
+            # Count matching words (simple word-by-word comparison)
+            matching_words = sum(1 for i in range(min(len(orig_words), len(trans_words)))
+                               if orig_words[i] == trans_words[i])
+            word_accuracy = (matching_words / max(len(orig_words), len(trans_words))) * 100.0
+
+        return char_accuracy, word_accuracy
+
+    def _process_test_input(self, text):
+        """
+        Process text input in test mode - FULL AUDIO PIPELINE TEST
+
+        Tests the complete audio flow:
+        1. Text → Piper TTS → Audio generation
+        2. Audio → Speakers (aplay playback)
+        3. Speakers → Microphone → ROSIE capture
+        4. Audio → VAD → Speech detection
+        5. Speech → Whisper → Transcription
+        6. Transcription validation and accuracy check
+        7. If wake word detected → Continue to LLM response
+
+        Args:
+            text: The text to synthesize and speak through the audio pipeline
+        """
+        print("\n" + "="*70)
+        print(f"[TEST] Full Audio Pipeline Test")
+        print("="*70)
+        print(f"[TEST] Input text: \"{text}\"")
+        print(f"[TEST] Starting audio pipeline: Text → Piper → Speakers → Microphone → VAD → Whisper")
+        print("="*70)
+
+        # Reset transcription capture
+        with self.test_transcription_lock:
+            self.test_last_transcription = None
+            self.test_transcription_event.clear()
+
+        # Step 1: Generate audio with Piper
+        print(f"\n[TEST STEP 1] Generating audio with Piper...")
+        try:
+            # Escape text for shell safety (same as production code)
+            text_escaped = text.replace('"', '\\"').replace('$', '\\$').replace('`', '\\`')
+
+            # Use same Piper command as production (LOCAL mode)
+            piper_cmd = f'echo "{text_escaped}" | piper --model {self.piper_model_path} --output-raw | aplay -r 22050 -f S16_LE -t raw -'
+            print(f"[TEST] Piper command: {piper_cmd[:80]}...")
+
+            # Step 2: Play through speakers (this will take ~2-5 seconds depending on text length)
+            print(f"[TEST STEP 2] Playing audio through speakers...")
+            result = subprocess.run(piper_cmd, shell=True, capture_output=True, text=True)
+
+            if result.returncode != 0:
+                print(f"[TEST ERROR] Piper/aplay failed: {result.stderr}")
+                return
+
+            print(f"[TEST] Audio playback complete")
+
+        except Exception as e:
+            print(f"[TEST ERROR] Piper audio generation failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return
+
+        # Step 3: Wait for ROSIE to capture, process, and transcribe
+        print(f"\n[TEST STEP 3] Waiting for ROSIE to capture audio via microphone...")
+        print(f"[TEST] (Microphone → VAD → Audio buffering → Silence detection → Whisper)")
+
+        # Wait up to 10 seconds for transcription
+        transcription_received = self.test_transcription_event.wait(timeout=10.0)
+
+        if not transcription_received:
+            print(f"\n[TEST FAILURE] No transcription received within 10 seconds")
+            print(f"[TEST] This indicates a problem in the audio pipeline:")
+            print(f"[TEST]   - VAD may not be detecting speech")
+            print(f"[TEST]   - Audio buffering may not be working")
+            print(f"[TEST]   - Silence detection may not be triggering Whisper")
+            print(f"[TEST]   - Whisper may not be transcribing")
+            return
+
+        # Step 4: Retrieve and validate transcription
+        with self.test_transcription_lock:
+            transcribed_text = self.test_last_transcription
+
+        print(f"\n[TEST STEP 4] Transcription received!")
+        print(f"[TEST] Original:    \"{text}\"")
+        print(f"[TEST] Transcribed: \"{transcribed_text}\"")
+
+        # Step 5: Calculate accuracy
+        accuracy, word_accuracy = self._calculate_transcription_accuracy(text, transcribed_text)
+
+        print(f"\n[TEST RESULTS]")
+        print(f"  Character accuracy: {accuracy:.1f}%")
+        print(f"  Word accuracy:      {word_accuracy:.1f}%")
+
+        if accuracy >= 90:
+            print(f"  Status: ✓ EXCELLENT - Audio pipeline working correctly")
+        elif accuracy >= 70:
+            print(f"  Status: ✓ GOOD - Minor transcription differences")
+        elif accuracy >= 50:
+            print(f"  Status: ⚠ FAIR - Significant transcription errors")
+        else:
+            print(f"  Status: ✗ POOR - Audio pipeline may have issues")
+
+        print("="*70)
+
+        # Step 6: Continue with normal conversation flow if wake word detected
+        print(f"\n[TEST] Checking for wake word in transcription...")
+        wake_word_pattern = r'\b(rosie|rose|rosy|rosee)\b'
+        wake_word_match = re.search(wake_word_pattern, transcribed_text, re.IGNORECASE)
+
+        if wake_word_match:
+            print(f"[TEST] Wake word detected! Continuing to LLM response...")
+
+            # The transcription is already in history (added by Whisper worker)
+            # Just trigger the response
+            try:
+                self._ollama_response()
+            except Exception as e:
+                print(f"[TEST ERROR] Response generation failed: {e}")
+                import traceback
+                traceback.print_exc()
+                self._set_state(ConversationState.LISTENING)
+        else:
+            print(f"[TEST] No wake word in transcription - test complete")
+            print(f"[TEST] (To test LLM/TTS, include 'Rosie' in your test input)")
+
+        print("="*70 + "\n")
 
     def _wake_word_detector(self):
         """
@@ -1210,12 +1525,19 @@ class RosieConversation:
                     "CONVERSATION HISTORY (contains past conversations with timestamps):\n"
                     f"{conversation_content}\n\n"
                     "Respond naturally to the most recent request or question.\n"
-                    "You can be creative, tell jokes, share opinions, or have casual conversation.\n"
-                    "Do not suggest activities.\n"
-                    "Use the conversation history for context if relevant.\n"
-                    "Keep your response conversational and friendly (1 sentence).\n"
-                    "Use 'you' when referring to the human.\n"
-                    "Use 'I' when referring to yourself.\n"
+                    "IMPORTANT CONVERSATION GUIDELINES:\n"
+                    "- Engage deeply with the topic being discussed\n"
+                    "- When asked for your thoughts or opinions, give substantive answers with reasoning (2-3 sentences)\n"
+                    "- Answer questions directly and thoroughly before adding follow-up thoughts\n"
+                    "- Show genuine intellectual curiosity about the conversation topic\n"
+                    "- You can share specific insights, make connections between ideas, or explore implications\n"
+                    "- Avoid generic phrases like 'I'm a friendly voice assistant' - engage authentically\n"
+                    "- You can ask thoughtful follow-up questions to deepen the conversation\n"
+                    "- Avoid suggesting physical activities unless directly relevant to the topic\n"
+                    "- Use the conversation history for context and build on previous discussion\n"
+                    "- Keep responses focused but allow depth (2-4 sentences as needed)\n"
+                    "- Use 'you' when referring to the human.\n"
+                    "- Use 'I' when referring to yourself.\n"
                     "\n"
                     "CRITICAL: When asked about the current time or date, ALWAYS use the 'CURRENT DATE AND TIME' shown at the top of this prompt.\n"
                     "DO NOT use dates from the conversation history timestamps - those are from the PAST.\n"
@@ -1558,68 +1880,141 @@ class RosieConversation:
     def start(self):
         """Start ROSIE system (all threads)"""
         self._log("Starting ROSIE Conversational AI System...")
+        print("[DEBUG] start() called", flush=True)
 
+        # Test mode: Start audio threads for full pipeline testing
+        if self.test_mode:
+            print("\n" + "="*70)
+            print("ROSIE TEST MODE")
+            print("="*70)
+            print("Full audio pipeline test - Testing: Piper → Speakers → Microphone → Whisper")
+            print("="*70 + "\n")
+
+            # In test mode, we NEED the audio threads running to capture Piper output
+            # So we start them like normal mode, THEN inject test audio
+
+            # Disable web server for test mode (LOCAL audio only)
+            self._disable_web_audio_status()
+
+            # Start Whisper worker
+            print("[TEST] Starting Whisper thread for audio capture...", flush=True)
+            self.whisper_thread = threading.Thread(target=self._whisper_worker, daemon=True)
+            self.whisper_thread.start()
+
+            # Start wake word detector
+            print("[TEST] Starting wake word thread...", flush=True)
+            self.wake_word_thread = threading.Thread(target=self._wake_word_detector, daemon=True)
+            self.wake_word_thread.start()
+
+            # Wait for threads to initialize
+            print("[TEST] Waiting for audio system to initialize...", flush=True)
+            time.sleep(2)  # Give Whisper time to load model and start audio stream
+
+            print("[TEST] Audio system ready!\n", flush=True)
+
+            if self.test_input:
+                # Single test input provided
+                print(f"[TEST] Injecting text: \"{self.test_input}\"")
+                self._process_test_input(self.test_input)
+                # Wait a bit for processing to complete
+                time.sleep(3)
+                self.shutdown()
+            else:
+                # Interactive test mode
+                print("Interactive test mode. Type your messages (include 'Rosie' for responses).")
+                print("Press CTRL+C to exit.\n")
+                try:
+                    while not self.shutdown_event.is_set():
+                        user_input = input("You: ").strip()
+                        if user_input:
+                            self._process_test_input(user_input)
+                except (KeyboardInterrupt, EOFError):
+                    print("\nExiting test mode...")
+                    self.shutdown()
+            return
+
+        # Normal mode: Start all audio processing threads
         # Try to import web server module for audio integration
-        self._import_web_server_module()
+        # Check if web server is actually running first
+        print("[DEBUG] Checking for web server...", flush=True)
+        try:
+            import requests
+            requests.get('http://localhost:5000/status', timeout=0.5)
+            # Web server is running, import module
+            self._import_web_server_module()
+            self._log("Web server detected, enabling web audio support")
+        except:
+            # Web server not running, disable web audio status
+            self._disable_web_audio_status()
+            self._log("Web server not detected, using LOCAL audio mode only")
+        print("[DEBUG] Web server check complete", flush=True)
 
         # Start Whisper worker
+        print("[DEBUG] Starting Whisper thread...", flush=True)
         self.whisper_thread = threading.Thread(target=self._whisper_worker, daemon=True)
         self.whisper_thread.start()
+        print("[DEBUG] Whisper thread started", flush=True)
 
         # Start wake word detector
+        print("[DEBUG] Starting wake word thread...", flush=True)
         self.wake_word_thread = threading.Thread(target=self._wake_word_detector, daemon=True)
         self.wake_word_thread.start()
+        print("[DEBUG] Wake word thread started", flush=True)
 
         # Start web audio poll worker (monitors for web audio mode switching)
+        print("[DEBUG] Starting web audio poll thread...", flush=True)
         self.web_audio_thread = threading.Thread(target=self._web_audio_poll_worker, daemon=True)
         self.web_audio_thread.start()
+        print("[DEBUG] Web audio poll thread started", flush=True)
 
-        # Check Ollama GPU status
-        import subprocess
-        ollama_gpu_status = "Unknown"
-        try:
-            result = subprocess.run(
-                ["journalctl", "-u", "ollama", "--since", "2 minutes ago"],
-                capture_output=True, text=True, timeout=2
-            )
-            if "library=cuda" in result.stdout:
-                ollama_gpu_status = "CUDA ✓"
-            elif "library=cpu" in result.stdout:
-                ollama_gpu_status = "CPU"
-        except:
-            pass
+        # Check Ollama GPU status (skip journalctl - can cause hangs)
+        ollama_gpu_status = "Active"
 
         # Get hostname for web URL
+        print("[DEBUG] Getting hostname...", flush=True)
         import socket
         try:
             hostname = socket.gethostname()
         except:
             hostname = "localhost"
+        print(f"[DEBUG] Hostname: {hostname}", flush=True)
 
         # Check if web server is using HTTPS (SSL certificate exists)
+        print("[DEBUG] Checking SSL cert...", flush=True)
         ssl_cert_path = self.rosie_dir / 'data' / 'ssl' / 'rosie.crt'
         protocol = "https" if ssl_cert_path.exists() else "http"
+        print(f"[DEBUG] Protocol: {protocol}", flush=True)
 
         # Always print startup message and instructions
-        print("\n" + "="*70)
-        print("ROSIE Conversational AI System - READY")
-        print("="*70)
-        print(f"Current State: {self._get_state().name}")
-        print(f"Audio Mode: {self._get_audio_mode().name}")
-        print(f"LLM (Ollama): {ollama_gpu_status}")
+        print("[DEBUG] About to print READY message...", flush=True)
+        print("\n" + "="*70, flush=True)
+        print("[DEBUG] Printed banner top", flush=True)
+        print("ROSIE Conversational AI System - READY", flush=True)
+        print("[DEBUG] Printed title", flush=True)
+        print("="*70, flush=True)
+        print("[DEBUG] Printed banner bottom", flush=True)
+        print(f"Current State: {self._get_state().name}", flush=True)
+        print("[DEBUG] Printed state", flush=True)
+        print(f"Audio Mode: {self._get_audio_mode().name}", flush=True)
+        print("[DEBUG] Printed audio mode", flush=True)
+        print(f"LLM (Ollama): {ollama_gpu_status}", flush=True)
+        print("[DEBUG] Printed Ollama status", flush=True)
 
         # Show web interface URL if web server is available
+        print("[DEBUG] Checking web server module...", flush=True)
         if self.web_server_module:
-            print(f"\n🌐 Web Interface: {protocol}://{hostname}:5000")
-            print(f"   (or use {protocol}://localhost:5000 on this machine)")
+            print(f"\n🌐 Web Interface: {protocol}://{hostname}:5000", flush=True)
+            print(f"   (or use {protocol}://localhost:5000 on this machine)", flush=True)
             if protocol == "https":
-                print(f"   (Accept security warning for self-signed certificate)")
+                print(f"   (Accept security warning for self-signed certificate)", flush=True)
 
-        print("\nSpeak naturally - everything is transcribed.")
-        print("Say 'Rosie' to get a response.")
-        print("Say 'Rosie, forget everything' to reset conversation history.")
-        print("Press CTRL+C to exit.")
-        print("="*70 + "\n")
+        print("[DEBUG] Printing final instructions...", flush=True)
+        print("\nSpeak naturally - everything is transcribed.", flush=True)
+        print("Say 'Rosie' to get a response.", flush=True)
+        print("Say 'Rosie, forget everything' to reset conversation history.", flush=True)
+        print("Press CTRL+C to exit.", flush=True)
+        print("="*70 + "\n", flush=True)
+        print("[DEBUG] Entering main loop...", flush=True)
 
         self._log("ROSIE system started. Say 'Rosie' to get a response.")
 
@@ -1723,8 +2118,12 @@ def main():
     # Parse command-line arguments
     parser = argparse.ArgumentParser(
         description='ROSIE Conversational AI System - Fully Local Voice Assistant',
-        epilog='Example: ./rosie_conversation.py'
+        epilog='Examples:\n  ./rosie_conversation.py\n  ./rosie_conversation.py --test "Rosie, what is the weather?"',
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
+    parser.add_argument('--test', metavar='TEXT', nargs='?', const='',
+                       help='Test mode: inject text input directly (bypasses microphone/Whisper). '
+                            'Provide text or leave empty for interactive prompts.')
     args = parser.parse_args()
 
     # Register signal handler for graceful shutdown
@@ -1732,7 +2131,7 @@ def main():
 
     # Create ROSIE instance
     print("\n[INIT] Creating ROSIE instance...")
-    rosie = RosieConversation()
+    rosie = RosieConversation(test_mode=args.test is not None, test_input=args.test)
     print("[INIT] ROSIE instance created successfully")
 
     # Store instance for signal handler
