@@ -507,21 +507,26 @@ class RosieConversation:
     def _import_web_server_module(self):
         """Dynamically import the web server module for audio integration"""
         if self.web_server_module is not None:
+            print("[DEBUG] Web server module already loaded", flush=True)
             return True
 
         try:
+            print("[DEBUG] Attempting to import rosie_web_status module...", flush=True)
             import sys
             from pathlib import Path
             # Add rosie/src to path
             rosie_src_dir = Path(__file__).parent
+            print(f"[DEBUG] Adding to sys.path: {rosie_src_dir}", flush=True)
             if str(rosie_src_dir) not in sys.path:
                 sys.path.insert(0, str(rosie_src_dir))
 
             import rosie_web_status
             self.web_server_module = rosie_web_status
+            print("[DEBUG] ✓ rosie_web_status module imported successfully!", flush=True)
             self._log("Web server module imported successfully")
             return True
         except ImportError as e:
+            print(f"[DEBUG] ✗ Failed to import rosie_web_status: {e}", flush=True)
             self._log(f"Could not import web server module: {e}")
             return False
 
@@ -2395,12 +2400,26 @@ class RosieConversation:
         print("[DEBUG] Checking for web server...", flush=True)
         try:
             import requests
-            requests.get('http://localhost:5000/status', timeout=0.5)
+            response = requests.get('http://localhost:5000/api/state', timeout=1.0)
+            print(f"[DEBUG] Web server responded: {response.status_code}", flush=True)
             # Web server is running, import module
-            self._import_web_server_module()
-            self._log("Web server detected, enabling web audio support")
-        except:
+            if self._import_web_server_module():
+                print(f"\n{'='*70}")
+                print(f"WEB SERVER DETECTED - Web audio support ENABLED")
+                print(f"Remote browsers can enable web audio for I/O")
+                print(f"{'='*70}\n", flush=True)
+                self._log("Web server detected, enabling web audio support")
+            else:
+                print(f"\n{'='*70}")
+                print(f"WARNING: Web server detected but module import FAILED")
+                print(f"Web audio will NOT be available")
+                print(f"{'='*70}\n", flush=True)
+        except Exception as e:
             # Web server not running, disable web audio status
+            print(f"\n{'='*70}")
+            print(f"Web server NOT detected (LOCAL audio mode only)")
+            print(f"Reason: {type(e).__name__}: {e}")
+            print(f"{'='*70}\n", flush=True)
             self._disable_web_audio_status()
             self._log("Web server not detected, using LOCAL audio mode only")
         print("[DEBUG] Web server check complete", flush=True)
