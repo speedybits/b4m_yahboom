@@ -18,6 +18,7 @@ NC='\033[0m' # No Color
 
 # Parse command-line arguments
 ENABLE_WEB=true
+AUTO_LAUNCH_BROWSER=true
 ARGS=()
 TEST_MODE_NEXT=false
 
@@ -36,6 +37,9 @@ for arg in "$@"; do
         --web)
             ENABLE_WEB=true
             ;;
+        --no-browser)
+            AUTO_LAUNCH_BROWSER=false
+            ;;
         --test)
             ARGS+=("$arg")
             TEST_MODE_NEXT=true
@@ -52,13 +56,15 @@ for arg in "$@"; do
             echo "  --web           Enable web status interface (default)"
             echo "  --no-web        Disable web status interface (console only)"
             echo "  --headless      Same as --no-web"
+            echo "  --no-browser    Don't auto-launch browser (web server still runs)"
             echo "  --test [TEXT]   Full audio pipeline test (Piper → Speakers → Mic → Whisper)"
             echo "                  If TEXT provided, uses that input; otherwise interactive"
             echo "  --text-only     Text-only mode (no Whisper/Piper loading, stdin/stdout only)"
             echo "  --help, -h      Show this help message"
             echo ""
             echo "Examples:"
-            echo "  $0                           # Launch with web interface"
+            echo "  $0                           # Launch with web interface + auto-open browser"
+            echo "  $0 --no-browser              # Launch with web interface (manual browser open)"
             echo "  $0 --no-web                  # Launch without web interface"
             echo "  $0 --test                    # Audio pipeline test mode"
             echo "  $0 --test \"Hello ROSIE\"      # Audio test with specific text"
@@ -149,17 +155,40 @@ if [ "$ENABLE_WEB" = true ]; then
 
     # Check if HTTPS or HTTP by looking at the log
     if grep -q "https://" "$WEB_LOG" 2>/dev/null; then
+        URL="https://localhost:5000"
         echo ""
         echo "======================================================================"
-        echo "🌐 Open your browser to: https://localhost:5000"
+        echo "🌐 Open your browser to: $URL"
         echo "   (Accept the security warning for self-signed certificate)"
         echo "======================================================================"
     else
+        URL="http://localhost:5000"
         echo ""
         echo "======================================================================"
-        echo "🌐 Open your browser to: http://localhost:5000"
+        echo "🌐 Open your browser to: $URL"
         echo "======================================================================"
     fi
+
+    # Auto-launch browser (if enabled)
+    if [ "$AUTO_LAUNCH_BROWSER" = true ]; then
+        echo ""
+        echo "Launching browser..."
+        if command -v google-chrome &> /dev/null; then
+            google-chrome "$URL" &> /dev/null &
+        elif command -v chromium-browser &> /dev/null; then
+            chromium-browser "$URL" &> /dev/null &
+        elif command -v chromium &> /dev/null; then
+            chromium "$URL" &> /dev/null &
+        elif command -v xdg-open &> /dev/null; then
+            xdg-open "$URL" &> /dev/null &
+        else
+            echo -e "${YELLOW}Could not auto-launch browser. Please open manually.${NC}"
+        fi
+    else
+        echo ""
+        echo -e "${YELLOW}Auto-launch disabled. Open browser manually to: $URL${NC}"
+    fi
+
     echo ""
     echo "Starting ROSIE in 3 seconds..."
     sleep 3
