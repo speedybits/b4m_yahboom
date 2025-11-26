@@ -251,7 +251,7 @@ class AdvancedROSIETester:
         time.sleep(1)
 
         # Capture answer
-        human_response = self.capture_with_whisper(duration=5)
+        human_response = self.capture_with_whisper()
 
         if human_response:
             # Save to cache
@@ -401,6 +401,15 @@ class AdvancedROSIETester:
             rosie_response,
             expected_traits
         )
+
+        # Display scoring results immediately
+        winner_label = "ROSIE" if scores.get('rosie_won', False) else "Human"
+        print(f"\n[SCORING] Results:")
+        print(f"  Human Response: \"{human_response}\"")
+        print(f"  ROSIE Response: \"{rosie_response}\"")
+        print(f"  Winner: {winner_label}")
+        print(f"  Reasoning: {scores.get('reasoning', 'N/A')}")
+        print(f"{'='*70}\n")
 
         # Build result
         result = {

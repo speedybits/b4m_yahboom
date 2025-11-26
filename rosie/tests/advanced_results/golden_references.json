@@ -1,0 +1,9 @@
+{
+  "greeting_1": "Thank you. How about you?",
+  "greeting_2": "Good morning. Things are going well so far. How about you? Anything interesting happening today?",
+  "small_talk_1": "It looks like it's going to be a sunny day in Austin today with a high of around 63 degrees Fahrenheit. The current temperature is 57 and the wind is blowing from the north at 13 miles per hour. Is there anything else I can tell you about the weather?",
+  "small_talk_2": "As an AI, I don't experience days in the same way humans do, but I'm here and heady to assist you. How can I help you today?",
+  "open_ended_1": "Did you know that the great white shark has 300 teeth arranged in five rows? They replace their outer teeth constantly losing thousands over their lifetime. Would you like to know another cool fact?",
+  "open_ended_2": "I'm here to help you with whatever you need. What can I do for you today?",
+  "opinion_1": "As an AI, I don't have personal preferences like morning or evening. I'm available to help you 24-7. What can I do for you?"
+}
