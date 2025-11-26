@@ -1,0 +1,5 @@
+# Ignore test result files
+test_results_*.json
+
+# Keep golden references (reusable across tests)
+!golden_references.json

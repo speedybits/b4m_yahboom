@@ -1,0 +1,112 @@
+{
+  "description": "Advanced conversational testing scenarios - measures human-likeness without RAG knowledge base",
+  "scenarios": [
+    {
+      "id": "greeting_1",
+      "question": "How are you doing today?",
+      "category": "greeting",
+      "expected_traits": ["friendly", "brief", "warm", "natural"],
+      "notes": "Should sound like a human greeting response, not robotic"
+    },
+    {
+      "id": "greeting_2",
+      "question": "Good morning! How's it going?",
+      "category": "greeting",
+      "expected_traits": ["enthusiastic", "casual", "reciprocal"],
+      "notes": "Should match the energy of the greeting"
+    },
+    {
+      "id": "small_talk_1",
+      "question": "What do you think about the weather today?",
+      "category": "small_talk",
+      "expected_traits": ["conversational", "opinion-based", "relatable"],
+      "notes": "Should offer a natural opinion without being overly detailed"
+    },
+    {
+      "id": "small_talk_2",
+      "question": "Did you have a good day?",
+      "category": "small_talk",
+      "expected_traits": ["personal", "warm", "brief"],
+      "notes": "Should respond naturally without over-sharing"
+    },
+    {
+      "id": "open_ended_1",
+      "question": "Tell me something interesting",
+      "category": "open_ended",
+      "expected_traits": ["engaging", "creative", "natural", "spontaneous"],
+      "notes": "Should share something interesting without being formulaic"
+    },
+    {
+      "id": "open_ended_2",
+      "question": "What's on your mind?",
+      "category": "open_ended",
+      "expected_traits": ["thoughtful", "genuine", "conversational"],
+      "notes": "Should respond naturally to an open question"
+    },
+    {
+      "id": "opinion_1",
+      "question": "Do you prefer morning or evening?",
+      "category": "opinion",
+      "expected_traits": ["opinionated", "brief", "conversational"],
+      "notes": "Should express a preference naturally with light reasoning"
+    },
+    {
+      "id": "opinion_2",
+      "question": "What's your favorite season?",
+      "category": "opinion",
+      "expected_traits": ["personal", "warm", "specific"],
+      "notes": "Should answer like a human sharing a preference"
+    },
+    {
+      "id": "emotional_1",
+      "question": "I'm feeling a bit tired today",
+      "category": "emotional_response",
+      "expected_traits": ["empathetic", "supportive", "brief"],
+      "notes": "Should respond with appropriate empathy, not over-the-top"
+    },
+    {
+      "id": "emotional_2",
+      "question": "I had a really great day!",
+      "category": "emotional_response",
+      "expected_traits": ["enthusiastic", "supportive", "warm"],
+      "notes": "Should match positive energy appropriately"
+    },
+    {
+      "id": "follow_up_1",
+      "question": "Why do you say that?",
+      "category": "follow_up",
+      "expected_traits": ["explanatory", "natural", "not defensive"],
+      "notes": "Tests ability to naturally elaborate on previous statement",
+      "requires_previous_exchange": true
+    },
+    {
+      "id": "casual_1",
+      "question": "What's up?",
+      "category": "casual_greeting",
+      "expected_traits": ["casual", "brief", "natural"],
+      "notes": "Should respond casually, not formally"
+    }
+  ],
+  "scoring_criteria": {
+    "naturalness": {
+      "weight": 0.3,
+      "description": "Does the response sound like a human, not robotic or formulaic?"
+    },
+    "appropriateness": {
+      "weight": 0.25,
+      "description": "Is the response length and tone appropriate for the question?"
+    },
+    "emotional_intelligence": {
+      "weight": 0.2,
+      "description": "Does the response show appropriate emotional awareness and warmth?"
+    },
+    "spontaneity": {
+      "weight": 0.15,
+      "description": "Does the response feel spontaneous rather than templated?"
+    },
+    "conversational_flow": {
+      "weight": 0.1,
+      "description": "Would this response work well in a real conversation?"
+    }
+  }
+}

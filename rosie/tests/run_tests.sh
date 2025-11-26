@@ -58,20 +58,87 @@ case "${1:-}" in
         echo -e "${YELLOW}File 2: $3${NC}"
         cat "$3" | jq '.overall_scores'
         ;;
+    --advanced)
+        shift
+        ARGS=""
+        USE_CACHE=""
+
+        # Parse advanced sub-commands
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --all|-a)
+                    ARGS="$ARGS --all"
+                    shift
+                    ;;
+                --scenario|-s)
+                    if [ -z "$2" ]; then
+                        echo -e "${RED}ERROR: Scenario ID required${NC}"
+                        echo "Usage: $0 --advanced --scenario ID"
+                        exit 1
+                    fi
+                    ARGS="$ARGS --scenario $2"
+                    shift 2
+                    ;;
+                --use-cache)
+                    USE_CACHE="--use-cache"
+                    shift
+                    ;;
+                --output|-o)
+                    if [ -z "$2" ]; then
+                        echo -e "${RED}ERROR: Output file required${NC}"
+                        exit 1
+                    fi
+                    ARGS="$ARGS --output $2"
+                    shift 2
+                    ;;
+                *)
+                    echo -e "${RED}ERROR: Unknown advanced option: $1${NC}"
+                    echo "Run '$0 --help' for usage information"
+                    exit 1
+                    ;;
+            esac
+        done
+
+        echo -e "${GREEN}Running ADVANCED conversational tests...${NC}"
+        echo -e "${YELLOW}This mode tests human-likeness without RAG knowledge base${NC}"
+        if [ -n "$USE_CACHE" ]; then
+            echo -e "${YELLOW}Using cached golden references${NC}"
+        else
+            echo -e "${YELLOW}Will record new golden references (Piper + Whisper)${NC}"
+        fi
+        echo ""
+
+        python3 test_advanced.py $ARGS $USE_CACHE
+        ;;
     --help|-h)
         echo "ROSIE Test Runner Helper Script"
         echo ""
         echo "Usage:"
-        echo "  $0 --all [output.json]           # Run all test scenarios"
-        echo "  $0 --scenario 'Name' [out.json]  # Run specific scenario"
-        echo "  $0 --view [results.json]         # View test results"
+        echo "  $0 --all [output.json]              # Run all test scenarios"
+        echo "  $0 --scenario 'Name' [out.json]     # Run specific scenario"
+        echo "  $0 --view [results.json]            # View test results"
         echo "  $0 --compare file1.json file2.json  # Compare two results"
-        echo "  $0 --help                        # Show this help"
+        echo "  $0 --advanced OPTIONS               # Run advanced conversational tests"
+        echo "  $0 --help                           # Show this help"
+        echo ""
+        echo "Advanced Mode Options:"
+        echo "  --advanced --all [--use-cache]      # Test all conversational scenarios"
+        echo "  --advanced --scenario ID            # Test specific scenario by ID"
+        echo "  --advanced --use-cache              # Use cached golden references"
+        echo ""
+        echo "Advanced mode tests ROSIE's conversational naturalness:"
+        echo "  1. Piper speaks question"
+        echo "  2. Whisper captures your answer (golden reference)"
+        echo "  3. ROSIE responds to same question"
+        echo "  4. LLM scores ROSIE vs. human for human-likeness"
         echo ""
         echo "Examples:"
-        echo "  $0 --all                         # Run all tests"
-        echo "  $0 --scenario 'Factual Accuracy' # Run specific test"
-        echo "  $0 --view                        # View last results"
+        echo "  $0 --all                            # Run all factual tests"
+        echo "  $0 --scenario 'Factual Accuracy'    # Run specific test"
+        echo "  $0 --advanced --all                 # Record golden refs & test"
+        echo "  $0 --advanced --all --use-cache     # Re-test with cached refs"
+        echo "  $0 --advanced --scenario greeting_1 # Test one scenario"
+        echo "  $0 --view                           # View last results"
         echo ""
         ;;
     *)

@@ -1,1 +1,5 @@
-*.json
+# Ignore test result files (not test scenario configs)
+test_results.json
+
+# Advanced results directory has its own .gitignore
+# (we track golden_references.json but not test_results_*.json)
