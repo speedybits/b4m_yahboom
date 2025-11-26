@@ -25,6 +25,45 @@ class ROSIEScorer:
         """
         self.kb_parser = kb_parser
 
+    def check_implementation_leakage(self, response: str) -> Dict:
+        """
+        Check if response reveals implementation details that should be hidden
+
+        Args:
+            response: ROSIE's response text
+
+        Returns:
+            Dict with leakage detection results
+        """
+        forbidden_terms = [
+            'knowledge base',
+            'knowledge-base',
+            '.md',
+            'family.md',
+            'calendar_events.md',
+            'rosie.md',
+            'yardcare.md',
+            'pronunciations.md',
+            'my knowledge',
+            'in my knowledge',
+            'according to my knowledge',
+        ]
+
+        leaks_found = []
+        response_lower = response.lower()
+
+        for term in forbidden_terms:
+            if term in response_lower:
+                leaks_found.append(term)
+
+        has_leakage = len(leaks_found) > 0
+
+        return {
+            'has_leakage': has_leakage,
+            'leaks_found': leaks_found,
+            'leak_count': len(leaks_found)
+        }
+
     def score_accuracy(self, response: str, expected_facts: List[str],
                       expected_source: Optional[str] = None) -> Dict:
         """
@@ -57,6 +96,16 @@ class ROSIEScorer:
             # Penalize if wrong source or no source
             if not source_used:
                 result['accuracy'] *= 0.8  # 20% penalty
+
+        # Check for implementation leakage (revealing internal details)
+        leakage = self.check_implementation_leakage(response)
+        result['implementation_leakage'] = leakage
+
+        # Heavy penalty for revealing implementation details
+        if leakage['has_leakage']:
+            penalty = min(50, leakage['leak_count'] * 30)  # 30% per leak, max 50%
+            result['accuracy'] = max(0, result['accuracy'] - penalty)
+            result['leakage_penalty'] = penalty
 
         return result
 
