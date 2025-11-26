@@ -285,16 +285,18 @@ class RosieConversation:
     Simplified architecture with plain text conversation history.
     """
 
-    def __init__(self, test_mode=False, test_input=None):
+    def __init__(self, test_mode=False, test_input=None, text_only_mode=False):
         """Initialize ROSIE system with configuration from environment
 
         Args:
-            test_mode: If True, bypass microphone/Whisper and accept text input
+            test_mode: If True, run full audio pipeline test (Piper → Speakers → Microphone → Whisper)
             test_input: In test mode, the text to inject (None for interactive)
+            text_only_mode: If True, bypass all audio (no Whisper/Piper loading), text I/O only
         """
         # Test mode configuration
         self.test_mode = test_mode
         self.test_input = test_input
+        self.text_only_mode = text_only_mode
 
         # Load configuration from environment
         self.whisper_model_name = os.getenv('WHISPER_MODEL', 'base')
@@ -400,17 +402,9 @@ class RosieConversation:
 
     def _initialize_files(self):
         """Initialize conversation files - ensure they exist"""
-        # Create files if they don't exist (but don't clear existing content)
-        if not self.history_file.exists():
-            self.history_file.write_text('')
-            print("Created new conversation_history.txt")
-        else:
-            # Load existing conversation
-            existing_content = self.history_file.read_text()
-            if existing_content:
-                print(f"Loaded existing conversation history ({len(existing_content)} chars)")
-            else:
-                print("conversation_history.txt exists but is empty")
+        # Always clear conversation history on startup for fresh conversations
+        self.history_file.write_text('')
+        print("Cleared conversation_history.txt (starting fresh)")
 
         # Always clear speak file (temporary buffer)
         self.speak_file.write_text('')
@@ -2067,6 +2061,12 @@ class RosieConversation:
         """
         self._log("Piper TTS started")
 
+        # Skip audio output in text-only mode
+        if self.text_only_mode:
+            self._log("Text-only mode: Skipping Piper TTS")
+            self._set_state(ConversationState.LISTENING)
+            return
+
         try:
             # Read speak.txt
             text = self.speak_file.read_text().strip()
@@ -2203,6 +2203,62 @@ class RosieConversation:
         """Start ROSIE system (all threads)"""
         self._log("Starting ROSIE Conversational AI System...")
         print("[DEBUG] start() called", flush=True)
+
+        # Text-only mode: Skip all audio processing, use stdin/stdout
+        if self.text_only_mode:
+            print("\n" + "="*70)
+            print("ROSIE TEXT-ONLY MODE")
+            print("="*70)
+            print("All audio processing bypassed (no Whisper/Piper)")
+            print("Using text input/output only")
+            print("="*70 + "\n")
+
+            print("Type your messages and press Enter. Press CTRL+C to exit.\n")
+
+            try:
+                while not self.shutdown_event.is_set():
+                    try:
+                        user_input = input("You: ").strip()
+                        if not user_input:
+                            continue
+
+                        # Add timestamp like normal conversation flow
+                        import datetime
+                        timestamp = datetime.datetime.now().strftime('%I:%M %p')
+
+                        # Append to conversation history (like Whisper does)
+                        history_entry = f"Human [{timestamp}]: {user_input}\n"
+                        with open(self.history_file, 'a') as f:
+                            f.write(history_entry)
+
+                        # Generate response using Ollama
+                        print("\nROSIE: ", end='', flush=True)
+                        self._ollama_response()
+
+                        # Read response from speak file
+                        response = self.speak_file.read_text().strip()
+                        print(response)
+                        print()  # Blank line for readability
+
+                        # Append robot response to history
+                        timestamp = datetime.datetime.now().strftime('%I:%M %p')
+                        history_entry = f"Robot [{timestamp}]: {response}\n"
+                        with open(self.history_file, 'a') as f:
+                            f.write(history_entry)
+
+                    except EOFError:
+                        print("\nEOF received, exiting...")
+                        break
+                    except Exception as e:
+                        print(f"\nError: {e}")
+                        import traceback
+                        traceback.print_exc()
+
+            except KeyboardInterrupt:
+                print("\nExiting text-only mode...")
+            finally:
+                self.shutdown()
+            return
 
         # Test mode: Start audio threads for full pipeline testing
         if self.test_mode:
@@ -2440,12 +2496,15 @@ def main():
     # Parse command-line arguments
     parser = argparse.ArgumentParser(
         description='ROSIE Conversational AI System - Fully Local Voice Assistant',
-        epilog='Examples:\n  ./rosie_conversation.py\n  ./rosie_conversation.py --test "Rosie, what is the weather?"',
+        epilog='Examples:\n  ./rosie_conversation.py\n  ./rosie_conversation.py --test "Rosie, what is the weather?"\n  ./rosie_conversation.py --text-only',
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument('--test', metavar='TEXT', nargs='?', const='',
-                       help='Test mode: inject text input directly (bypasses microphone/Whisper). '
+                       help='Test mode: Full audio pipeline test (Piper → Speakers → Microphone → Whisper). '
                             'Provide text or leave empty for interactive prompts.')
+    parser.add_argument('--text-only', action='store_true',
+                       help='Text-only mode: Bypass all audio processing (no Whisper/Piper). '
+                            'Uses stdin for input and stdout for output.')
     args = parser.parse_args()
 
     # Register signal handler for graceful shutdown
@@ -2453,7 +2512,7 @@ def main():
 
     # Create ROSIE instance
     print("\n[INIT] Creating ROSIE instance...")
-    rosie = RosieConversation(test_mode=args.test is not None, test_input=args.test)
+    rosie = RosieConversation(test_mode=args.test is not None, test_input=args.test, text_only_mode=args.text_only)
     print("[INIT] ROSIE instance created successfully")
 
     # Store instance for signal handler

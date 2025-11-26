@@ -1,0 +1,195 @@
+{
+  "scenarios": [
+    {
+      "name": "Factual Accuracy - Family Facts",
+      "test_type": "accuracy",
+      "description": "Test ROSIE's ability to retrieve and use facts from the knowledge base",
+      "conversations": [
+        {
+          "input": "What are my dogs names?",
+          "expected_facts": ["Luke", "Henry"],
+          "expected_source": "family.md",
+          "scoring": {
+            "fact_match_required": true,
+            "min_accuracy": 90
+          }
+        },
+        {
+          "input": "What kind of dog is Luke?",
+          "expected_facts": ["wire-haired pointer", "14"],
+          "expected_source": "family.md",
+          "scoring": {
+            "fact_match_required": true,
+            "min_accuracy": 80
+          }
+        },
+        {
+          "input": "What does Emerson's girlfriend like?",
+          "expected_facts": ["Liv", "Miata"],
+          "expected_source": "family.md",
+          "scoring": {
+            "fact_match_required": true,
+            "min_accuracy": 90
+          }
+        },
+        {
+          "input": "When does Annie graduate?",
+          "expected_facts": ["December 2025", "Texas State University", "BFA"],
+          "expected_source": "family.md",
+          "scoring": {
+            "fact_match_required": true,
+            "min_accuracy": 75
+          }
+        }
+      ]
+    },
+    {
+      "name": "Conversation Depth - Single Topic",
+      "test_type": "depth",
+      "description": "Test that ROSIE properly deepens responses as conversation continues on same topic",
+      "conversations": [
+        {
+          "turn": 1,
+          "input": "Tell me about dogs",
+          "topic": "dogs",
+          "expected_depth": "shallow",
+          "max_sentences": 2,
+          "scoring": {
+            "depth_appropriate": true
+          }
+        },
+        {
+          "turn": 2,
+          "input": "Why are they loyal?",
+          "topic": "dogs",
+          "expected_depth": "shallow",
+          "max_sentences": 2,
+          "scoring": {
+            "depth_appropriate": true
+          }
+        },
+        {
+          "turn": 3,
+          "input": "What makes them good companions?",
+          "topic": "dogs",
+          "expected_depth": "medium",
+          "min_sentences": 2,
+          "max_sentences": 3,
+          "scoring": {
+            "depth_appropriate": true
+          }
+        },
+        {
+          "turn": 4,
+          "input": "Tell me more about that",
+          "topic": "dogs",
+          "expected_depth": "medium",
+          "min_sentences": 2,
+          "max_sentences": 3,
+          "scoring": {
+            "depth_appropriate": true
+          }
+        },
+        {
+          "turn": 5,
+          "input": "How does that affect their behavior with humans?",
+          "topic": "dogs",
+          "expected_depth": "deep",
+          "min_sentences": 3,
+          "max_sentences": 5,
+          "scoring": {
+            "depth_appropriate": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "Topic Transition Speed",
+      "test_type": "transition",
+      "description": "Test that ROSIE quickly recognizes topic changes and resets to shallow responses",
+      "conversations": [
+        {
+          "turn": 1,
+          "input": "Tell me about robotics",
+          "topic": "robotics",
+          "expected_depth": "shallow",
+          "max_sentences": 2
+        },
+        {
+          "turn": 2,
+          "input": "Why is it interesting?",
+          "topic": "robotics",
+          "expected_depth": "shallow",
+          "max_sentences": 2
+        },
+        {
+          "turn": 3,
+          "input": "What makes it challenging?",
+          "topic": "robotics",
+          "expected_depth": "medium",
+          "min_sentences": 2,
+          "max_sentences": 3
+        },
+        {
+          "turn": 4,
+          "input": "Tell me more",
+          "topic": "robotics",
+          "expected_depth": "medium",
+          "min_sentences": 2,
+          "max_sentences": 3
+        },
+        {
+          "turn": 5,
+          "input": "What's the weather like today?",
+          "topic": "weather",
+          "expected_depth": "shallow",
+          "max_sentences": 2,
+          "scoring": {
+            "topic_change": true,
+            "should_reset_depth": true,
+            "transition_delay_turns": 0
+          }
+        },
+        {
+          "turn": 6,
+          "input": "Will it rain?",
+          "topic": "weather",
+          "expected_depth": "shallow",
+          "max_sentences": 2
+        }
+      ]
+    },
+    {
+      "name": "Mixed Factual and Conversational",
+      "test_type": "mixed",
+      "description": "Test transition between factual questions (low temp) and conversational (higher temp)",
+      "conversations": [
+        {
+          "turn": 1,
+          "input": "What does Mike like to do?",
+          "topic": "Mike hobbies",
+          "expected_facts": ["robotics", "Pilates", "pickleball"],
+          "expected_source": "family.md",
+          "expected_mode": "FACTUAL",
+          "expected_depth": "shallow"
+        },
+        {
+          "turn": 2,
+          "input": "Does he do it with anyone?",
+          "topic": "Mike hobbies",
+          "expected_facts": ["Michelle", "Emerson"],
+          "expected_source": "family.md",
+          "expected_mode": "FACTUAL",
+          "expected_depth": "shallow"
+        },
+        {
+          "turn": 3,
+          "input": "That's nice",
+          "topic": "Mike hobbies",
+          "expected_mode": "CONVERSATIONAL",
+          "expected_depth": "shallow"
+        }
+      ]
+    }
+  ]
+}

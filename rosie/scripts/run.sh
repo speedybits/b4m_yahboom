@@ -19,8 +19,16 @@ NC='\033[0m' # No Color
 # Parse command-line arguments
 ENABLE_WEB=true
 ARGS=()
+TEST_MODE_NEXT=false
 
 for arg in "$@"; do
+    # Handle --test argument value from previous iteration
+    if [ "$TEST_MODE_NEXT" = true ]; then
+        ARGS+=("$arg")
+        TEST_MODE_NEXT=false
+        continue
+    fi
+
     case $arg in
         --no-web|--headless)
             ENABLE_WEB=false
@@ -28,20 +36,33 @@ for arg in "$@"; do
         --web)
             ENABLE_WEB=true
             ;;
+        --test)
+            ARGS+=("$arg")
+            TEST_MODE_NEXT=true
+            ;;
+        --text-only)
+            ARGS+=("$arg")
+            ;;
         --help|-h)
             echo "ROSIE Conversational AI Launch Script"
             echo ""
             echo "Usage: $0 [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  --web         Enable web status interface (default)"
-            echo "  --no-web      Disable web status interface (console only)"
-            echo "  --headless    Same as --no-web"
-            echo "  --help, -h    Show this help message"
+            echo "  --web           Enable web status interface (default)"
+            echo "  --no-web        Disable web status interface (console only)"
+            echo "  --headless      Same as --no-web"
+            echo "  --test [TEXT]   Full audio pipeline test (Piper → Speakers → Mic → Whisper)"
+            echo "                  If TEXT provided, uses that input; otherwise interactive"
+            echo "  --text-only     Text-only mode (no Whisper/Piper loading, stdin/stdout only)"
+            echo "  --help, -h      Show this help message"
             echo ""
             echo "Examples:"
-            echo "  $0                  # Launch with web interface"
-            echo "  $0 --no-web         # Launch without web interface"
+            echo "  $0                           # Launch with web interface"
+            echo "  $0 --no-web                  # Launch without web interface"
+            echo "  $0 --test                    # Audio pipeline test mode"
+            echo "  $0 --test \"Hello ROSIE\"      # Audio test with specific text"
+            echo "  $0 --text-only               # Text-only mode (no audio)"
             exit 0
             ;;
         *)
