@@ -99,35 +99,95 @@ class AdvancedROSIETester:
         except Exception as e:
             print(f"[ERROR] Piper TTS failed: {e}")
 
-    def capture_with_whisper(self, duration: int = 5) -> Optional[str]:
+    def capture_with_whisper(self, silence_duration: float = 3.0, max_duration: int = 30) -> Optional[str]:
         """
-        Capture audio and transcribe with Whisper
+        Capture audio with VAD and transcribe with Whisper
+        Records until 3 seconds of silence after speech ends
 
         Args:
-            duration: Recording duration in seconds
+            silence_duration: Seconds of silence before stopping (default: 3.0)
+            max_duration: Maximum recording duration in seconds (default: 30)
 
         Returns:
             Transcribed text or None on error
         """
-        print(f"[WHISPER] Recording for {duration} seconds...")
+        print(f"[WHISPER] Recording (will stop {silence_duration}s after you finish speaking)...")
         print("[WHISPER] Please speak your answer now...")
 
         try:
-            # Record audio with arecord (same as ROSIE uses)
+            import pyaudio
+            import wave
+            import numpy as np
+
+            # Audio parameters (same as ROSIE)
+            CHUNK = 1024
+            FORMAT = pyaudio.paInt16
+            CHANNELS = 1
+            RATE = 16000
+
+            # VAD parameters
+            SILENCE_THRESHOLD = 500  # Energy threshold for silence detection
+            silence_chunks = int(silence_duration * RATE / CHUNK)  # Number of silent chunks before stopping
+
+            p = pyaudio.PyAudio()
+
+            # Find the correct device (plughw:3,0)
+            device_index = None
+            for i in range(p.get_device_count()):
+                dev = p.get_device_info_by_index(i)
+                if 'plughw:3,0' in str(dev.get('name', '')):
+                    device_index = i
+                    break
+
+            # Open stream
+            stream = p.open(
+                format=FORMAT,
+                channels=CHANNELS,
+                rate=RATE,
+                input=True,
+                input_device_index=device_index,
+                frames_per_buffer=CHUNK
+            )
+
+            print("[WHISPER] Listening...")
+            frames = []
+            silent_chunks_count = 0
+            speech_detected = False
+            max_chunks = int(max_duration * RATE / CHUNK)
+
+            for i in range(max_chunks):
+                data = stream.read(CHUNK, exception_on_overflow=False)
+                frames.append(data)
+
+                # Calculate energy/volume of this chunk
+                audio_data = np.frombuffer(data, dtype=np.int16)
+                energy = np.abs(audio_data).mean()
+
+                if energy > SILENCE_THRESHOLD:
+                    # Speech detected
+                    speech_detected = True
+                    silent_chunks_count = 0
+                elif speech_detected:
+                    # Silence detected after speech
+                    silent_chunks_count += 1
+                    if silent_chunks_count >= silence_chunks:
+                        print(f"[WHISPER] {silence_duration}s of silence detected, stopping...")
+                        break
+
+            # Stop and close stream
+            stream.stop_stream()
+            stream.close()
+            p.terminate()
+
+            # Save to WAV file
             temp_wav = '/tmp/whisper_answer.wav'
+            wf = wave.open(temp_wav, 'wb')
+            wf.setnchannels(CHANNELS)
+            wf.setsampwidth(p.get_sample_size(FORMAT))
+            wf.setframerate(RATE)
+            wf.writeframes(b''.join(frames))
+            wf.close()
 
-            record_cmd = [
-                'arecord',
-                '-D', 'plughw:3,0',  # Same device as ROSIE
-                '-f', 'S16_LE',
-                '-r', '16000',
-                '-c', '1',
-                '-d', str(duration),
-                '-q',
-                temp_wav
-            ]
-
-            subprocess.run(record_cmd, check=True)
             print("[WHISPER] Recording complete, transcribing...")
 
             # Transcribe with faster-whisper
