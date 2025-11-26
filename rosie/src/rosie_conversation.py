@@ -839,7 +839,9 @@ class RosieConversation:
 
         # Import VAD
         import webrtcvad
-        vad = webrtcvad.Vad(2)  # Aggressiveness: 0-3 (2 = balanced)
+        # Start with mode 3 (most aggressive) for web audio compatibility
+        # Will dynamically adjust based on audio mode
+        vad = webrtcvad.Vad(3)  # Aggressiveness: 0-3 (3 = most aggressive)
 
         # Start continuous audio stream
         self._start_audio_stream()
@@ -899,11 +901,29 @@ class RosieConversation:
                         if len(audio_chunk) == 0:
                             is_speech = False
                         else:
-                            audio_level = np.abs(audio_chunk).max()
-                            if audio_level < 0.005:  # Very quiet - treat as silence without VAD check
-                                is_speech = False
+                            # Multi-layer filtering for web audio noise rejection
+                            # Layer 1: RMS energy (average power across entire chunk)
+                            rms_energy = np.sqrt(np.mean(audio_chunk ** 2))
+
+                            # Layer 2: Peak level (max amplitude)
+                            peak_level = np.abs(audio_chunk).max()
+
+                            # Layer 3: Audio variation (std dev - speech varies, noise is flat)
+                            audio_variation = np.std(audio_chunk)
+
+                            # Debug: Show metrics for first few web audio checks
+                            if not hasattr(self, '_web_vad_check_count'):
+                                self._web_vad_check_count = 0
+                            if self._web_vad_check_count < 5:
+                                print(f"[WEB VAD] #{self._web_vad_check_count}: rms={rms_energy:.4f}, peak={peak_level:.4f}, var={audio_variation:.4f}")
+                                self._web_vad_check_count += 1
+
+                            # Require ALL of: sufficient RMS, sufficient peak, AND variation
+                            # This rejects constant background noise while accepting real speech
+                            if rms_energy < 0.015 or peak_level < 0.05 or audio_variation < 0.01:
+                                is_speech = False  # Noise rejected
                             else:
-                                # Check if this frame contains speech
+                                # Passed pre-filters - check VAD
                                 try:
                                     is_speech = vad.is_speech(audio_int16.tobytes(), self.sample_rate)
                                 except:
