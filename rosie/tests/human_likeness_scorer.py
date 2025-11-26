@@ -68,7 +68,7 @@ class HumanLikenessScorer:
     def _build_scoring_prompt(self, question: str, human_response: str,
                              rosie_response: str, expected_traits: list = None) -> str:
         """
-        Build prompt for LLM scoring
+        Build prompt for LLM scoring - simple binary vote
 
         Args:
             question: The question asked
@@ -81,49 +81,29 @@ class HumanLikenessScorer:
         """
         traits_note = ""
         if expected_traits:
-            traits_note = f"\nExpected traits: {', '.join(expected_traits)}"
+            traits_note = f"\nExpected traits for this question: {', '.join(expected_traits)}"
 
-        prompt = f"""You are an expert at evaluating conversational AI responses for human-likeness and naturalness.
+        prompt = f"""You are an expert at evaluating conversational naturalness.
 
-Your task is to compare two responses to the same question and score how human-like each response sounds.
+Your task: Compare two responses to the same question and vote for which one sounds MORE LIKE A REAL HUMAN.
 
 Question: "{question}"{traits_note}
 
 Response A: "{human_response}"
 Response B: "{rosie_response}"
 
-Evaluate BOTH responses on these criteria (0-100 scale for each):
+Which response sounds more like it came from a real human in a natural conversation?
 
-1. NATURALNESS: Does it sound like a real human, not robotic or formulaic?
-2. APPROPRIATENESS: Is the response length and tone appropriate for the question?
-3. EMOTIONAL_INTELLIGENCE: Does it show appropriate emotional awareness and warmth?
-4. SPONTANEITY: Does it feel spontaneous rather than templated or scripted?
-5. CONVERSATIONAL_FLOW: Would this response work well in a real human conversation?
+Consider:
+- Does it sound natural and spontaneous, not robotic or formulaic?
+- Is the tone and length appropriate for the question?
+- Does it show appropriate emotional warmth?
+- Would this work in a real conversation?
 
-Provide your evaluation in this EXACT JSON format:
+Provide your vote in this EXACT JSON format:
 {{
-  "response_a": {{
-    "naturalness": <0-100>,
-    "appropriateness": <0-100>,
-    "emotional_intelligence": <0-100>,
-    "spontaneity": <0-100>,
-    "conversational_flow": <0-100>,
-    "overall": <0-100>,
-    "reasoning": "<brief explanation>"
-  }},
-  "response_b": {{
-    "naturalness": <0-100>,
-    "appropriateness": <0-100>,
-    "emotional_intelligence": <0-100>,
-    "spontaneity": <0-100>,
-    "conversational_flow": <0-100>,
-    "overall": <0-100>,
-    "reasoning": "<brief explanation>"
-  }},
-  "comparison": {{
-    "more_human": "<A or B>",
-    "reasoning": "<why one sounds more human>"
-  }}
+  "winner": "<A or B>",
+  "reasoning": "<2-3 sentences explaining why the winner sounds more human>"
 }}
 
 Respond ONLY with valid JSON, no other text."""
@@ -168,13 +148,13 @@ Respond ONLY with valid JSON, no other text."""
 
     def _parse_llm_response(self, llm_text: str) -> Dict:
         """
-        Parse LLM JSON response
+        Parse LLM JSON response - simple binary vote
 
         Args:
             llm_text: Raw LLM response
 
         Returns:
-            Parsed scores dict
+            Parsed vote dict with winner and reasoning
         """
         try:
             # Try to extract JSON from response
@@ -186,57 +166,42 @@ Respond ONLY with valid JSON, no other text."""
                 json_str = llm_text[start:end]
                 data = json.loads(json_str)
 
-                # Extract Response B scores (ROSIE)
-                rosie_scores = data.get('response_b', {})
+                winner = data.get('winner', '').upper()
+                reasoning = data.get('reasoning', '')
 
-                # Calculate weighted overall score
-                weights = {
-                    'naturalness': 0.3,
-                    'appropriateness': 0.25,
-                    'emotional_intelligence': 0.2,
-                    'spontaneity': 0.15,
-                    'conversational_flow': 0.1
-                }
-
-                overall = sum(
-                    rosie_scores.get(key, 0) * weight
-                    for key, weight in weights.items()
-                )
+                # Determine if ROSIE won
+                # Response A = Human (golden reference)
+                # Response B = ROSIE
+                rosie_won = (winner == 'B')
 
                 return {
-                    'naturalness': rosie_scores.get('naturalness', 0),
-                    'appropriateness': rosie_scores.get('appropriateness', 0),
-                    'emotional_intelligence': rosie_scores.get('emotional_intelligence', 0),
-                    'spontaneity': rosie_scores.get('spontaneity', 0),
-                    'conversational_flow': rosie_scores.get('conversational_flow', 0),
-                    'overall_score': round(overall, 2),
-                    'rosie_reasoning': rosie_scores.get('reasoning', ''),
-                    'human_scores': data.get('response_a', {}),
-                    'comparison': data.get('comparison', {}),
+                    'winner': winner,
+                    'rosie_won': rosie_won,
+                    'reasoning': reasoning,
                     'raw_llm_output': llm_text
                 }
             else:
                 print(f"[ERROR] No JSON found in LLM response")
-                return {'error': 'Failed to parse JSON', 'overall_score': 0}
+                return {'error': 'Failed to parse JSON', 'rosie_won': False}
 
         except json.JSONDecodeError as e:
             print(f"[ERROR] JSON parsing failed: {e}")
             print(f"[DEBUG] LLM response: {llm_text}")
-            return {'error': 'Invalid JSON from LLM', 'overall_score': 0}
+            return {'error': 'Invalid JSON from LLM', 'rosie_won': False}
         except Exception as e:
             print(f"[ERROR] Unexpected error parsing LLM response: {e}")
-            return {'error': str(e), 'overall_score': 0}
+            return {'error': str(e), 'rosie_won': False}
 
 
 if __name__ == '__main__':
     # Test the scorer
-    print("Testing Human-Likeness Scorer")
+    print("Testing Human-Likeness Scorer (Binary Vote)")
     print("=" * 70)
 
     scorer = HumanLikenessScorer()
 
-    # Test case 1: Greeting
-    print("\n--- Test 1: Greeting ---")
+    # Test case 1: Greeting - Obviously robotic ROSIE
+    print("\n--- Test 1: Greeting (Robotic ROSIE) ---")
     question = "How are you doing today?"
     human = "I'm doing pretty well, thanks! Just enjoying the morning coffee."
     rosie = "I am functioning within normal parameters. My systems are operational."
@@ -245,18 +210,13 @@ if __name__ == '__main__':
     print(f"Question: {question}")
     print(f"Human: {human}")
     print(f"ROSIE: {rosie}")
-    print(f"\nScores:")
-    print(f"  Naturalness: {result.get('naturalness', 0)}/100")
-    print(f"  Appropriateness: {result.get('appropriateness', 0)}/100")
-    print(f"  Emotional Intelligence: {result.get('emotional_intelligence', 0)}/100")
-    print(f"  Spontaneity: {result.get('spontaneity', 0)}/100")
-    print(f"  Conversational Flow: {result.get('conversational_flow', 0)}/100")
-    print(f"  OVERALL: {result.get('overall_score', 0)}/100")
-    print(f"\nReasoning: {result.get('rosie_reasoning', 'N/A')}")
-    print(f"Comparison: {result.get('comparison', {})}")
+    print(f"\nVote Result:")
+    print(f"  Winner: Response {result.get('winner', 'N/A')}")
+    print(f"  ROSIE Won: {result.get('rosie_won', False)}")
+    print(f"  Reasoning: {result.get('reasoning', 'N/A')}")
 
-    # Test case 2: Open-ended
-    print("\n--- Test 2: Open-Ended ---")
+    # Test case 2: Open-ended - Obviously robotic ROSIE
+    print("\n--- Test 2: Open-Ended (Robotic ROSIE) ---")
     question = "What's on your mind?"
     human = "Oh, just thinking about what to make for dinner tonight. Maybe pasta?"
     rosie = "I am currently processing various inputs and maintaining operational awareness."
@@ -265,5 +225,22 @@ if __name__ == '__main__':
     print(f"Question: {question}")
     print(f"Human: {human}")
     print(f"ROSIE: {rosie}")
-    print(f"\nROSIE Overall Score: {result2.get('overall_score', 0)}/100")
-    print(f"Reasoning: {result2.get('rosie_reasoning', 'N/A')}")
+    print(f"\nVote Result:")
+    print(f"  Winner: Response {result2.get('winner', 'N/A')}")
+    print(f"  ROSIE Won: {result2.get('rosie_won', False)}")
+    print(f"  Reasoning: {result2.get('reasoning', 'N/A')}")
+
+    # Test case 3: Natural ROSIE response
+    print("\n--- Test 3: Greeting (Natural ROSIE) ---")
+    question = "How are you doing?"
+    human = "Pretty good, just relaxing today."
+    rosie = "I'm doing well, thanks for asking!"
+
+    result3 = scorer.score_response(question, human, rosie, ["friendly", "brief", "natural"])
+    print(f"Question: {question}")
+    print(f"Human: {human}")
+    print(f"ROSIE: {rosie}")
+    print(f"\nVote Result:")
+    print(f"  Winner: Response {result3.get('winner', 'N/A')}")
+    print(f"  ROSIE Won: {result3.get('rosie_won', False)}")
+    print(f"  Reasoning: {result3.get('reasoning', 'N/A')}")

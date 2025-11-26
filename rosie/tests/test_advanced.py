@@ -394,18 +394,26 @@ class AdvancedROSIETester:
         finally:
             self.stop_rosie()
 
-        # Calculate aggregate scores
+        # Calculate aggregate scores (win/loss percentage)
         if all_results:
+            # Count wins (ROSIE sounded more human than golden reference)
+            rosie_wins = sum(1 for r in all_results if r['scores'].get('rosie_won', False))
+            total_tests = len(all_results)
+            win_percentage = (rosie_wins / total_tests * 100) if total_tests > 0 else 0
+
             avg_scores = {
-                'naturalness': sum(r['scores'].get('naturalness', 0) for r in all_results) / len(all_results),
-                'appropriateness': sum(r['scores'].get('appropriateness', 0) for r in all_results) / len(all_results),
-                'emotional_intelligence': sum(r['scores'].get('emotional_intelligence', 0) for r in all_results) / len(all_results),
-                'spontaneity': sum(r['scores'].get('spontaneity', 0) for r in all_results) / len(all_results),
-                'conversational_flow': sum(r['scores'].get('conversational_flow', 0) for r in all_results) / len(all_results),
-                'overall': sum(r['scores'].get('overall_score', 0) for r in all_results) / len(all_results),
+                'rosie_wins': rosie_wins,
+                'human_wins': total_tests - rosie_wins,
+                'total_tests': total_tests,
+                'win_percentage': round(win_percentage, 2)
             }
         else:
-            avg_scores = {}
+            avg_scores = {
+                'rosie_wins': 0,
+                'human_wins': 0,
+                'total_tests': 0,
+                'win_percentage': 0
+            }
 
         # Build final results
         final_results = {
@@ -479,12 +487,16 @@ def main():
         json.dump(results, f, indent=2)
 
     print(f"\n{'='*70}")
-    print("Test Results Summary")
+    print("Test Results Summary (Binary Vote)")
     print(f"{'='*70}")
     print(f"Scenarios tested: {results['scenarios_tested']}")
-    print(f"\nAverage Scores:")
-    for metric, score in results['average_scores'].items():
-        print(f"  {metric}: {score}/100")
+
+    scores = results['average_scores']
+    print(f"\nResults:")
+    print(f"  ROSIE Wins: {scores.get('rosie_wins', 0)} (ROSIE sounded more human)")
+    print(f"  Human Wins: {scores.get('human_wins', 0)} (Human sounded more human)")
+    print(f"  Total Tests: {scores.get('total_tests', 0)}")
+    print(f"  Win Percentage: {scores.get('win_percentage', 0)}%")
 
     print(f"\nResults saved to: {output_path}")
 
