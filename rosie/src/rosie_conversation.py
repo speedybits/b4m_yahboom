@@ -2398,10 +2398,28 @@ class RosieConversation:
         # Try to import web server module for audio integration
         # Check if web server is actually running first
         print("[DEBUG] Checking for web server...", flush=True)
-        try:
-            import requests
-            response = requests.get('http://localhost:5000/api/state', timeout=1.0)
-            print(f"[DEBUG] Web server responded: {response.status_code}", flush=True)
+
+        web_server_detected = False
+
+        # Try both HTTPS and HTTP (web server may use self-signed cert)
+        for protocol in ['https', 'http']:
+            try:
+                import requests
+                import urllib3
+                # Disable SSL warnings for self-signed certificates
+                urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+                url = f'{protocol}://localhost:5000/api/state'
+                print(f"[DEBUG] Trying {url}...", flush=True)
+                response = requests.get(url, timeout=2.0, verify=False)
+                print(f"[DEBUG] Web server responded: {response.status_code} via {protocol.upper()}", flush=True)
+                web_server_detected = True
+                break
+            except Exception as e:
+                print(f"[DEBUG] {protocol.upper()} failed: {type(e).__name__}", flush=True)
+                continue
+
+        if web_server_detected:
             # Web server is running, import module
             if self._import_web_server_module():
                 print(f"\n{'='*70}")
@@ -2414,14 +2432,15 @@ class RosieConversation:
                 print(f"WARNING: Web server detected but module import FAILED")
                 print(f"Web audio will NOT be available")
                 print(f"{'='*70}\n", flush=True)
-        except Exception as e:
+        else:
             # Web server not running, disable web audio status
             print(f"\n{'='*70}")
             print(f"Web server NOT detected (LOCAL audio mode only)")
-            print(f"Reason: {type(e).__name__}: {e}")
+            print(f"Web audio will NOT be available")
             print(f"{'='*70}\n", flush=True)
             self._disable_web_audio_status()
             self._log("Web server not detected, using LOCAL audio mode only")
+
         print("[DEBUG] Web server check complete", flush=True)
 
         # Start Whisper worker
