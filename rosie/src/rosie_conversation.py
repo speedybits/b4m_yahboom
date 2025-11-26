@@ -473,11 +473,23 @@ class RosieConversation:
     def _check_web_audio_enabled(self):
         """Check if web audio is currently enabled"""
         if self.web_server_module is None:
+            # Debug once
+            if not hasattr(self, '_web_module_none_warned'):
+                print(f"[WEB AUDIO CHECK] web_server_module is None - cannot check status")
+                self._web_module_none_warned = True
             return False
         try:
-            return self.web_server_module.is_web_audio_enabled()
+            enabled = self.web_server_module.is_web_audio_enabled()
+            # Debug: Show status check results (first 10 times)
+            if not hasattr(self, '_web_status_check_count'):
+                self._web_status_check_count = 0
+            if self._web_status_check_count < 10:
+                print(f"[WEB AUDIO CHECK] #{self._web_status_check_count}: enabled={enabled}")
+                self._web_status_check_count += 1
+            return enabled
         except Exception as e:
             self._log(f"Error checking web audio status: {e}")
+            print(f"[WEB AUDIO CHECK] Error: {e}")
             return False
 
     def _disable_web_audio_status(self):
@@ -785,9 +797,12 @@ class RosieConversation:
         while not self.shutdown_event.is_set():
             try:
                 # Check if web audio is enabled
-                if self._check_web_audio_enabled():
+                web_audio_enabled = self._check_web_audio_enabled()
+
+                if web_audio_enabled:
                     # Switch to WEB mode if not already
                     if self._get_audio_mode() != AudioMode.WEB:
+                        print(f"[WEB AUDIO] Detected web audio enabled, switching to WEB mode")
                         self._set_audio_mode(AudioMode.WEB)
 
                     # Poll for audio data from web server
@@ -802,10 +817,16 @@ class RosieConversation:
                             # Add to audio queue (same as _audio_callback)
                             with self.audio_lock:
                                 self.audio_queue.append(audio_float)
+                    else:
+                        # Debug: Show if module not available
+                        if not hasattr(self, '_web_module_warning_shown'):
+                            print(f"[WEB AUDIO] Warning: web_server_module not available")
+                            self._web_module_warning_shown = True
 
                 else:
                     # Switch back to LOCAL mode if not already
                     if self._get_audio_mode() != AudioMode.LOCAL:
+                        print(f"[WEB AUDIO] Web audio disabled, switching back to LOCAL mode")
                         self._set_audio_mode(AudioMode.LOCAL)
 
                 # Poll frequency: 25ms when active (40 polls/sec), 100ms when inactive
