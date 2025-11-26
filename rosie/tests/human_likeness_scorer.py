@@ -99,6 +99,7 @@ Consider:
 - Is the tone and length appropriate for the question?
 - Does it show appropriate emotional warmth?
 - Would this work in a real conversation?
+- IMPORTANT: If either response makes up false/contradictory factual information (weather, dates, times, events), it should LOSE (humans don't fabricate observable facts)
 
 Provide your vote in this EXACT JSON format:
 {{
