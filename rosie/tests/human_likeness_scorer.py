@@ -15,13 +15,13 @@ import os
 class HumanLikenessScorer:
     """LLM-based scorer for comparing conversational naturalness"""
 
-    def __init__(self, ollama_url: str = "http://localhost:11434", model: str = "llama3.2:latest"):
+    def __init__(self, ollama_url: str = "http://localhost:11434", model: str = "llama3.1:8b"):
         """
         Initialize scorer
 
         Args:
             ollama_url: URL of Ollama server
-            model: Ollama model to use for scoring
+            model: Ollama model to use for scoring (default: llama3.1:8b)
         """
         self.ollama_url = ollama_url
         self.model = model
