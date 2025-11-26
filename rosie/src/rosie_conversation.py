@@ -853,6 +853,9 @@ class RosieConversation:
         consecutive_silence = 0
         is_speaking = False
 
+        # Buffer limit cooldown (prevents infinite loop with web audio background noise)
+        buffer_limit_cooldown_until = 0  # Timestamp when cooldown expires
+
         while not self.shutdown_event.is_set():
             current_state = self._get_state()
 
@@ -920,7 +923,8 @@ class RosieConversation:
 
                             # Require ALL of: sufficient RMS, sufficient peak, AND variation
                             # This rejects constant background noise while accepting real speech
-                            if rms_energy < 0.015 or peak_level < 0.05 or audio_variation < 0.01:
+                            # Web audio needs more aggressive filtering to prevent false triggers
+                            if rms_energy < 0.02 or peak_level < 0.08 or audio_variation < 0.015:
                                 is_speech = False  # Noise rejected
                             else:
                                 # Passed pre-filters - check VAD
@@ -955,6 +959,21 @@ class RosieConversation:
                                 self._vad_error_count += 1
                             continue
 
+                    # Check buffer limit cooldown (prevents false trigger loops with web audio)
+                    if time.time() < buffer_limit_cooldown_until:
+                        is_speech = False  # Ignore all speech during cooldown period
+                        # Clear audio queue during cooldown to prevent buildup
+                        with self.audio_lock:
+                            if len(self.audio_queue) > 0:
+                                self.audio_queue.clear()
+                        # Debug: Show cooldown status (only first few times)
+                        if not hasattr(self, '_cooldown_msg_count'):
+                            self._cooldown_msg_count = 0
+                        if self._cooldown_msg_count < 3:
+                            remaining = buffer_limit_cooldown_until - time.time()
+                            print(f"[COOLDOWN] Ignoring audio for {remaining:.1f}s more...")
+                            self._cooldown_msg_count += 1
+
                     if is_speech:
                         # Voice detected!
                         if not is_speaking:
@@ -980,6 +999,11 @@ class RosieConversation:
                                 print(f"[BUFFER LIMIT] Reached max buffer size ({MAX_BUFFER_CHUNKS} chunks), forcing transcription")
                                 # Force transcription by simulating silence threshold
                                 consecutive_silence = 999
+                                # Activate cooldown to prevent immediate re-trigger (web audio continuous stream issue)
+                                buffer_limit_cooldown_until = time.time() + 2.0  # 2 second cooldown
+                                print(f"[BUFFER LIMIT] Activating 2-second cooldown to prevent loop")
+                                # Reset cooldown message counter for new cooldown period
+                                self._cooldown_msg_count = 0
                     elif is_speaking:
                         # Silence while speaking - might be end of phrase
                         consecutive_silence += 1
