@@ -240,9 +240,8 @@ class AdvancedROSIETester:
         print(f"RECORDING GOLDEN REFERENCE FOR: {question_id}")
         print(f"{'='*70}")
         print(f"Question: {question}")
-        print("\nPiper will speak the question, then you have 5 seconds to respond.")
-        print("Press ENTER when ready...")
-        input()
+        print("\nPiper will speak the question in 2 seconds...")
+        time.sleep(2)
 
         # Speak question
         self.speak_with_piper(question)
@@ -467,6 +466,14 @@ class AdvancedROSIETester:
                 result = self.run_scenario(scenario)
                 if result:
                     all_results.append(result)
+
+                    # Stop if ROSIE lost
+                    if not result['scores'].get('rosie_won', False):
+                        print(f"\n{'='*70}")
+                        print(f"[TEST] STOPPING: ROSIE lost to Human in scenario '{result['id']}'")
+                        print(f"[TEST] Fix this scenario before continuing to the next one.")
+                        print(f"{'='*70}\n")
+                        break
 
         finally:
             self.stop_rosie()

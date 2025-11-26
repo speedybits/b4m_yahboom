@@ -1654,8 +1654,15 @@ class RosieConversation:
                 return
 
             # Check for factual question words (what, when, where, who, which)
+            # BUT exclude opinion-seeking phrases (these are conversational, not factual)
+            opinion_pattern = r'\b(what do you think|what do you feel|how do you feel|do you think|your opinion|your thoughts)\b'
+            has_opinion_phrase = bool(re.search(opinion_pattern, last_human_statement, re.IGNORECASE))
+
             factual_question_pattern = r'\b(what|when|where|who|which)\b'
-            is_factual_question = bool(re.search(factual_question_pattern, last_human_statement, re.IGNORECASE))
+            has_factual_word = bool(re.search(factual_question_pattern, last_human_statement, re.IGNORECASE))
+
+            # Opinion questions are conversational, even if they contain factual words
+            is_factual_question = has_factual_word and not has_opinion_phrase
 
             # Set temperature based on question type
             if is_factual_question:
@@ -1726,7 +1733,7 @@ class RosieConversation:
             else:
                 # CONVERSATIONAL MODE: Natural, friendly responses
                 prompt = (
-                    "You are ROSIE, a helpful and friendly voice assistant.\n\n"
+                    "You are ROSIE, a friendly conversational companion.\n\n"
                     f"{current_date_context}"
                 )
 
@@ -1758,12 +1765,15 @@ class RosieConversation:
                     "NEVER make up names, dates, or other facts - only use information from KNOWLEDGE BASE or CONVERSATION HISTORY.\n"
                     "\n"
                     "CONVERSATION GUIDELINES:\n"
+                    "- Respond like a natural human conversation, not as an AI assistant\n"
+                    "- NEVER use robotic phrases like 'I'm functioning normally', 'ready to assist', 'how can I help'\n"
+                    "- For greetings (like 'how are you'), respond warmly AND ask how THEY are doing to show reciprocal interest\n"
+                    "- DO NOT mention specific dates/times unless the question asks about them\n"
                     "- Engage deeply with the topic being discussed\n"
                     "- When asked for your thoughts or opinions, give substantive answers with reasoning (2-3 sentences)\n"
                     "- Answer questions directly and thoroughly before adding follow-up thoughts\n"
                     "- Show genuine intellectual curiosity about the conversation topic\n"
                     "- You can share specific insights, make connections between ideas, or explore implications\n"
-                    "- Avoid generic phrases like 'I'm a friendly voice assistant' - engage authentically\n"
                     "- You can ask thoughtful follow-up questions to deepen the conversation\n"
                     "- Avoid suggesting physical activities unless directly relevant to the topic\n"
                     "- Use both the knowledge base and conversation history for context\n"
