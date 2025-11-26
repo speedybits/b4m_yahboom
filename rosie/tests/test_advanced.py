@@ -72,15 +72,23 @@ class AdvancedROSIETester:
         """
         print(f"[PIPER] Speaking: {text}")
 
-        # Use Piper command directly (same as ROSIE uses)
-        piper_voice = os.environ.get('PIPER_VOICE', 'en_US-amy-medium')
+        # Use Piper with same model paths as ROSIE
+        piper_model = os.environ.get('PIPER_MODEL_PATH')
+        piper_config = os.environ.get('PIPER_CONFIG_PATH')
+
+        if not piper_model:
+            print("[ERROR] PIPER_MODEL_PATH not set")
+            return
 
         try:
             # Create temporary file for Piper output
             temp_wav = '/tmp/piper_question.wav'
 
-            # Run Piper to generate WAV
-            piper_cmd = f'echo "{text}" | piper --model {piper_voice} --output_file {temp_wav}'
+            # Run Piper to generate WAV (same format as ROSIE uses)
+            if piper_config:
+                piper_cmd = f'echo "{text}" | piper --model {piper_model} --config {piper_config} --output_file {temp_wav}'
+            else:
+                piper_cmd = f'echo "{text}" | piper --model {piper_model} --output_file {temp_wav}'
             subprocess.run(piper_cmd, shell=True, check=True)
 
             # Play WAV with aplay
