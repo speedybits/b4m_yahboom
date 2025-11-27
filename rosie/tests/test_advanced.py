@@ -6,7 +6,7 @@ Tests ROSIE's conversational naturalness against human responses:
 1. Piper speaks question
 2. Whisper captures human answer (golden reference)
 3. ROSIE responds to same question in text mode
-4. LLM scores ROSIE vs human for human-likeness
+4. LLM or human judge scores ROSIE vs human for human-likeness
 """
 
 import subprocess
@@ -22,18 +22,22 @@ import os
 
 # Import our modules
 from human_likeness_scorer import HumanLikenessScorer
+from human_judge import HumanJudge
+from claude_judge import ClaudeJudge
 
 
 class AdvancedROSIETester:
     """Advanced test runner for ROSIE conversational naturalness"""
 
-    def __init__(self, rosie_dir: Path, use_cache: bool = False):
+    def __init__(self, rosie_dir: Path, use_cache: bool = False, use_judge: bool = False, use_claude_judge: bool = False):
         """
         Initialize tester
 
         Args:
             rosie_dir: Path to rosie root directory
             use_cache: If True, use cached golden references instead of recording new ones
+            use_judge: If True, use human judge instead of LLM scorer
+            use_claude_judge: If True, use Claude judge (file-based async voting)
         """
         self.rosie_dir = Path(rosie_dir)
         self.tests_dir = self.rosie_dir / 'tests'
@@ -43,9 +47,20 @@ class AdvancedROSIETester:
 
         self.golden_refs_file = self.results_dir / 'golden_references.json'
         self.use_cache = use_cache
+        self.use_judge = use_judge
+        self.use_claude_judge = use_claude_judge
 
-        # Initialize components
-        self.scorer = HumanLikenessScorer()
+        # Initialize scorer (Claude judge, human judge, or LLM)
+        if use_claude_judge:
+            print("[TEST] Using CLAUDE JUDGE for scoring (file-based async)")
+            self.scorer = ClaudeJudge()
+        elif use_judge:
+            print("[TEST] Using HUMAN JUDGE for scoring")
+            self.scorer = HumanJudge()
+        else:
+            print("[TEST] Using LLM SCORER for scoring")
+            self.scorer = HumanLikenessScorer()
+
         self.rosie_process = None
 
         # Load or initialize golden references
@@ -392,8 +407,15 @@ class AdvancedROSIETester:
             print(f"[ERROR] Skipping {question_id} - no ROSIE response")
             return None
 
-        # Score with LLM
-        print(f"[SCORING] Comparing responses...")
+        # Score responses
+        if self.use_claude_judge:
+            scorer_label = "CLAUDE JUDGE"
+        elif self.use_judge:
+            scorer_label = "HUMAN JUDGE"
+        else:
+            scorer_label = "LLM SCORER"
+
+        print(f"[{scorer_label}] Comparing responses...")
         scores = self.scorer.score_response(
             question,
             human_response,
@@ -403,7 +425,7 @@ class AdvancedROSIETester:
 
         # Display scoring results immediately
         winner_label = "ROSIE" if scores.get('rosie_won', False) else "Human"
-        print(f"\n[SCORING] Results:")
+        print(f"\n[{scorer_label}] Results:")
         print(f"  Human Response: \"{human_response}\"")
         print(f"  ROSIE Response: \"{rosie_response}\"")
         print(f"  Winner: {winner_label}")
@@ -528,6 +550,10 @@ def main():
                        help='Path to test scenarios JSON file')
     parser.add_argument('--use-cache', action='store_true',
                        help='Use cached golden references instead of recording new ones')
+    parser.add_argument('--judge', action='store_true',
+                       help='Use human judge for scoring instead of LLM')
+    parser.add_argument('--claude-judge', action='store_true',
+                       help='Use Claude judge (file-based async) for scoring')
 
     args = parser.parse_args()
 
@@ -551,8 +577,15 @@ def main():
     print(f"Output file: {args.output}")
     print(f"Use cache: {args.use_cache}")
 
+    if args.claude_judge:
+        print(f"Scoring mode: Claude Judge (file-based async)")
+    elif args.judge:
+        print(f"Scoring mode: Human Judge")
+    else:
+        print(f"Scoring mode: LLM (Ollama)")
+
     # Initialize tester
-    tester = AdvancedROSIETester(rosie_dir, use_cache=args.use_cache)
+    tester = AdvancedROSIETester(rosie_dir, use_cache=args.use_cache, use_judge=args.judge, use_claude_judge=args.claude_judge)
 
     # Run tests
     if args.all:

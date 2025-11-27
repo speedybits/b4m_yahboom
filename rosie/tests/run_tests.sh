@@ -62,6 +62,7 @@ case "${1:-}" in
         shift
         ARGS=""
         USE_CACHE=""
+        USE_JUDGE=""
 
         # Parse advanced sub-commands
         while [ $# -gt 0 ]; do
@@ -81,6 +82,10 @@ case "${1:-}" in
                     ;;
                 --use-cache)
                     USE_CACHE="--use-cache"
+                    shift
+                    ;;
+                --judge)
+                    USE_JUDGE="--judge"
                     shift
                     ;;
                 --output|-o)
@@ -106,9 +111,14 @@ case "${1:-}" in
         else
             echo -e "${YELLOW}Will record new golden references (Piper + Whisper)${NC}"
         fi
+        if [ -n "$USE_JUDGE" ]; then
+            echo -e "${YELLOW}Using HUMAN JUDGE for scoring${NC}"
+        else
+            echo -e "${YELLOW}Using LLM (Ollama) for scoring${NC}"
+        fi
         echo ""
 
-        python3 test_advanced.py $ARGS $USE_CACHE
+        python3 test_advanced.py $ARGS $USE_CACHE $USE_JUDGE
         ;;
     --help|-h)
         echo "ROSIE Test Runner Helper Script"
@@ -122,21 +132,23 @@ case "${1:-}" in
         echo "  $0 --help                           # Show this help"
         echo ""
         echo "Advanced Mode Options:"
-        echo "  --advanced --all [--use-cache]      # Test all conversational scenarios"
-        echo "  --advanced --scenario ID            # Test specific scenario by ID"
-        echo "  --advanced --use-cache              # Use cached golden references"
+        echo "  --advanced --all [--use-cache] [--judge]  # Test all conversational scenarios"
+        echo "  --advanced --scenario ID                  # Test specific scenario by ID"
+        echo "  --advanced --use-cache                    # Use cached golden references"
+        echo "  --advanced --judge                        # Use human judge instead of LLM"
         echo ""
         echo "Advanced mode tests ROSIE's conversational naturalness:"
         echo "  1. Piper speaks question"
         echo "  2. Whisper captures your answer (golden reference)"
         echo "  3. ROSIE responds to same question"
-        echo "  4. LLM scores ROSIE vs. human for human-likeness"
+        echo "  4. LLM or human judge scores ROSIE vs. human for human-likeness"
         echo ""
         echo "Examples:"
         echo "  $0 --all                            # Run all factual tests"
         echo "  $0 --scenario 'Factual Accuracy'    # Run specific test"
-        echo "  $0 --advanced --all                 # Record golden refs & test"
-        echo "  $0 --advanced --all --use-cache     # Re-test with cached refs"
+        echo "  $0 --advanced --all                 # Record golden refs & test with LLM"
+        echo "  $0 --advanced --all --use-cache     # Re-test with cached refs (LLM)"
+        echo "  $0 --advanced --all --judge         # Test with human judge"
         echo "  $0 --advanced --scenario greeting_1 # Test one scenario"
         echo "  $0 --view                           # View last results"
         echo ""
