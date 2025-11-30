@@ -18,7 +18,6 @@ NC='\033[0m' # No Color
 
 # Parse command-line arguments
 ENABLE_WEB=true
-AUTO_LAUNCH_BROWSER=true
 ARGS=()
 TEST_MODE_NEXT=false
 
@@ -31,14 +30,12 @@ for arg in "$@"; do
     fi
 
     case $arg in
-        --no-web|--headless)
+        --no-web|--headless|--no-browser)
+            # All of these mean: no web interface, LOCAL audio only
             ENABLE_WEB=false
             ;;
         --web)
             ENABLE_WEB=true
-            ;;
-        --no-browser)
-            AUTO_LAUNCH_BROWSER=false
             ;;
         --test)
             ARGS+=("$arg")
@@ -46,6 +43,7 @@ for arg in "$@"; do
             ;;
         --text-only)
             ARGS+=("$arg")
+            ENABLE_WEB=false
             ;;
         --help|-h)
             echo "ROSIE Conversational AI Launch Script"
@@ -54,18 +52,18 @@ for arg in "$@"; do
             echo ""
             echo "Options:"
             echo "  --web           Enable web status interface (default)"
-            echo "  --no-web        Disable web status interface (console only)"
-            echo "  --headless      Same as --no-web"
-            echo "  --no-browser    Don't auto-launch browser (web server still runs)"
+            echo "  --no-web        Disable web interface, use LOCAL audio only"
+            echo "  --no-browser    Same as --no-web (no web interface)"
+            echo "  --headless      Same as --no-web (no web interface)"
             echo "  --test [TEXT]   Full audio pipeline test (Piper → Speakers → Mic → Whisper)"
             echo "                  If TEXT provided, uses that input; otherwise interactive"
             echo "  --text-only     Text-only mode (no Whisper/Piper loading, stdin/stdout only)"
             echo "  --help, -h      Show this help message"
             echo ""
             echo "Examples:"
-            echo "  $0                           # Launch with web interface + auto-open browser"
-            echo "  $0 --no-browser              # Launch with web interface (manual browser open)"
-            echo "  $0 --no-web                  # Launch without web interface"
+            echo "  $0                           # Launch with web interface (auto-opens browser)"
+            echo "  $0 --no-browser              # LOCAL audio only (no web interface)"
+            echo "  $0 --no-web                  # LOCAL audio only (no web interface)"
             echo "  $0 --test                    # Audio pipeline test mode"
             echo "  $0 --test \"Hello ROSIE\"      # Audio test with specific text"
             echo "  $0 --text-only               # Text-only mode (no audio)"
@@ -169,24 +167,19 @@ if [ "$ENABLE_WEB" = true ]; then
         echo "======================================================================"
     fi
 
-    # Auto-launch browser (if enabled)
-    if [ "$AUTO_LAUNCH_BROWSER" = true ]; then
-        echo ""
-        echo "Launching browser..."
-        if command -v google-chrome &> /dev/null; then
-            google-chrome "$URL" &> /dev/null &
-        elif command -v chromium-browser &> /dev/null; then
-            chromium-browser "$URL" &> /dev/null &
-        elif command -v chromium &> /dev/null; then
-            chromium "$URL" &> /dev/null &
-        elif command -v xdg-open &> /dev/null; then
-            xdg-open "$URL" &> /dev/null &
-        else
-            echo -e "${YELLOW}Could not auto-launch browser. Please open manually.${NC}"
-        fi
+    # Auto-launch browser
+    echo ""
+    echo "Launching browser..."
+    if command -v google-chrome &> /dev/null; then
+        google-chrome "$URL" &> /dev/null &
+    elif command -v chromium-browser &> /dev/null; then
+        chromium-browser "$URL" &> /dev/null &
+    elif command -v chromium &> /dev/null; then
+        chromium "$URL" &> /dev/null &
+    elif command -v xdg-open &> /dev/null; then
+        xdg-open "$URL" &> /dev/null &
     else
-        echo ""
-        echo -e "${YELLOW}Auto-launch disabled. Open browser manually to: $URL${NC}"
+        echo -e "${YELLOW}Could not auto-launch browser. Please open manually.${NC}"
     fi
 
     echo ""
