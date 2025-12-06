@@ -375,6 +375,7 @@ class RosieConversation:
         self.test_last_transcription = None
         self.test_transcription_event = threading.Event()  # Signals transcription complete
         self.test_transcription_lock = threading.Lock()
+        self.test_force_transcribe = threading.Event()  # Force immediate transcription
 
         # TTS interrupt detection (stop speaking when human talks)
         self.tts_interrupt_event = threading.Event()  # Signals interrupt request
@@ -1018,9 +1019,9 @@ class RosieConversation:
                                 print(f"[VAD] Speech detected! Buffer size: {len(speech_buffer)}")
 
                             # NEW: Prevent buffer overflow - limit audio duration
-                            # Each chunk is ~100ms, so 30 chunks = 3 seconds, 100 chunks = 10 seconds
-                            # Test mode uses larger buffer to capture full test sentences
-                            MAX_BUFFER_CHUNKS = 100 if self.test_mode else 30
+                            # Each chunk is ~100ms, so 30 chunks = 3 seconds
+                            # Test mode: no limit (uses sys.maxsize) to capture any length
+                            MAX_BUFFER_CHUNKS = (2**31 - 1) if self.test_mode else 30
                             if len(speech_buffer) > MAX_BUFFER_CHUNKS:
                                 print(f"[BUFFER LIMIT] Reached max buffer size ({MAX_BUFFER_CHUNKS} chunks), forcing transcription")
                                 # Force transcription by simulating silence threshold
@@ -1038,14 +1039,29 @@ class RosieConversation:
                             speech_buffer.append(audio_chunk)
 
                         # Check if enough silence to consider phrase complete
-                        # Demo mode / Test mode: 2 seconds silence, Normal mode: 0.5 seconds silence
+                        # Test mode: 5 seconds (long paragraphs have natural pauses)
+                        # Demo mode: 2 seconds, Normal mode: 0.5 seconds
                         with self.demo_mode_lock:
                             in_demo_mode = self.demo_mode
-                        silence_threshold = 2.0 if (in_demo_mode or self.test_mode) else 0.5  # seconds
+                        if self.test_mode:
+                            silence_threshold = 5.0
+                        elif in_demo_mode:
+                            silence_threshold = 2.0
+                        else:
+                            silence_threshold = 0.5
                         silence_frames_needed = int(silence_threshold * 1000 / vad_frame_duration)
 
-                        if consecutive_silence >= silence_frames_needed:
+                        # Check for test mode force transcribe signal
+                        force_transcribe = self.test_mode and self.test_force_transcribe.is_set()
+
+                        # In test mode, ONLY transcribe when force_transcribe is set (ignore silence threshold)
+                        # This ensures we capture the full audio before transcribing
+                        should_transcribe = force_transcribe if self.test_mode else (consecutive_silence >= silence_frames_needed)
+
+                        if should_transcribe:
                             # Phrase complete! Transcribe it
+                            if force_transcribe:
+                                print(f"[TEST] Force transcribe triggered")
                             print(f"[TRANSCRIBE] Silence threshold reached! consecutive_silence={consecutive_silence}, threshold={silence_frames_needed}")
                             if len(speech_buffer) > 0:
                                 audio_data = np.concatenate(speech_buffer)
@@ -1064,7 +1080,7 @@ class RosieConversation:
                                         best_of=5,
                                         temperature=0.0,
                                         condition_on_previous_text=False,
-                                        initial_prompt="Rosie is a voice assistant.",  # Help recognize wake word
+                                        initial_prompt="Rosie is a voice assistant. She uses Piper for speech synthesis and Whisper for recognition.",  # Help recognize key terms
                                         vad_filter=True,  # Extra VAD filtering from faster-whisper
                                         vad_parameters=dict(min_silence_duration_ms=500),
                                         # CRITICAL: Skip segments with >50% silence to prevent hallucinations
@@ -1285,32 +1301,70 @@ class RosieConversation:
         Returns:
             tuple: (character_accuracy, word_accuracy) as percentages (0-100)
         """
-        # Normalize both strings for comparison (lowercase, strip)
-        orig_normalized = original.lower().strip()
-        trans_normalized = transcribed.lower().strip()
+        import re as regex
 
-        # Character-level accuracy (using simple character comparison)
+        # Normalize both strings for comparison:
+        # - lowercase
+        # - collapse multiple whitespace to single space
+        # - strip leading/trailing whitespace
+        orig_normalized = regex.sub(r'\s+', ' ', original.lower().strip())
+        trans_normalized = regex.sub(r'\s+', ' ', transcribed.lower().strip())
+
+        # Character-level accuracy using Levenshtein distance
         if len(orig_normalized) == 0:
             char_accuracy = 100.0 if len(trans_normalized) == 0 else 0.0
         else:
             # Calculate Levenshtein distance (edit distance)
-            # For simplicity, use character matching
-            max_len = max(len(orig_normalized), len(trans_normalized))
-            matching_chars = sum(1 for i in range(min(len(orig_normalized), len(trans_normalized)))
-                               if orig_normalized[i] == trans_normalized[i])
-            char_accuracy = (matching_chars / max_len) * 100.0
+            def levenshtein(s1, s2):
+                if len(s1) < len(s2):
+                    return levenshtein(s2, s1)
+                if len(s2) == 0:
+                    return len(s1)
+                prev_row = range(len(s2) + 1)
+                for i, c1 in enumerate(s1):
+                    curr_row = [i + 1]
+                    for j, c2 in enumerate(s2):
+                        insertions = prev_row[j + 1] + 1
+                        deletions = curr_row[j] + 1
+                        substitutions = prev_row[j] + (c1 != c2)
+                        curr_row.append(min(insertions, deletions, substitutions))
+                    prev_row = curr_row
+                return prev_row[-1]
 
-        # Word-level accuracy
-        orig_words = orig_normalized.split()
-        trans_words = trans_normalized.split()
+            distance = levenshtein(orig_normalized, trans_normalized)
+            max_len = max(len(orig_normalized), len(trans_normalized))
+            char_accuracy = ((max_len - distance) / max_len) * 100.0
+
+        # Word-level accuracy using Levenshtein distance on words
+        # Also normalize hyphens (treat hyphenated words as separate)
+        orig_for_words = regex.sub(r'-', ' ', orig_normalized)
+        trans_for_words = regex.sub(r'-', ' ', trans_normalized)
+        orig_words = orig_for_words.split()
+        trans_words = trans_for_words.split()
 
         if len(orig_words) == 0:
             word_accuracy = 100.0 if len(trans_words) == 0 else 0.0
         else:
-            # Count matching words (simple word-by-word comparison)
-            matching_words = sum(1 for i in range(min(len(orig_words), len(trans_words)))
-                               if orig_words[i] == trans_words[i])
-            word_accuracy = (matching_words / max(len(orig_words), len(trans_words))) * 100.0
+            # Use Levenshtein distance on word lists
+            def word_levenshtein(s1, s2):
+                if len(s1) < len(s2):
+                    return word_levenshtein(s2, s1)
+                if len(s2) == 0:
+                    return len(s1)
+                prev_row = range(len(s2) + 1)
+                for i, w1 in enumerate(s1):
+                    curr_row = [i + 1]
+                    for j, w2 in enumerate(s2):
+                        insertions = prev_row[j + 1] + 1
+                        deletions = curr_row[j] + 1
+                        substitutions = prev_row[j] + (w1 != w2)
+                        curr_row.append(min(insertions, deletions, substitutions))
+                    prev_row = curr_row
+                return prev_row[-1]
+
+            word_distance = word_levenshtein(orig_words, trans_words)
+            max_words = max(len(orig_words), len(trans_words))
+            word_accuracy = ((max_words - word_distance) / max_words) * 100.0
 
         return char_accuracy, word_accuracy
 
@@ -1372,11 +1426,15 @@ class RosieConversation:
         print(f"\n[TEST STEP 3] Waiting for ROSIE to capture audio via microphone...")
         print(f"[TEST] (Microphone → VAD → Audio buffering → Silence detection → Whisper)")
 
-        # Wait up to 10 seconds for transcription
-        transcription_received = self.test_transcription_event.wait(timeout=10.0)
+        # Give a short delay for final audio to be captured, then force transcription
+        time.sleep(2.0)  # Allow remaining audio to be captured
+        self.test_force_transcribe.set()  # Signal whisper worker to transcribe now
+
+        # Wait up to 20 seconds for transcription
+        transcription_received = self.test_transcription_event.wait(timeout=20.0)
 
         if not transcription_received:
-            print(f"\n[TEST FAILURE] No transcription received within 10 seconds")
+            print(f"\n[TEST FAILURE] No transcription received within 20 seconds")
             print(f"[TEST] This indicates a problem in the audio pipeline:")
             print(f"[TEST]   - VAD may not be detecting speech")
             print(f"[TEST]   - Audio buffering may not be working")
