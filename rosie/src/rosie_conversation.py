@@ -2618,10 +2618,10 @@ def main():
     # Parse command-line arguments
     parser = argparse.ArgumentParser(
         description='ROSIE Conversational AI System - Fully Local Voice Assistant',
-        epilog='Examples:\n  ./rosie_conversation.py\n  ./rosie_conversation.py --test "Rosie, what is the weather?"\n  ./rosie_conversation.py --text-only',
+        epilog='Examples:\n  ./rosie_conversation.py\n  ./rosie_conversation.py --test-audio "Rosie, what is the weather?"\n  ./rosie_conversation.py --text-only',
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument('--test', metavar='TEXT', nargs='?', const='',
+    parser.add_argument('--test-audio', metavar='TEXT', nargs='?', const='',
                        help='Test mode: Full audio pipeline test (Piper → Speakers → Microphone → Whisper). '
                             'Provide text or leave empty for interactive prompts.')
     parser.add_argument('--text-only', action='store_true',
@@ -2634,7 +2634,7 @@ def main():
 
     # Create ROSIE instance
     print("\n[INIT] Creating ROSIE instance...")
-    rosie = RosieConversation(test_mode=args.test is not None, test_input=args.test, text_only_mode=args.text_only)
+    rosie = RosieConversation(test_mode=args.test_audio is not None, test_input=args.test_audio, text_only_mode=args.text_only)
     print("[INIT] ROSIE instance created successfully")
 
     # Store instance for signal handler
