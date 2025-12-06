@@ -40,6 +40,7 @@ for arg in "$@"; do
         --test-audio)
             ARGS+=("$arg")
             TEST_MODE_NEXT=true
+            ENABLE_WEB=false
             ;;
         --text-only)
             ARGS+=("$arg")
