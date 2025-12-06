@@ -867,7 +867,7 @@ class RosieConversation:
         import webrtcvad
         # Start with mode 3 (most aggressive) for web audio compatibility
         # Will dynamically adjust based on audio mode
-        vad = webrtcvad.Vad(3)  # Aggressiveness: 0-3 (3 = most aggressive)
+        vad = webrtcvad.Vad(2)  # Aggressiveness: 0-3 (2 = balanced, less likely to cut off speech)
 
         # Start continuous audio stream
         self._start_audio_stream()
@@ -1017,10 +1017,10 @@ class RosieConversation:
                             if len(speech_buffer) <= 3:
                                 print(f"[VAD] Speech detected! Buffer size: {len(speech_buffer)}")
 
-                            # NEW: Prevent buffer overflow - limit to ~3 seconds of audio
-                            # Each chunk is ~100ms, so 30 chunks = 3 seconds
-                            # Prevents Whisper hallucinations on excessively long audio
-                            MAX_BUFFER_CHUNKS = 30
+                            # NEW: Prevent buffer overflow - limit audio duration
+                            # Each chunk is ~100ms, so 30 chunks = 3 seconds, 100 chunks = 10 seconds
+                            # Test mode uses larger buffer to capture full test sentences
+                            MAX_BUFFER_CHUNKS = 100 if self.test_mode else 30
                             if len(speech_buffer) > MAX_BUFFER_CHUNKS:
                                 print(f"[BUFFER LIMIT] Reached max buffer size ({MAX_BUFFER_CHUNKS} chunks), forcing transcription")
                                 # Force transcription by simulating silence threshold
@@ -1038,10 +1038,10 @@ class RosieConversation:
                             speech_buffer.append(audio_chunk)
 
                         # Check if enough silence to consider phrase complete
-                        # Demo mode: 3 seconds silence, Normal mode: 0.5 seconds silence
+                        # Demo mode / Test mode: 2 seconds silence, Normal mode: 0.5 seconds silence
                         with self.demo_mode_lock:
                             in_demo_mode = self.demo_mode
-                        silence_threshold = 2.0 if in_demo_mode else 0.5  # seconds
+                        silence_threshold = 2.0 if (in_demo_mode or self.test_mode) else 0.5  # seconds
                         silence_frames_needed = int(silence_threshold * 1000 / vad_frame_duration)
 
                         if consecutive_silence >= silence_frames_needed:
@@ -1064,6 +1064,7 @@ class RosieConversation:
                                         best_of=5,
                                         temperature=0.0,
                                         condition_on_previous_text=False,
+                                        initial_prompt="Rosie is a voice assistant.",  # Help recognize wake word
                                         vad_filter=True,  # Extra VAD filtering from faster-whisper
                                         vad_parameters=dict(min_silence_duration_ms=500),
                                         # CRITICAL: Skip segments with >50% silence to prevent hallucinations
@@ -1409,27 +1410,18 @@ class RosieConversation:
 
         print("="*70)
 
-        # Step 6: Continue with normal conversation flow if wake word detected
+        # Check if wake word was detected (informational only)
         print(f"\n[TEST] Checking for wake word in transcription...")
         wake_word_pattern = r'\b(rosie|rose|rosy|rosee)\b'
         wake_word_match = re.search(wake_word_pattern, transcribed_text, re.IGNORECASE)
 
         if wake_word_match:
-            print(f"[TEST] Wake word detected! Continuing to LLM response...")
-
-            # The transcription is already in history (added by Whisper worker)
-            # Just trigger the response
-            try:
-                self._ollama_response()
-            except Exception as e:
-                print(f"[TEST ERROR] Response generation failed: {e}")
-                import traceback
-                traceback.print_exc()
-                self._set_state(ConversationState.LISTENING)
+            print(f"[TEST] ✓ Wake word 'Rosie' detected in transcription")
         else:
-            print(f"[TEST] No wake word in transcription - test complete")
-            print(f"[TEST] (To test LLM/TTS, include 'Rosie' in your test input)")
+            print(f"[TEST] ✗ Wake word not detected")
+            print(f"[TEST]   (Include 'Rosie' in test text to verify wake word detection)")
 
+        print(f"\n[TEST] Audio pipeline test complete!")
         print("="*70 + "\n")
 
     def _wake_word_detector(self):
@@ -1445,8 +1437,8 @@ class RosieConversation:
         while not self.shutdown_event.is_set():
             current_state = self._get_state()
 
-            # Only active in LISTENING state
-            if current_state == ConversationState.LISTENING:
+            # Only active in LISTENING state (and not in test mode)
+            if current_state == ConversationState.LISTENING and not self.test_mode:
                 try:
                     # Check if wake word flag was set by Whisper
                     with self.wake_word_lock:
@@ -2383,8 +2375,7 @@ class RosieConversation:
                 # Single test input provided
                 print(f"[TEST] Injecting text: \"{self.test_input}\"")
                 self._process_test_input(self.test_input)
-                # Wait a bit for processing to complete
-                time.sleep(3)
+                # Shutdown immediately after test completes
                 self.shutdown()
             else:
                 # Interactive test mode
