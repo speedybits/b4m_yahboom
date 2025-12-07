@@ -294,18 +294,20 @@ class RosieConversation:
     Simplified architecture with plain text conversation history.
     """
 
-    def __init__(self, test_mode=False, test_input=None, text_only_mode=False):
+    def __init__(self, test_mode=False, test_input=None, text_only_mode=False, test_questions_mode=False):
         """Initialize ROSIE system with configuration from environment
 
         Args:
             test_mode: If True, run full audio pipeline test (Piper → Speakers → Microphone → Whisper)
             test_input: In test mode, the text to inject (None for interactive)
             text_only_mode: If True, bypass all audio (no Whisper/Piper loading), text I/O only
+            test_questions_mode: If True, run comprehension test with paragraphs and questions
         """
         # Test mode configuration
         self.test_mode = test_mode
         self.test_input = test_input
         self.text_only_mode = text_only_mode
+        self.test_questions_mode = test_questions_mode
 
         # Load configuration from environment
         self.whisper_model_name = os.getenv('WHISPER_MODEL', 'base')
@@ -1377,6 +1379,142 @@ class RosieConversation:
 
         return char_accuracy, word_accuracy
 
+    def _run_test_questions(self):
+        """
+        Run comprehension test with paragraphs and questions.
+
+        Tests ROSIE's ability to understand context and answer questions accurately.
+        Simulates passive listening for the paragraph, then triggers response with wake word.
+        No TTS output - text only.
+        """
+        import random
+        import datetime
+
+        # Test cases: each has a paragraph, question (with Rosie), and expected answer keywords
+        test_cases = [
+            {
+                "paragraph": "The Great Wall of China was built over many centuries, with construction beginning as early as the 7th century BC. The most well-known sections were built during the Ming Dynasty between 1368 and 1644. The wall stretches approximately 13,171 miles and was primarily built to protect against invasions from northern nomadic groups.",
+                "question": "Rosie, during which dynasty were the most well-known sections of the Great Wall built?",
+                "expected_keywords": ["ming", "dynasty"],
+                "expected_answer": "Ming Dynasty"
+            },
+            {
+                "paragraph": "Marie Curie was a Polish-born physicist and chemist who conducted pioneering research on radioactivity. She was the first woman to win a Nobel Prize and remains the only person to have won Nobel Prizes in two different sciences: Physics in 1903 and Chemistry in 1911.",
+                "question": "Rosie, in what year did Marie Curie win the Nobel Prize in Chemistry?",
+                "expected_keywords": ["1911"],
+                "expected_answer": "1911"
+            },
+            {
+                "paragraph": "The Amazon River is the largest river by discharge volume of water in the world. It flows through South America, primarily through Brazil, and is approximately 4,000 miles long. The Amazon basin contains the world's largest tropical rainforest, covering about 2.72 million square miles.",
+                "question": "Rosie, approximately how long is the Amazon River?",
+                "expected_keywords": ["4000", "4,000", "four thousand"],
+                "expected_answer": "4,000 miles"
+            },
+            {
+                "paragraph": "The human heart beats approximately 100,000 times per day, pumping about 2,000 gallons of blood through the body. The heart has four chambers: two atria and two ventricles. The average adult heart weighs between 8 and 12 ounces.",
+                "question": "Rosie, how many chambers does the human heart have?",
+                "expected_keywords": ["four", "4"],
+                "expected_answer": "four chambers"
+            },
+            {
+                "paragraph": "Mount Everest, located in the Himalayas on the border between Nepal and Tibet, is the highest mountain on Earth. Its peak stands at 29,032 feet above sea level. The first confirmed summit was achieved by Edmund Hillary and Tenzing Norgay on May 29, 1953.",
+                "question": "Rosie, who were the first people to reach the summit of Mount Everest?",
+                "expected_keywords": ["hillary", "norgay", "edmund", "tenzing"],
+                "expected_answer": "Edmund Hillary and Tenzing Norgay"
+            },
+            {
+                "paragraph": "The speed of light in a vacuum is exactly 299,792,458 meters per second, which is approximately 186,282 miles per second. Light from the Sun takes about 8 minutes and 20 seconds to reach Earth. This constant speed is fundamental to Einstein's theory of special relativity.",
+                "question": "Rosie, how long does it take for light from the Sun to reach Earth?",
+                "expected_keywords": ["8", "eight", "minute", "20", "twenty", "second"],
+                "expected_answer": "8 minutes and 20 seconds"
+            },
+            {
+                "paragraph": "The Eiffel Tower was completed in 1889 and was built as the entrance arch for the World's Fair held in Paris that year. Designed by Gustave Eiffel's engineering company, it stands 1,083 feet tall and was the tallest man-made structure in the world until 1930.",
+                "question": "Rosie, in what year was the Eiffel Tower completed?",
+                "expected_keywords": ["1889"],
+                "expected_answer": "1889"
+            },
+            {
+                "paragraph": "Water freezes at 32 degrees Fahrenheit or 0 degrees Celsius at standard atmospheric pressure. It boils at 212 degrees Fahrenheit or 100 degrees Celsius. Water is unique because it is less dense as a solid than as a liquid, which is why ice floats.",
+                "question": "Rosie, at what temperature does water boil in Fahrenheit?",
+                "expected_keywords": ["212"],
+                "expected_answer": "212 degrees Fahrenheit"
+            },
+        ]
+
+        # Randomly select a test case
+        test_case = random.choice(test_cases)
+
+        print("\n" + "="*70)
+        print("ROSIE COMPREHENSION TEST")
+        print("="*70)
+        print("\n[STEP 1] Simulating passive listening (STT transcription)...\n")
+        print(f"Paragraph: {test_case['paragraph']}")
+        print()
+        print("(ROSIE passively listening - no response)")
+
+        # Step 1: Add paragraph to conversation history as passive listening
+        # This simulates what would happen with STT transcription without wake word
+        timestamp = datetime.datetime.now().strftime('%I:%M %p')
+        history_entry = f"Human [{timestamp}]: {test_case['paragraph']}\n"
+        with open(self.history_file, 'a') as f:
+            f.write(history_entry)
+
+        # No response from ROSIE - just passive listening
+
+        print("\n" + "-"*70)
+        print("\n[STEP 2] Asking question with wake word 'Rosie'...\n")
+        print(f"Question: {test_case['question']}")
+        print(f"Expected answer: {test_case['expected_answer']}")
+        print()
+
+        # Step 2: Ask the question (includes "Rosie" to trigger response)
+        timestamp = datetime.datetime.now().strftime('%I:%M %p')
+        history_entry = f"Human [{timestamp}]: {test_case['question']}\n"
+        with open(self.history_file, 'a') as f:
+            f.write(history_entry)
+
+        # Get ROSIE's answer (text only, no TTS)
+        self._ollama_response()
+        answer_response = self.speak_file.read_text().strip()
+
+        # Add ROSIE's answer to history
+        timestamp = datetime.datetime.now().strftime('%I:%M %p')
+        history_entry = f"Robot [{timestamp}]: {answer_response}\n"
+        with open(self.history_file, 'a') as f:
+            f.write(history_entry)
+
+        print(f"ROSIE answer: {answer_response}\n")
+
+        print("-"*70)
+        print("\n[STEP 3] Evaluating response accuracy...\n")
+
+        # Check if response contains expected keywords
+        # Keywords are treated as alternatives - finding ANY one of them means success
+        answer_lower = answer_response.lower()
+        keywords_found = []
+
+        for keyword in test_case['expected_keywords']:
+            if keyword.lower() in answer_lower:
+                keywords_found.append(keyword)
+
+        # Success if at least one keyword variant was found
+        passed = len(keywords_found) > 0
+
+        print(f"Expected (any of): {test_case['expected_keywords']}")
+        print(f"Found: {keywords_found if keywords_found else 'None'}")
+
+        print("\n" + "="*70)
+        if passed:
+            print("TEST RESULT: ✓ PASSED - Expected answer found")
+            result = True
+        else:
+            print("TEST RESULT: ✗ FAILED - Expected answer not found")
+            result = False
+        print("="*70 + "\n")
+
+        return result
+
     def _process_test_input(self, text):
         """
         Process text input in test mode - FULL AUDIO PIPELINE TEST
@@ -1801,8 +1939,9 @@ class RosieConversation:
                 temperature = 0.7  # Higher temperature for conversational/creative responses
                 mode = "CONVERSATIONAL"
 
-            # Show what the user just said
-            print(f"\n→ You: {last_human_statement}")
+            # Show what the user just said (unless in test-questions mode)
+            if not self.test_questions_mode:
+                print(f"\n→ You: {last_human_statement}")
 
             # Get current date and time for context
             import datetime
@@ -1978,8 +2117,9 @@ class RosieConversation:
                 if ollama_text:
                     # Write to speak.txt
                     self.speak_file.write_text(ollama_text)
-                    # Show robot response
-                    print(f"← ROSIE: {ollama_text}\n")
+                    # Show robot response (unless in test-questions mode)
+                    if not self.test_questions_mode:
+                        print(f"← ROSIE: {ollama_text}\n")
                     self._log(f"Ollama response: {ollama_text}")
 
                     # Transition to SPEAKING state
@@ -2352,6 +2492,12 @@ class RosieConversation:
         self._log("Starting ROSIE Conversational AI System...")
         debug_print("[DEBUG] start() called", flush=True)
 
+        # Test questions mode: Run comprehension test (text-only, no audio)
+        if self.test_questions_mode:
+            self._run_test_questions()
+            self.shutdown()
+            return
+
         # Text-only mode: Skip all audio processing, use stdin/stdout
         if self.text_only_mode:
             print("\n" + "="*70)
@@ -2685,6 +2831,9 @@ def main():
                        help='Debug mode: Show verbose output including RAG queries, Ollama calls, '
                             'VAD status, and audio processing details. Default output shows only '
                             'transcriptions and wake word detection.')
+    parser.add_argument('--test-questions', action='store_true',
+                       help='Test mode: Verify ROSIE comprehension by providing a paragraph and '
+                            'asking a question with a known answer. Uses text-only mode.')
     args = parser.parse_args()
 
     # Set global debug mode
@@ -2701,7 +2850,12 @@ def main():
 
     # Create ROSIE instance
     debug_print("\n[INIT] Creating ROSIE instance...")
-    rosie = RosieConversation(test_mode=args.test_audio is not None, test_input=args.test_audio, text_only_mode=args.text_only)
+    rosie = RosieConversation(
+        test_mode=args.test_audio is not None,
+        test_input=args.test_audio,
+        text_only_mode=args.text_only,
+        test_questions_mode=args.test_questions
+    )
     debug_print("[INIT] ROSIE instance created successfully")
 
     # Store instance for signal handler

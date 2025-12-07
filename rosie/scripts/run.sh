@@ -49,6 +49,10 @@ for arg in "$@"; do
         --debug)
             ARGS+=("$arg")
             ;;
+        --test-questions)
+            ARGS+=("$arg")
+            ENABLE_WEB=false
+            ;;
         --help|-h)
             echo "ROSIE Conversational AI Launch Script"
             echo ""
@@ -111,6 +115,15 @@ for arg in "$@"; do
             echo "      Default (without --debug): Only shows Whisper transcriptions,"
             echo "      wake word detection, and ROSIE responses."
             echo ""
+            echo "  --test-questions"
+            echo "      Runs a comprehension test to verify ROSIE's understanding."
+            echo "      Test procedure:"
+            echo "        1. A random paragraph with factual information is provided to ROSIE"
+            echo "        2. A question with a well-defined answer is asked about the paragraph"
+            echo "        3. ROSIE's response is checked for expected keywords"
+            echo "      This uses text-only mode (no audio processing)."
+            echo "      Useful for verifying that the LLM is responding accurately."
+            echo ""
             echo "EXAMPLES:"
             echo ""
             echo "  $0"
@@ -134,6 +147,10 @@ for arg in "$@"; do
             echo "  $0 --debug"
             echo "      Start ROSIE with verbose debug output."
             echo "      Useful for troubleshooting or development."
+            echo ""
+            echo "  $0 --test-questions"
+            echo "      Run comprehension test with random paragraph and question."
+            echo "      Verifies ROSIE can understand and answer accurately."
             echo ""
             echo "ENVIRONMENT:"
             echo ""
