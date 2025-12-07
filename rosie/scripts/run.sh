@@ -53,6 +53,10 @@ for arg in "$@"; do
             ARGS+=("$arg")
             ENABLE_WEB=false
             ;;
+        --test-knowledge)
+            ARGS+=("$arg")
+            ENABLE_WEB=false
+            ;;
         --help|-h)
             echo "ROSIE Conversational AI Launch Script"
             echo ""
@@ -124,6 +128,15 @@ for arg in "$@"; do
             echo "      This uses text-only mode (no audio processing)."
             echo "      Useful for verifying that the LLM is responding accurately."
             echo ""
+            echo "  --test-knowledge"
+            echo "      Runs a RAG knowledge base retrieval test."
+            echo "      Test procedure:"
+            echo "        1. A question is asked about data in the knowledge_base/ folder"
+            echo "        2. ROSIE uses RAG to retrieve relevant context"
+            echo "        3. Response is checked for expected keywords from the knowledge base"
+            echo "      Tests retrieval from non-private documents (family.md, yardcare.md, etc.)."
+            echo "      This uses text-only mode (no audio processing)."
+            echo ""
             echo "EXAMPLES:"
             echo ""
             echo "  $0"
@@ -151,6 +164,10 @@ for arg in "$@"; do
             echo "  $0 --test-questions"
             echo "      Run comprehension test with random paragraph and question."
             echo "      Verifies ROSIE can understand and answer accurately."
+            echo ""
+            echo "  $0 --test-knowledge"
+            echo "      Run RAG knowledge base test with question from knowledge_base/."
+            echo "      Verifies RAG retrieval is working correctly."
             echo ""
             echo "ENVIRONMENT:"
             echo ""
