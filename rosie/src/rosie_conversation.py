@@ -25,6 +25,15 @@ import argparse
 from enum import Enum
 from pathlib import Path
 import requests
+
+# Global debug mode flag - controlled by --debug CLI argument
+DEBUG_MODE = False
+
+def debug_print(*args, **kwargs):
+    """Print only if DEBUG_MODE is enabled"""
+    if DEBUG_MODE:
+        print(*args, **kwargs)
+
 import whisper
 import numpy as np
 import sounddevice as sd
@@ -76,7 +85,7 @@ class RosieRAG:
         self.knowledge_base_dir.mkdir(exist_ok=True)
         self.chroma_db_dir.mkdir(exist_ok=True)
 
-        print(f"[RAG] Initializing knowledge base...")
+        debug_debug_print(f"[RAG] Initializing knowledge base...")
 
         # Setup Ollama embeddings (no LLM needed for retrieval-only RAG)
         Settings.embed_model = OllamaEmbedding(
@@ -94,8 +103,8 @@ class RosieRAG:
         md_files = list(self.knowledge_base_dir.rglob("*.md"))
 
         if not md_files:
-            print(f"[RAG] No .md files found in {self.knowledge_base_dir}")
-            print(f"[RAG] Knowledge base is empty. Add .md files and restart ROSIE.")
+            debug_debug_print(f"[RAG] No .md files found in {self.knowledge_base_dir}")
+            debug_debug_print(f"[RAG] Knowledge base is empty. Add .md files and restart ROSIE.")
             # Create empty index
             self.index = VectorStoreIndex.from_documents(
                 [],
@@ -116,7 +125,7 @@ class RosieRAG:
                     reader_kwargs["exclude"] = ["**/private/*", "**/private/**/*"]
 
                 documents = SimpleDirectoryReader(**reader_kwargs).load_data()
-                print(f"[RAG] Loading {len(documents)} document chunks...")
+                debug_debug_print(f"[RAG] Loading {len(documents)} document chunks...")
 
                 # Create or update index
                 self.index = VectorStoreIndex.from_documents(
@@ -126,7 +135,7 @@ class RosieRAG:
                 )
 
             except Exception as e:
-                print(f"[RAG] Error loading documents: {e}")
+                debug_debug_print(f"[RAG] Error loading documents: {e}")
                 # Create empty index on error
                 self.index = VectorStoreIndex.from_documents(
                     [],
@@ -141,7 +150,7 @@ class RosieRAG:
 
         # Check if Ollama is using GPU by examining recent logs
         # Skip journalctl check (can cause hangs) - just print ready message
-        print(f"[RAG] Ready ({len(md_files)} knowledge base files)")
+        debug_debug_print(f"[RAG] Ready ({len(md_files)} knowledge base files)")
 
     def query(self, question, top_k=5):
         """
@@ -170,8 +179,8 @@ class RosieRAG:
             # Extract text from retrieved nodes
             if nodes:
                 contexts = []
-                print(f"[RAG] Query: '{question}'")
-                print(f"[RAG] Retrieved {len(nodes)} chunks:")
+                debug_debug_print(f"[RAG] Query: '{question}'")
+                debug_debug_print(f"[RAG] Retrieved {len(nodes)} chunks:")
                 for i, node in enumerate(nodes):
                     # Get the text content from each node
                     text = node.node.get_content()
@@ -180,16 +189,16 @@ class RosieRAG:
                     # Get similarity score if available
                     score = getattr(node, 'score', None)
                     score_str = f" (score: {score:.3f})" if score is not None else ""
-                    print(f"[RAG]   {i+1}. {source}{score_str}: {text[:80].replace(chr(10), ' ')}...")
+                    debug_debug_print(f"[RAG]   {i+1}. {source}{score_str}: {text[:80].replace(chr(10), ' ')}...")
                     contexts.append(f"[From {source}]\n{text}")
 
                 return "\n\n".join(contexts)
             else:
-                print(f"[RAG] Query: '{question}' - No chunks retrieved")
+                debug_debug_print(f"[RAG] Query: '{question}' - No chunks retrieved")
                 return ""
 
         except Exception as e:
-            print(f"[RAG] Query error: {e}")
+            debug_debug_print(f"[RAG] Query error: {e}")
             import traceback
             traceback.print_exc()
             return ""
@@ -205,7 +214,7 @@ class RosieRAG:
             True if reload successful, False otherwise
         """
         try:
-            print(f"[RAG] Reloading with private_mode={private_mode}")
+            debug_debug_print(f"[RAG] Reloading with private_mode={private_mode}")
 
             # Update private mode flag
             self.private_mode = private_mode
@@ -216,9 +225,9 @@ class RosieRAG:
             # Delete existing collection to force re-indexing
             try:
                 chroma_client.delete_collection("rosie_knowledge")
-                print(f"[RAG] Deleted existing collection")
+                debug_debug_print(f"[RAG] Deleted existing collection")
             except Exception as e:
-                print(f"[RAG] Collection didn't exist or couldn't delete: {e}")
+                debug_debug_print(f"[RAG] Collection didn't exist or couldn't delete: {e}")
 
             # Create new collection
             chroma_collection = chroma_client.get_or_create_collection("rosie_knowledge")
@@ -226,7 +235,7 @@ class RosieRAG:
             storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
             # Load documents with new private mode setting
-            print(f"[RAG] Loading documents...")
+            debug_debug_print(f"[RAG] Loading documents...")
             reader_kwargs = {
                 "input_dir": str(self.knowledge_base_dir),
                 "required_exts": [".md"],
@@ -236,14 +245,14 @@ class RosieRAG:
             # Exclude private/ folder when private_mode is False
             if not self.private_mode:
                 reader_kwargs["exclude"] = ["**/private/*", "**/private/**/*"]
-                print(f"[RAG] Excluding private/ folder")
+                debug_debug_print(f"[RAG] Excluding private/ folder")
             else:
-                print(f"[RAG] Including private/ folder")
+                debug_debug_print(f"[RAG] Including private/ folder")
 
             documents = SimpleDirectoryReader(**reader_kwargs).load_data()
 
-            print(f"[RAG] Loaded {len(documents)} document chunks")
-            print(f"[RAG] Creating vector embeddings...")
+            debug_debug_print(f"[RAG] Loaded {len(documents)} document chunks")
+            debug_debug_print(f"[RAG] Creating vector embeddings...")
 
             # Create new index
             self.index = VectorStoreIndex.from_documents(
@@ -255,11 +264,11 @@ class RosieRAG:
             # Update retriever
             self.retriever = self.index.as_retriever(similarity_top_k=5)
 
-            print(f"[RAG] Reload complete")
+            debug_debug_print(f"[RAG] Reload complete")
             return True
 
         except Exception as e:
-            print(f"[RAG] Error reloading: {e}")
+            debug_debug_print(f"[RAG] Error reloading: {e}")
             import traceback
             traceback.print_exc()
             return False
@@ -399,13 +408,13 @@ class RosieConversation:
     def _log(self, message):
         """Log messages with timestamp"""
         if self.debug:
-            print(f"[{time.strftime('%H:%M:%S')}] {message}")
+            debug_print(f"[{time.strftime('%H:%M:%S')}] {message}")
 
     def _initialize_files(self):
         """Initialize conversation files - ensure they exist"""
         # Always clear conversation history on startup for fresh conversations
         self.history_file.write_text('')
-        print("Cleared conversation_history.txt (starting fresh)")
+        debug_print("Cleared conversation_history.txt (starting fresh)")
 
         # Always clear speak file (temporary buffer)
         self.speak_file.write_text('')
@@ -413,7 +422,7 @@ class RosieConversation:
     def _initialize_rag(self):
         """Initialize RAG knowledge base system"""
         if not RAG_AVAILABLE:
-            print("RAG system not available (missing dependencies)")
+            debug_print("RAG system not available (missing dependencies)")
             return
 
         try:
@@ -423,10 +432,10 @@ class RosieConversation:
                 chroma_db_dir=self.chroma_db_dir,
                 private_mode=False
             )
-            print("RAG knowledge base initialized successfully")
+            debug_print("RAG knowledge base initialized successfully")
         except Exception as e:
-            print(f"Warning: Could not initialize RAG system: {e}")
-            print("ROSIE will continue without knowledge base features")
+            debug_print(f"Warning: Could not initialize RAG system: {e}")
+            debug_print("ROSIE will continue without knowledge base features")
             self.rag_system = None
 
     def _estimate_token_count(self, text):
@@ -437,8 +446,8 @@ class RosieConversation:
     def _validate_configuration(self):
         """Validate required configuration"""
         if not self.piper_model_path or not Path(self.piper_model_path).exists():
-            print(f"ERROR: PIPER_MODEL_PATH not found: {self.piper_model_path}")
-            print("Please set PIPER_MODEL_PATH in ~/.bashrc")
+            debug_print(f"ERROR: PIPER_MODEL_PATH not found: {self.piper_model_path}")
+            debug_print("Please set PIPER_MODEL_PATH in ~/.bashrc")
             sys.exit(1)
 
     def _get_state(self):
@@ -452,7 +461,7 @@ class RosieConversation:
             old_state = self.state
             self.state = new_state
             # Always print state transitions to console
-            print(f"\n[STATE] {old_state.name} → {new_state.name}")
+            debug_print(f"\n[STATE] {old_state.name} → {new_state.name}")
             self._log(f"State transition: {old_state.name} -> {new_state.name}")
 
             # Update web status file
@@ -468,7 +477,7 @@ class RosieConversation:
         with self.audio_mode_lock:
             old_mode = self.audio_mode
             self.audio_mode = new_mode
-            print(f"\n[AUDIO MODE] {old_mode.name} → {new_mode.name}")
+            debug_print(f"\n[AUDIO MODE] {old_mode.name} → {new_mode.name}")
             self._log(f"Audio mode transition: {old_mode.name} -> {new_mode.name}")
 
     def _check_web_audio_enabled(self):
@@ -476,7 +485,7 @@ class RosieConversation:
         if self.web_server_module is None:
             # Debug once
             if not hasattr(self, '_web_module_none_warned'):
-                print(f"[WEB AUDIO CHECK] web_server_module is None - cannot check status")
+                debug_print(f"[WEB AUDIO CHECK] web_server_module is None - cannot check status")
                 self._web_module_none_warned = True
             return False
         try:
@@ -485,12 +494,12 @@ class RosieConversation:
             if not hasattr(self, '_web_status_check_count'):
                 self._web_status_check_count = 0
             if self._web_status_check_count < 10:
-                print(f"[WEB AUDIO CHECK] #{self._web_status_check_count}: enabled={enabled}")
+                debug_print(f"[WEB AUDIO CHECK] #{self._web_status_check_count}: enabled={enabled}")
                 self._web_status_check_count += 1
             return enabled
         except Exception as e:
             self._log(f"Error checking web audio status: {e}")
-            print(f"[WEB AUDIO CHECK] Error: {e}")
+            debug_print(f"[WEB AUDIO CHECK] Error: {e}")
             return False
 
     def _disable_web_audio_status(self):
@@ -508,26 +517,26 @@ class RosieConversation:
     def _import_web_server_module(self):
         """Dynamically import the web server module for audio integration"""
         if self.web_server_module is not None:
-            print("[DEBUG] Web server module already loaded", flush=True)
+            debug_print("[DEBUG] Web server module already loaded", flush=True)
             return True
 
         try:
-            print("[DEBUG] Attempting to import rosie_web_status module...", flush=True)
+            debug_print("[DEBUG] Attempting to import rosie_web_status module...", flush=True)
             import sys
             from pathlib import Path
             # Add rosie/src to path
             rosie_src_dir = Path(__file__).parent
-            print(f"[DEBUG] Adding to sys.path: {rosie_src_dir}", flush=True)
+            debug_print(f"[DEBUG] Adding to sys.path: {rosie_src_dir}", flush=True)
             if str(rosie_src_dir) not in sys.path:
                 sys.path.insert(0, str(rosie_src_dir))
 
             import rosie_web_status
             self.web_server_module = rosie_web_status
-            print("[DEBUG] ✓ rosie_web_status module imported successfully!", flush=True)
+            debug_print("[DEBUG] ✓ rosie_web_status module imported successfully!", flush=True)
             self._log("Web server module imported successfully")
             return True
         except ImportError as e:
-            print(f"[DEBUG] ✗ Failed to import rosie_web_status: {e}", flush=True)
+            debug_print(f"[DEBUG] ✗ Failed to import rosie_web_status: {e}", flush=True)
             self._log(f"Could not import web server module: {e}")
             return False
 
@@ -590,8 +599,8 @@ class RosieConversation:
             timeout_seconds = 30 * 60  # 30 minutes
 
             if time_elapsed >= timeout_seconds:
-                print(f"\n[PRIVATE MODE] Timeout after {time_elapsed/60:.1f} minutes of inactivity")
-                print(f"[PRIVATE MODE] Disabling private mode...")
+                debug_print(f"\n[PRIVATE MODE] Timeout after {time_elapsed/60:.1f} minutes of inactivity")
+                debug_print(f"[PRIVATE MODE] Disabling private mode...")
 
                 # Disable private mode
                 self.private_mode_enabled = False
@@ -601,9 +610,9 @@ class RosieConversation:
                 if self.rag_system:
                     success = self.rag_system.reload_with_private_mode(False)
                     if success:
-                        print(f"[PRIVATE MODE] RAG reloaded without private documents")
+                        debug_print(f"[PRIVATE MODE] RAG reloaded without private documents")
                     else:
-                        print(f"[PRIVATE MODE] Warning: RAG reload failed")
+                        debug_print(f"[PRIVATE MODE] Warning: RAG reload failed")
 
                 # Update web status
                 self._update_web_status(self._get_state())
@@ -654,7 +663,7 @@ class RosieConversation:
             # Check for same word repeated 4+ times in a row
             for i in range(len(words) - 3):
                 if words[i] == words[i+1] == words[i+2] == words[i+3]:
-                    print(f"[HALLUCINATION] Detected 4x repetition: '{words[i]}'")
+                    debug_print(f"[HALLUCINATION] Detected 4x repetition: '{words[i]}'")
                     return True
 
             # Check for same 2-word phrase repeated 3+ times
@@ -663,7 +672,7 @@ class RosieConversation:
                 phrase2 = f"{words[i+2]} {words[i+3]}"
                 phrase3 = f"{words[i+4]} {words[i+5]}"
                 if phrase == phrase2 == phrase3:
-                    print(f"[HALLUCINATION] Detected 3x phrase repetition: '{phrase}'")
+                    debug_print(f"[HALLUCINATION] Detected 3x phrase repetition: '{phrase}'")
                     return True
 
         # Check for very short transcriptions (single punctuation or short nonsense)
@@ -691,45 +700,45 @@ class RosieConversation:
 
     def _load_whisper_model(self):
         """Load faster-whisper model with GPU auto-detection and superior hallucination suppression"""
-        print("[LOAD MODEL] Checking if model already loaded...", flush=True)
+        debug_print("[LOAD MODEL] Checking if model already loaded...", flush=True)
         if self.whisper_model is None:
-            print("[LOAD MODEL] Model not loaded, starting load process...", flush=True)
+            debug_print("[LOAD MODEL] Model not loaded, starting load process...", flush=True)
             self._log(f"Loading faster-whisper model: {self.whisper_model_name}")
 
             try:
-                print("[LOAD MODEL] Importing WhisperModel...", flush=True)
+                debug_print("[LOAD MODEL] Importing WhisperModel...", flush=True)
                 from faster_whisper import WhisperModel
 
                 # Auto-detect best available device
-                print("[LOAD MODEL] Detecting best device...", flush=True)
+                debug_print("[LOAD MODEL] Detecting best device...", flush=True)
                 device = self._detect_best_device()
 
                 # Use float16 with CUDA (now that cuDNN is installed), int8 for CPU
                 compute_type = "float16" if device == "cuda" else "int8"
 
-                print(f"[LOAD MODEL] Using device: {device}, compute_type: {compute_type}", flush=True)
+                debug_print(f"[LOAD MODEL] Using device: {device}, compute_type: {compute_type}", flush=True)
                 self._log(f"Using device: {device}, compute_type: {compute_type}")
 
                 # Load faster-whisper model with optimizations
-                print(f"[LOAD MODEL] Creating WhisperModel instance (THIS MAY TAKE 10-30 SECONDS)...", flush=True)
+                debug_print(f"[LOAD MODEL] Creating WhisperModel instance (THIS MAY TAKE 10-30 SECONDS)...", flush=True)
                 self.whisper_model = WhisperModel(
                     self.whisper_model_name,
                     device=device,
                     compute_type=compute_type,
                     num_workers=1  # Single worker for real-time
                 )
-                print("[LOAD MODEL] WhisperModel instance created", flush=True)
+                debug_print("[LOAD MODEL] WhisperModel instance created", flush=True)
 
                 if device == "cuda":
-                    print(f"[WHISPER] ✓ Faster-Whisper loaded on GPU (CUDA, {compute_type}) - 4-6x faster!")
+                    debug_print(f"[WHISPER] ✓ Faster-Whisper loaded on GPU (CUDA, {compute_type}) - 4-6x faster!")
                 else:
-                    print(f"[WHISPER] ℹ Faster-Whisper loaded on CPU")
+                    debug_print(f"[WHISPER] ℹ Faster-Whisper loaded on CPU")
 
                 self._log(f"Faster-Whisper model loaded successfully on {device}")
 
             except Exception as e:
-                print(f"\n[ERROR] Failed to load Faster-Whisper model: {e}")
-                print(f"[ERROR] Please check faster-whisper installation and cuDNN")
+                debug_print(f"\n[ERROR] Failed to load Faster-Whisper model: {e}")
+                debug_print(f"[ERROR] Please check faster-whisper installation and cuDNN")
                 self._log(f"Faster-Whisper model loading failed: {e}")
                 raise
 
@@ -753,8 +762,8 @@ class RosieConversation:
                         return "cuda"
                     except Exception as e:
                         self._log(f"CUDA available but not functional: {e}")
-                        print(f"[WHISPER] ⚠ GPU detected but CUDA initialization failed")
-                        print(f"[WHISPER] → Falling back to CPU")
+                        debug_print(f"[WHISPER] ⚠ GPU detected but CUDA initialization failed")
+                        debug_print(f"[WHISPER] → Falling back to CPU")
                         return "cpu"
                 else:
                     self._log("CUDA not available, using CPU")
@@ -774,7 +783,7 @@ class RosieConversation:
         """
         if status:
             self._log(f"Audio callback status: {status}")
-            print(f"[AUDIO] Callback status: {status}")
+            debug_print(f"[AUDIO] Callback status: {status}")
 
         # Only capture during LISTENING state and LOCAL audio mode
         current_mode = self._get_audio_mode()
@@ -784,7 +793,7 @@ class RosieConversation:
         if not hasattr(self, '_callback_count'):
             self._callback_count = 0
         if self._callback_count < 3:
-            print(f"[AUDIO CALLBACK] #{self._callback_count}: state={current_state}, mode={current_mode}, frames={frames}, max_level={np.abs(indata).max():.4f}")
+            debug_print(f"[AUDIO CALLBACK] #{self._callback_count}: state={current_state}, mode={current_mode}, frames={frames}, max_level={np.abs(indata).max():.4f}")
             self._callback_count += 1
 
         if current_state == ConversationState.LISTENING and current_mode == AudioMode.LOCAL:
@@ -808,7 +817,7 @@ class RosieConversation:
                 if web_audio_enabled:
                     # Switch to WEB mode if not already
                     if self._get_audio_mode() != AudioMode.WEB:
-                        print(f"[WEB AUDIO] Detected web audio enabled, switching to WEB mode")
+                        debug_print(f"[WEB AUDIO] Detected web audio enabled, switching to WEB mode")
                         self._set_audio_mode(AudioMode.WEB)
 
                     # Poll for audio data from web server
@@ -826,13 +835,13 @@ class RosieConversation:
                     else:
                         # Debug: Show if module not available
                         if not hasattr(self, '_web_module_warning_shown'):
-                            print(f"[WEB AUDIO] Warning: web_server_module not available")
+                            debug_print(f"[WEB AUDIO] Warning: web_server_module not available")
                             self._web_module_warning_shown = True
 
                 else:
                     # Switch back to LOCAL mode if not already
                     if self._get_audio_mode() != AudioMode.LOCAL:
-                        print(f"[WEB AUDIO] Web audio disabled, switching back to LOCAL mode")
+                        debug_print(f"[WEB AUDIO] Web audio disabled, switching back to LOCAL mode")
                         self._set_audio_mode(AudioMode.LOCAL)
 
                 # Poll frequency: 25ms when active (40 polls/sec), 100ms when inactive
@@ -859,7 +868,7 @@ class RosieConversation:
             self._log("Whisper worker started")
             self._load_whisper_model()
         except Exception as e:
-            print(f"[WHISPER WORKER ERROR] Failed to start: {e}", flush=True)
+            debug_print(f"[WHISPER WORKER ERROR] Failed to start: {e}", flush=True)
             import traceback
             traceback.print_exc()
             return
@@ -895,7 +904,7 @@ class RosieConversation:
                     if self._mode_check_count < 5:
                         current_mode = self._get_audio_mode()
                         queue_len = len(self.audio_queue)
-                        print(f"[WHISPER WORKER] Mode: {current_mode}, Queue length: {queue_len}")
+                        debug_print(f"[WHISPER WORKER] Mode: {current_mode}, Queue length: {queue_len}")
                         self._mode_check_count += 1
 
                     # Check audio queue every 30ms
@@ -945,7 +954,7 @@ class RosieConversation:
                             if not hasattr(self, '_web_vad_check_count'):
                                 self._web_vad_check_count = 0
                             if self._web_vad_check_count < 5:
-                                print(f"[WEB VAD] #{self._web_vad_check_count}: rms={rms_energy:.4f}, peak={peak_level:.4f}, var={audio_variation:.4f}")
+                                debug_print(f"[WEB VAD] #{self._web_vad_check_count}: rms={rms_energy:.4f}, peak={peak_level:.4f}, var={audio_variation:.4f}")
                                 self._web_vad_check_count += 1
 
                             # Require ALL of: sufficient RMS, sufficient peak, AND variation
@@ -967,7 +976,7 @@ class RosieConversation:
                                 self._vad_attempt_count = 0
                             if self._vad_attempt_count < 5:
                                 audio_level = np.abs(audio_chunk).max() if len(audio_chunk) > 0 else 0
-                                print(f"[VAD ATTEMPT] #{self._vad_attempt_count}: audio_level={audio_level:.4f}, chunk_len={len(audio_chunk)}, int16_len={len(audio_int16)}, from_queue={audio_from_queue}")
+                                debug_print(f"[VAD ATTEMPT] #{self._vad_attempt_count}: audio_level={audio_level:.4f}, chunk_len={len(audio_chunk)}, int16_len={len(audio_int16)}, from_queue={audio_from_queue}")
                                 self._vad_attempt_count += 1
 
                             is_speech = vad.is_speech(audio_int16.tobytes(), self.sample_rate)
@@ -976,13 +985,13 @@ class RosieConversation:
                             if not hasattr(self, '_vad_check_count'):
                                 self._vad_check_count = 0
                             if self._vad_check_count < 10:
-                                print(f"[VAD CHECK] #{self._vad_check_count}: is_speech={is_speech}")
+                                debug_print(f"[VAD CHECK] #{self._vad_check_count}: is_speech={is_speech}")
                                 self._vad_check_count += 1
                         except Exception as e:
                             if not hasattr(self, '_vad_error_count'):
                                 self._vad_error_count = 0
                             if self._vad_error_count < 5:
-                                print(f"[VAD ERROR] #{self._vad_error_count}: {e}, chunk_len={len(audio_chunk)}, int16_len={len(audio_int16)}")
+                                debug_print(f"[VAD ERROR] #{self._vad_error_count}: {e}, chunk_len={len(audio_chunk)}, int16_len={len(audio_int16)}")
                                 self._vad_error_count += 1
                             continue
 
@@ -998,7 +1007,7 @@ class RosieConversation:
                             self._cooldown_msg_count = 0
                         if self._cooldown_msg_count < 3:
                             remaining = buffer_limit_cooldown_until - time.time()
-                            print(f"[COOLDOWN] Ignoring audio for {remaining:.1f}s more...")
+                            debug_print(f"[COOLDOWN] Ignoring audio for {remaining:.1f}s more...")
                             self._cooldown_msg_count += 1
 
                     if is_speech:
@@ -1007,7 +1016,7 @@ class RosieConversation:
                             # First detection of speech - START of new phrase
                             is_speaking = True
                             consecutive_silence = 0  # Reset counter for new phrase
-                            print(f"[SPEECH START] is_speaking set to True, resetting consecutive_silence")
+                            debug_print(f"[SPEECH START] is_speaking set to True, resetting consecutive_silence")
                         else:
                             # Continuing speech - do NOT reset counter
                             # Allow brief silence during speech to accumulate toward threshold
@@ -1016,19 +1025,19 @@ class RosieConversation:
                             speech_buffer.append(audio_chunk)
                             # Debug: Show when speech is detected
                             if len(speech_buffer) <= 3:
-                                print(f"[VAD] Speech detected! Buffer size: {len(speech_buffer)}")
+                                debug_print(f"[VAD] Speech detected! Buffer size: {len(speech_buffer)}")
 
                             # NEW: Prevent buffer overflow - limit audio duration
                             # Each chunk is ~100ms, so 30 chunks = 3 seconds
                             # Test mode: no limit (uses sys.maxsize) to capture any length
                             MAX_BUFFER_CHUNKS = (2**31 - 1) if self.test_mode else 30
                             if len(speech_buffer) > MAX_BUFFER_CHUNKS:
-                                print(f"[BUFFER LIMIT] Reached max buffer size ({MAX_BUFFER_CHUNKS} chunks), forcing transcription")
+                                debug_print(f"[BUFFER LIMIT] Reached max buffer size ({MAX_BUFFER_CHUNKS} chunks), forcing transcription")
                                 # Force transcription by simulating silence threshold
                                 consecutive_silence = 999
                                 # Activate cooldown to prevent immediate re-trigger (web audio continuous stream issue)
                                 buffer_limit_cooldown_until = time.time() + 2.0  # 2 second cooldown
-                                print(f"[BUFFER LIMIT] Activating 2-second cooldown to prevent loop")
+                                debug_print(f"[BUFFER LIMIT] Activating 2-second cooldown to prevent loop")
                                 # Reset cooldown message counter for new cooldown period
                                 self._cooldown_msg_count = 0
                     elif is_speaking:
@@ -1061,17 +1070,17 @@ class RosieConversation:
                         if should_transcribe:
                             # Phrase complete! Transcribe it
                             if force_transcribe:
-                                print(f"[TEST] Force transcribe triggered")
-                            print(f"[TRANSCRIBE] Silence threshold reached! consecutive_silence={consecutive_silence}, threshold={silence_frames_needed}")
+                                debug_print(f"[TEST] Force transcribe triggered")
+                            debug_print(f"[TRANSCRIBE] Silence threshold reached! consecutive_silence={consecutive_silence}, threshold={silence_frames_needed}")
                             if len(speech_buffer) > 0:
                                 audio_data = np.concatenate(speech_buffer)
-                                print(f"[TRANSCRIBE] Concatenated {len(speech_buffer)} chunks into {len(audio_data)} samples")
+                                debug_print(f"[TRANSCRIBE] Concatenated {len(speech_buffer)} chunks into {len(audio_data)} samples")
 
                                 # Check if there's actual speech (double-check)
                                 audio_level = np.abs(audio_data).max()
-                                print(f"[TRANSCRIBE] Audio level check: {audio_level:.4f} (threshold: 0.01)")
+                                debug_print(f"[TRANSCRIBE] Audio level check: {audio_level:.4f} (threshold: 0.01)")
                                 if audio_level > 0.01:
-                                    print(f"[TRANSCRIBE] Starting Whisper transcription...")
+                                    debug_print(f"[TRANSCRIBE] Starting Whisper transcription...")
                                     # Transcribe with faster-whisper (superior hallucination suppression)
                                     segments, info = self.whisper_model.transcribe(
                                         audio_data,
@@ -1093,18 +1102,18 @@ class RosieConversation:
 
                                     # Extract text from segments generator
                                     transcription = ' '.join([segment.text for segment in segments]).strip()
-                                    print(f"[TRANSCRIBE] Whisper returned: '{transcription}'")
+                                    debug_print(f"[TRANSCRIBE] Whisper returned: '{transcription}'")
 
                                     # In test mode, capture transcription for validation
                                     if self.test_mode:
                                         with self.test_transcription_lock:
                                             self.test_last_transcription = transcription
                                             self.test_transcription_event.set()  # Signal transcription ready
-                                        print(f"[TEST] Captured transcription: '{transcription}'")
+                                        debug_print(f"[TEST] Captured transcription: '{transcription}'")
 
                                     # Filter out common Whisper hallucinations
                                     if transcription and not self._is_hallucination(transcription):
-                                        print(f"[TRANSCRIBE] Passed hallucination filter")
+                                        debug_print(f"[TRANSCRIBE] Passed hallucination filter")
                                         # Check if in demo mode
                                         with self.demo_mode_lock:
                                             in_demo_mode = self.demo_mode
@@ -1116,7 +1125,7 @@ class RosieConversation:
 
                                             # Store transcription as-is
                                             self._append_to_history(f"Human: {transcription}\n")
-                                            print(f"[WHISPER] [DEMO MODE] Human: {transcription}")
+                                            debug_print(f"[WHISPER] [DEMO MODE] Human: {transcription}")
                                             self._log(f"Demo mode transcribed: {transcription}")
                                         else:
                                             # Normal mode: Check for wake word BEFORE storing
@@ -1145,7 +1154,7 @@ class RosieConversation:
                                         self._log(f"Filtered hallucination: {transcription}")
 
                             # Reset for next phrase
-                            print(f"[TRANSCRIBE] Resetting speech buffer and state")
+                            debug_print(f"[TRANSCRIBE] Resetting speech buffer and state")
                             speech_buffer = []
                             consecutive_silence = 0
                             is_speaking = False
@@ -1195,7 +1204,7 @@ class RosieConversation:
                             self._interrupt_speech_count += 1
 
                             if self._interrupt_speech_count >= 2:  # 60ms total
-                                print("[INTERRUPT] Human speech detected during TTS playback")
+                                debug_print("[INTERRUPT] Human speech detected during TTS playback")
                                 self.tts_interrupt_event.set()
                                 self._interrupt_speech_count = 0
                                 # Clear audio queue and reset speech tracking
@@ -1248,10 +1257,10 @@ class RosieConversation:
                 )
                 self.audio_stream.start()
                 self._log(f"Audio stream started successfully - sample_rate={self.sample_rate}")
-                print(f"\n[AUDIO MODE] LOCAL microphone enabled")
+                debug_print(f"\n[AUDIO MODE] LOCAL microphone enabled")
             except Exception as e:
                 self._log(f"ERROR starting audio stream: {e}")
-                print(f"\n[ERROR] Failed to start audio stream: {e}")
+                debug_print(f"\n[ERROR] Failed to start audio stream: {e}")
                 import traceback
                 traceback.print_exc()
 
@@ -1385,10 +1394,10 @@ class RosieConversation:
             text: The text to synthesize and speak through the audio pipeline
         """
         print("\n" + "="*70)
-        print(f"[TEST] Full Audio Pipeline Test")
+        debug_print(f"[TEST] Full Audio Pipeline Test")
         print("="*70)
-        print(f"[TEST] Input text: \"{text}\"")
-        print(f"[TEST] Starting audio pipeline: Text → Piper → Speakers → Microphone → VAD → Whisper")
+        debug_print(f"[TEST] Input text: \"{text}\"")
+        debug_print(f"[TEST] Starting audio pipeline: Text → Piper → Speakers → Microphone → VAD → Whisper")
         print("="*70)
 
         # Reset transcription capture
@@ -1404,7 +1413,7 @@ class RosieConversation:
 
             # Use same Piper command as production (LOCAL mode)
             piper_cmd = f'echo "{text_escaped}" | piper --model {self.piper_model_path} --output-raw | aplay -r 22050 -f S16_LE -t raw -'
-            print(f"[TEST] Piper command: {piper_cmd[:80]}...")
+            debug_print(f"[TEST] Piper command: {piper_cmd[:80]}...")
 
             # Step 2: Play through speakers (this will take ~2-5 seconds depending on text length)
             print(f"[TEST STEP 2] Playing audio through speakers...")
@@ -1414,7 +1423,7 @@ class RosieConversation:
                 print(f"[TEST ERROR] Piper/aplay failed: {result.stderr}")
                 return
 
-            print(f"[TEST] Audio playback complete")
+            debug_print(f"[TEST] Audio playback complete")
 
         except Exception as e:
             print(f"[TEST ERROR] Piper audio generation failed: {e}")
@@ -1424,7 +1433,7 @@ class RosieConversation:
 
         # Step 3: Wait for ROSIE to capture, process, and transcribe
         print(f"\n[TEST STEP 3] Waiting for ROSIE to capture audio via microphone...")
-        print(f"[TEST] (Microphone → VAD → Audio buffering → Silence detection → Whisper)")
+        debug_print(f"[TEST] (Microphone → VAD → Audio buffering → Silence detection → Whisper)")
 
         # Give a short delay for final audio to be captured, then force transcription
         time.sleep(2.0)  # Allow remaining audio to be captured
@@ -1435,11 +1444,11 @@ class RosieConversation:
 
         if not transcription_received:
             print(f"\n[TEST FAILURE] No transcription received within 20 seconds")
-            print(f"[TEST] This indicates a problem in the audio pipeline:")
-            print(f"[TEST]   - VAD may not be detecting speech")
-            print(f"[TEST]   - Audio buffering may not be working")
-            print(f"[TEST]   - Silence detection may not be triggering Whisper")
-            print(f"[TEST]   - Whisper may not be transcribing")
+            debug_print(f"[TEST] This indicates a problem in the audio pipeline:")
+            debug_print(f"[TEST]   - VAD may not be detecting speech")
+            debug_print(f"[TEST]   - Audio buffering may not be working")
+            debug_print(f"[TEST]   - Silence detection may not be triggering Whisper")
+            debug_print(f"[TEST]   - Whisper may not be transcribing")
             return
 
         # Step 4: Retrieve and validate transcription
@@ -1447,8 +1456,8 @@ class RosieConversation:
             transcribed_text = self.test_last_transcription
 
         print(f"\n[TEST STEP 4] Transcription received!")
-        print(f"[TEST] Original:    \"{text}\"")
-        print(f"[TEST] Transcribed: \"{transcribed_text}\"")
+        debug_print(f"[TEST] Original:    \"{text}\"")
+        debug_print(f"[TEST] Transcribed: \"{transcribed_text}\"")
 
         # Step 5: Calculate accuracy
         accuracy, word_accuracy = self._calculate_transcription_accuracy(text, transcribed_text)
@@ -1474,10 +1483,10 @@ class RosieConversation:
         wake_word_match = re.search(wake_word_pattern, transcribed_text, re.IGNORECASE)
 
         if wake_word_match:
-            print(f"[TEST] ✓ Wake word 'Rosie' detected in transcription")
+            debug_print(f"[TEST] ✓ Wake word 'Rosie' detected in transcription")
         else:
-            print(f"[TEST] ✗ Wake word not detected")
-            print(f"[TEST]   (Include 'Rosie' in test text to verify wake word detection)")
+            debug_print(f"[TEST] ✗ Wake word not detected")
+            debug_print(f"[TEST]   (Include 'Rosie' in test text to verify wake word detection)")
 
         print(f"\n[TEST] Audio pipeline test complete!")
         print("="*70 + "\n")
@@ -1707,12 +1716,12 @@ class RosieConversation:
 
                     # Debug logging to show what RAG retrieved
                     if rag_context.strip():
-                        print(f"[RAG] Retrieved context ({len(rag_context)} chars)")
+                        debug_print(f"[RAG] Retrieved context ({len(rag_context)} chars)")
                         # Show first 200 chars of context for debugging
                         preview = rag_context[:200].replace('\n', ' ')
-                        print(f"[RAG] Preview: {preview}...")
+                        debug_print(f"[RAG] Preview: {preview}...")
                     else:
-                        print(f"[RAG] No relevant context found for: {question}")
+                        debug_print(f"[RAG] No relevant context found for: {question}")
 
             # Check if context exceeds limit - if so, summarize first
             # Note: important_info and RAG context are NOT included in token count for summarization
@@ -1720,7 +1729,7 @@ class RosieConversation:
             token_count = self._estimate_token_count(conversation_content)
 
             if token_count > self.context_limit:
-                print(f"[OLLAMA] Context exceeds limit! Summarizing...")
+                debug_print(f"[OLLAMA] Context exceeds limit! Summarizing...")
                 self._speak_immediately("Let me think")
 
                 # Create summary
@@ -1728,10 +1737,10 @@ class RosieConversation:
                 if summary:
                     # Replace history with condensed script (no labels, just the script)
                     self.history_file.write_text(summary)
-                    print(f"[OLLAMA] History replaced with condensed script ({len(summary)} chars)")
+                    debug_print(f"[OLLAMA] History replaced with condensed script ({len(summary)} chars)")
                     conversation_content = self.history_file.read_text()
                 else:
-                    print(f"[OLLAMA] Warning: Summarization failed, using full context")
+                    debug_print(f"[OLLAMA] Warning: Summarization failed, using full context")
 
             # Detect question type from most recent Human statement
             # Extract last Human line from conversation (format: "Human [timestamp]: text")
@@ -1753,13 +1762,13 @@ class RosieConversation:
             # Display depth transitions or current depth
             if self.last_conversation_depth is None:
                 # First conversation, just show depth
-                print(f"[{conversation_depth.upper()}] max_tokens: {max_tokens}")
+                debug_print(f"[{conversation_depth.upper()}] max_tokens: {max_tokens}")
             elif self.last_conversation_depth != conversation_depth:
                 # Depth changed - show transition
-                print(f"[{self.last_conversation_depth.upper()} → {conversation_depth.upper()}] max_tokens: {max_tokens}")
+                debug_print(f"[{self.last_conversation_depth.upper()} → {conversation_depth.upper()}] max_tokens: {max_tokens}")
             else:
                 # Same depth - just show current
-                print(f"[{conversation_depth.upper()}] max_tokens: {max_tokens}")
+                debug_print(f"[{conversation_depth.upper()}] max_tokens: {max_tokens}")
 
             # Update last depth for next comparison
             self.last_conversation_depth = conversation_depth
@@ -1920,19 +1929,19 @@ class RosieConversation:
             # Prompt ready - send to Ollama
 
             # Debug: Log prompt details
-            print(f"[PROMPT] Mode: {mode}, Temperature: {temperature}, Max tokens: {max_tokens}")
-            print(f"[PROMPT] Has RAG context: {bool(rag_context.strip())}")
+            debug_print(f"[PROMPT] Mode: {mode}, Temperature: {temperature}, Max tokens: {max_tokens}")
+            debug_print(f"[PROMPT] Has RAG context: {bool(rag_context.strip())}")
             if rag_context.strip():
-                print(f"[PROMPT] RAG context length: {len(rag_context)} chars")
-            print(f"[PROMPT] Total prompt length: {len(prompt)} chars")
+                debug_print(f"[PROMPT] RAG context length: {len(rag_context)} chars")
+            debug_print(f"[PROMPT] Total prompt length: {len(prompt)} chars")
             # Show first AND last parts of prompt for debugging
-            print(f"[PROMPT] First 500 chars:\n{prompt[:500]}...")
-            print(f"[PROMPT] Last 300 chars:\n...{prompt[-300:]}")
+            debug_print(f"[PROMPT] First 500 chars:\n{prompt[:500]}...")
+            debug_print(f"[PROMPT] Last 300 chars:\n...{prompt[-300:]}")
 
             # DEBUG: Write full prompt to file for manual testing
             debug_prompt_file = self.rosie_dir / "data" / "last_prompt.txt"
             debug_prompt_file.write_text(prompt)
-            print(f"[DEBUG] Full prompt written to: {debug_prompt_file}")
+            debug_print(f"[DEBUG] Full prompt written to: {debug_prompt_file}")
 
             # Call Ollama API
             # Note: Ollama uses 'num_predict' not 'max_tokens', 'num_ctx' for context window
@@ -1950,21 +1959,21 @@ class RosieConversation:
             )
 
             # Debug: Log Ollama response details
-            print(f"[OLLAMA] Status code: {response.status_code}")
+            debug_print(f"[OLLAMA] Status code: {response.status_code}")
 
             if response.status_code == 200:
                 result = response.json()
-                print(f"[OLLAMA] Response keys: {result.keys()}")
+                debug_print(f"[OLLAMA] Response keys: {result.keys()}")
 
                 # Log token counts to check for truncation
                 prompt_eval_count = result.get('prompt_eval_count', 0)
                 eval_count = result.get('eval_count', 0)
-                print(f"[OLLAMA] Prompt tokens evaluated: {prompt_eval_count}")
-                print(f"[OLLAMA] Response tokens generated: {eval_count}")
+                debug_print(f"[OLLAMA] Prompt tokens evaluated: {prompt_eval_count}")
+                debug_print(f"[OLLAMA] Response tokens generated: {eval_count}")
 
                 ollama_text = result.get('response', '').strip()
-                print(f"[OLLAMA] Response text length: {len(ollama_text)} chars")
-                print(f"[OLLAMA] Response text: '{ollama_text}'")
+                debug_print(f"[OLLAMA] Response text length: {len(ollama_text)} chars")
+                debug_print(f"[OLLAMA] Response text: '{ollama_text}'")
 
                 if ollama_text:
                     # Write to speak.txt
@@ -1982,12 +1991,12 @@ class RosieConversation:
                     self._log("Ollama returned empty response")
                     self._set_state(ConversationState.LISTENING)
             else:
-                print(f"[OLLAMA] Error: API returned status {response.status_code}")
+                debug_print(f"[OLLAMA] Error: API returned status {response.status_code}")
                 self._log(f"Ollama API error: {response.status_code}")
                 self._set_state(ConversationState.LISTENING)
 
         except Exception as e:
-            print(f"[OLLAMA] Error: {e}")
+            debug_print(f"[OLLAMA] Error: {e}")
             import traceback
             traceback.print_exc()
             self._log(f"Ollama error: {e}")
@@ -2000,7 +2009,7 @@ class RosieConversation:
         Returns summary string or None on failure
         """
         try:
-            print(f"[OLLAMA] Creating summary of {len(conversation_text)} chars...")
+            debug_print(f"[OLLAMA] Creating summary of {len(conversation_text)} chars...")
 
             summary_prompt = (
                 f"Condense this conversation into a shorter script format.\n"
@@ -2027,14 +2036,14 @@ class RosieConversation:
             if response.status_code == 200:
                 result = response.json()
                 summary = result.get('response', '').strip()
-                print(f"[OLLAMA] Summary created: {len(summary)} chars")
+                debug_print(f"[OLLAMA] Summary created: {len(summary)} chars")
                 return summary
             else:
-                print(f"[OLLAMA] Summarization failed: HTTP {response.status_code}")
+                debug_print(f"[OLLAMA] Summarization failed: HTTP {response.status_code}")
                 return None
 
         except Exception as e:
-            print(f"[OLLAMA] Summarization error: {e}")
+            debug_print(f"[OLLAMA] Summarization error: {e}")
             return None
 
     def _handle_calendar_creation(self, last_human_statement, conversation_content):
@@ -2048,7 +2057,7 @@ class RosieConversation:
             last_human_statement: The most recent human statement
             conversation_content: Full conversation history for context
         """
-        print(f"[CALENDAR] Detected calendar creation request")
+        debug_print(f"[CALENDAR] Detected calendar creation request")
 
         try:
             # Use Ollama to extract structured event details
@@ -2077,7 +2086,7 @@ class RosieConversation:
                 f"JSON response:"
             )
 
-            print(f"[CALENDAR] Extracting event details with Ollama...")
+            debug_print(f"[CALENDAR] Extracting event details with Ollama...")
 
             response = requests.post(
                 self.ollama_url,
@@ -2095,7 +2104,7 @@ class RosieConversation:
                 result = response.json()
                 ollama_text = result.get('response', '').strip()
 
-                print(f"[CALENDAR] Ollama extraction response: {ollama_text}")
+                debug_print(f"[CALENDAR] Ollama extraction response: {ollama_text}")
 
                 # Parse JSON from Ollama response
                 # Extract JSON from response (might have extra text)
@@ -2128,7 +2137,7 @@ class RosieConversation:
                     with open(queue_file, 'w') as f:
                         json.dump(queue, f, indent=2)
 
-                    print(f"[CALENDAR] ✓ Event queued: {event_data.get('summary')}")
+                    debug_print(f"[CALENDAR] ✓ Event queued: {event_data.get('summary')}")
 
                     # Generate confirmation message
                     confirmation = f"I've queued your {event_data.get('summary')} for {event_data.get('date')}"
@@ -2138,7 +2147,7 @@ class RosieConversation:
 
                     # Write to speak.txt
                     self.speak_file.write_text(confirmation)
-                    print(f"[CALENDAR] Robot will say: {confirmation}")
+                    debug_print(f"[CALENDAR] Robot will say: {confirmation}")
 
                     # Transition to SPEAKING state
                     self._set_state(ConversationState.SPEAKING)
@@ -2147,14 +2156,14 @@ class RosieConversation:
                     threading.Thread(target=self._piper_speak, daemon=True).start()
 
                 else:
-                    print(f"[CALENDAR] Error: Could not parse JSON from Ollama response")
+                    debug_print(f"[CALENDAR] Error: Could not parse JSON from Ollama response")
                     self._speak_error("I understood you want to create an event, but I couldn't extract the details. Please try again.")
             else:
-                print(f"[CALENDAR] Error: Ollama API returned status {response.status_code}")
+                debug_print(f"[CALENDAR] Error: Ollama API returned status {response.status_code}")
                 self._speak_error("I had trouble processing your calendar request. Please try again.")
 
         except Exception as e:
-            print(f"[CALENDAR] Error: {e}")
+            debug_print(f"[CALENDAR] Error: {e}")
             import traceback
             traceback.print_exc()
             self._speak_error("I encountered an error processing your calendar request.")
@@ -2184,7 +2193,7 @@ class RosieConversation:
             text_escaped = text.replace('"', '\\"').replace('$', '\\$').replace('`', '\\`')
             piper_cmd = f'echo "{text_escaped}" | piper --model {self.piper_model_path} --output-raw | aplay -r 22050 -f S16_LE -t raw -'
             subprocess.run(piper_cmd, shell=True, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            print(f"[PIPER] {text}")
+            debug_print(f"[PIPER] {text}")
         except Exception as e:
             self._log(f"Piper immediate speech error: {e}")
 
@@ -2243,7 +2252,7 @@ class RosieConversation:
                 # Monitor for interrupts
                 while self.tts_process.poll() is None:  # Process still running
                     if self.tts_interrupt_event.is_set():
-                        print("[INTERRUPT] Stopping TTS playback (LOCAL mode)...")
+                        debug_print("[INTERRUPT] Stopping TTS playback (LOCAL mode)...")
                         self.tts_process.terminate()
                         time.sleep(0.1)
                         if self.tts_process.poll() is None:
@@ -2293,7 +2302,7 @@ class RosieConversation:
 
                         while sleep_time < audio_duration:
                             if self.tts_interrupt_event.is_set():
-                                print("[INTERRUPT] Stopping TTS playback (WEB mode)...")
+                                debug_print("[INTERRUPT] Stopping TTS playback (WEB mode)...")
                                 # Note: Browser will finish playing buffered audio
                                 # TODO: Implement browser-side audio stop if needed
                                 self.tts_interrupt_event.clear()
@@ -2302,10 +2311,10 @@ class RosieConversation:
                             time.sleep(sleep_increment)
                             sleep_time += sleep_increment
                     else:
-                        print(f"[TTS] Failed to send audio to browser")
+                        debug_print(f"[TTS] Failed to send audio to browser")
                         self._log(f"Failed to send audio to browser, no clients connected")
                 else:
-                    print(f"[TTS] Web server module not available")
+                    debug_print(f"[TTS] Web server module not available")
                     self._log(f"Web server module not available, cannot send audio")
 
             # Only update history if not interrupted
@@ -2341,7 +2350,7 @@ class RosieConversation:
     def start(self):
         """Start ROSIE system (all threads)"""
         self._log("Starting ROSIE Conversational AI System...")
-        print("[DEBUG] start() called", flush=True)
+        debug_print("[DEBUG] start() called", flush=True)
 
         # Text-only mode: Skip all audio processing, use stdin/stdout
         if self.text_only_mode:
@@ -2414,24 +2423,24 @@ class RosieConversation:
             self._disable_web_audio_status()
 
             # Start Whisper worker
-            print("[TEST] Starting Whisper thread for audio capture...", flush=True)
+            debug_print("[TEST] Starting Whisper thread for audio capture...", flush=True)
             self.whisper_thread = threading.Thread(target=self._whisper_worker, daemon=True)
             self.whisper_thread.start()
 
             # Start wake word detector
-            print("[TEST] Starting wake word thread...", flush=True)
+            debug_print("[TEST] Starting wake word thread...", flush=True)
             self.wake_word_thread = threading.Thread(target=self._wake_word_detector, daemon=True)
             self.wake_word_thread.start()
 
             # Wait for threads to initialize
-            print("[TEST] Waiting for audio system to initialize...", flush=True)
+            debug_print("[TEST] Waiting for audio system to initialize...", flush=True)
             time.sleep(2)  # Give Whisper time to load model and start audio stream
 
-            print("[TEST] Audio system ready!\n", flush=True)
+            debug_print("[TEST] Audio system ready!\n", flush=True)
 
             if self.test_input:
                 # Single test input provided
-                print(f"[TEST] Injecting text: \"{self.test_input}\"")
+                debug_print(f"[TEST] Injecting text: \"{self.test_input}\"")
                 self._process_test_input(self.test_input)
                 # Shutdown immediately after test completes
                 self.shutdown()
@@ -2452,7 +2461,7 @@ class RosieConversation:
         # Normal mode: Start all audio processing threads
         # Try to import web server module for audio integration
         # Check if web server is actually running first
-        print("[DEBUG] Checking for web server...", flush=True)
+        debug_print("[DEBUG] Checking for web server...", flush=True)
 
         web_server_detected = False
 
@@ -2465,105 +2474,105 @@ class RosieConversation:
                 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
                 url = f'{protocol}://localhost:5000/api/state'
-                print(f"[DEBUG] Trying {url}...", flush=True)
+                debug_print(f"[DEBUG] Trying {url}...", flush=True)
                 response = requests.get(url, timeout=2.0, verify=False)
-                print(f"[DEBUG] Web server responded: {response.status_code} via {protocol.upper()}", flush=True)
+                debug_print(f"[DEBUG] Web server responded: {response.status_code} via {protocol.upper()}", flush=True)
                 web_server_detected = True
                 break
             except Exception as e:
-                print(f"[DEBUG] {protocol.upper()} failed: {type(e).__name__}", flush=True)
+                debug_print(f"[DEBUG] {protocol.upper()} failed: {type(e).__name__}", flush=True)
                 continue
 
         if web_server_detected:
             # Web server is running, import module
             if self._import_web_server_module():
-                print(f"\n{'='*70}")
-                print(f"WEB SERVER DETECTED - Web audio support ENABLED")
-                print(f"Remote browsers can enable web audio for I/O")
-                print(f"{'='*70}\n", flush=True)
+                debug_print(f"\n{'='*70}")
+                debug_print(f"WEB SERVER DETECTED - Web audio support ENABLED")
+                debug_print(f"Remote browsers can enable web audio for I/O")
+                debug_print(f"{'='*70}\n", flush=True)
                 self._log("Web server detected, enabling web audio support")
             else:
-                print(f"\n{'='*70}")
-                print(f"WARNING: Web server detected but module import FAILED")
-                print(f"Web audio will NOT be available")
-                print(f"{'='*70}\n", flush=True)
+                debug_print(f"\n{'='*70}")
+                debug_print(f"WARNING: Web server detected but module import FAILED")
+                debug_print(f"Web audio will NOT be available")
+                debug_print(f"{'='*70}\n", flush=True)
         else:
             # Web server not running, disable web audio status
-            print(f"\n{'='*70}")
-            print(f"Web server NOT detected (LOCAL audio mode only)")
-            print(f"Web audio will NOT be available")
-            print(f"{'='*70}\n", flush=True)
+            debug_print(f"\n{'='*70}")
+            debug_print(f"Web server NOT detected (LOCAL audio mode only)")
+            debug_print(f"Web audio will NOT be available")
+            debug_print(f"{'='*70}\n", flush=True)
             self._disable_web_audio_status()
             self._log("Web server not detected, using LOCAL audio mode only")
 
-        print("[DEBUG] Web server check complete", flush=True)
+        debug_print("[DEBUG] Web server check complete", flush=True)
 
         # Start Whisper worker
-        print("[DEBUG] Starting Whisper thread...", flush=True)
+        debug_print("[DEBUG] Starting Whisper thread...", flush=True)
         self.whisper_thread = threading.Thread(target=self._whisper_worker, daemon=True)
         self.whisper_thread.start()
-        print("[DEBUG] Whisper thread started", flush=True)
+        debug_print("[DEBUG] Whisper thread started", flush=True)
 
         # Start wake word detector
-        print("[DEBUG] Starting wake word thread...", flush=True)
+        debug_print("[DEBUG] Starting wake word thread...", flush=True)
         self.wake_word_thread = threading.Thread(target=self._wake_word_detector, daemon=True)
         self.wake_word_thread.start()
-        print("[DEBUG] Wake word thread started", flush=True)
+        debug_print("[DEBUG] Wake word thread started", flush=True)
 
         # Start web audio poll worker (monitors for web audio mode switching)
-        print("[DEBUG] Starting web audio poll thread...", flush=True)
+        debug_print("[DEBUG] Starting web audio poll thread...", flush=True)
         self.web_audio_thread = threading.Thread(target=self._web_audio_poll_worker, daemon=True)
         self.web_audio_thread.start()
-        print("[DEBUG] Web audio poll thread started", flush=True)
+        debug_print("[DEBUG] Web audio poll thread started", flush=True)
 
         # Check Ollama GPU status (skip journalctl - can cause hangs)
         ollama_gpu_status = "Active"
 
         # Get hostname for web URL
-        print("[DEBUG] Getting hostname...", flush=True)
+        debug_print("[DEBUG] Getting hostname...", flush=True)
         import socket
         try:
             hostname = socket.gethostname()
         except:
             hostname = "localhost"
-        print(f"[DEBUG] Hostname: {hostname}", flush=True)
+        debug_print(f"[DEBUG] Hostname: {hostname}", flush=True)
 
         # Check if web server is using HTTPS (SSL certificate exists)
-        print("[DEBUG] Checking SSL cert...", flush=True)
+        debug_print("[DEBUG] Checking SSL cert...", flush=True)
         ssl_cert_path = self.rosie_dir / 'data' / 'ssl' / 'rosie.crt'
         protocol = "https" if ssl_cert_path.exists() else "http"
-        print(f"[DEBUG] Protocol: {protocol}", flush=True)
+        debug_print(f"[DEBUG] Protocol: {protocol}", flush=True)
 
         # Always print startup message and instructions
-        print("[DEBUG] About to print READY message...", flush=True)
-        print("\n" + "="*70, flush=True)
-        print("[DEBUG] Printed banner top", flush=True)
-        print("ROSIE Conversational AI System - READY", flush=True)
-        print("[DEBUG] Printed title", flush=True)
-        print("="*70, flush=True)
-        print("[DEBUG] Printed banner bottom", flush=True)
-        print(f"Current State: {self._get_state().name}", flush=True)
-        print("[DEBUG] Printed state", flush=True)
-        print(f"Audio Mode: {self._get_audio_mode().name}", flush=True)
-        print("[DEBUG] Printed audio mode", flush=True)
-        print(f"LLM (Ollama): {ollama_gpu_status}", flush=True)
-        print("[DEBUG] Printed Ollama status", flush=True)
+        debug_print("[DEBUG] About to print READY message...", flush=True)
+        debug_print("\n" + "="*70, flush=True)
+        debug_print("[DEBUG] Printed banner top", flush=True)
+        print("ROSIE ready. Say 'Rosie' to interact. CTRL+C to exit.", flush=True)
+        debug_print("[DEBUG] Printed title", flush=True)
+        debug_print("="*70, flush=True)
+        debug_print("[DEBUG] Printed banner bottom", flush=True)
+        debug_print(f"Current State: {self._get_state().name}", flush=True)
+        debug_print("[DEBUG] Printed state", flush=True)
+        debug_print(f"Audio Mode: {self._get_audio_mode().name}", flush=True)
+        debug_print("[DEBUG] Printed audio mode", flush=True)
+        debug_print(f"LLM (Ollama): {ollama_gpu_status}", flush=True)
+        debug_print("[DEBUG] Printed Ollama status", flush=True)
 
         # Show web interface URL if web server is available
-        print("[DEBUG] Checking web server module...", flush=True)
+        debug_print("[DEBUG] Checking web server module...", flush=True)
         if self.web_server_module:
-            print(f"\n🌐 Web Interface: {protocol}://{hostname}:5000", flush=True)
-            print(f"   (or use {protocol}://localhost:5000 on this machine)", flush=True)
+            debug_print(f"\n🌐 Web Interface: {protocol}://{hostname}:5000", flush=True)
+            debug_print(f"   (or use {protocol}://localhost:5000 on this machine)", flush=True)
             if protocol == "https":
-                print(f"   (Accept security warning for self-signed certificate)", flush=True)
+                debug_print(f"   (Accept security warning for self-signed certificate)", flush=True)
 
-        print("[DEBUG] Printing final instructions...", flush=True)
-        print("\nSpeak naturally - everything is transcribed.", flush=True)
-        print("Say 'Rosie' to get a response.", flush=True)
-        print("Say 'Rosie, forget everything' to reset conversation history.", flush=True)
-        print("Press CTRL+C to exit.", flush=True)
-        print("="*70 + "\n", flush=True)
-        print("[DEBUG] Entering main loop...", flush=True)
+        debug_print("[DEBUG] Printing final instructions...", flush=True)
+        debug_print("\nSpeak naturally - everything is transcribed.", flush=True)
+        debug_print("Say 'Rosie' to get a response.", flush=True)
+        debug_print("Say 'Rosie, forget everything' to reset conversation history.", flush=True)
+        debug_print("Press CTRL+C to exit.", flush=True)
+        debug_print("="*70 + "\n", flush=True)
+        debug_print("[DEBUG] Entering main loop...", flush=True)
 
         self._log("ROSIE system started. Say 'Rosie' to get a response.")
 
@@ -2583,7 +2592,7 @@ class RosieConversation:
                         new_enabled = change_request.get('enabled', False)
                         new_authenticated = change_request.get('authenticated', False)
 
-                        print(f"\n[PRIVATE MODE] Change request: enabled={new_enabled}, authenticated={new_authenticated}")
+                        debug_print(f"\n[PRIVATE MODE] Change request: enabled={new_enabled}, authenticated={new_authenticated}")
 
                         # Update state
                         with self.private_mode_lock:
@@ -2594,22 +2603,22 @@ class RosieConversation:
 
                         # Reload RAG if mode changed
                         if old_enabled != new_enabled and self.rag_system:
-                            print(f"[PRIVATE MODE] Reloading RAG system...")
+                            debug_print(f"[PRIVATE MODE] Reloading RAG system...")
                             success = self.rag_system.reload_with_private_mode(new_enabled)
                             if success:
-                                print(f"[PRIVATE MODE] RAG reloaded successfully")
+                                debug_print(f"[PRIVATE MODE] RAG reloaded successfully")
                             else:
-                                print(f"[PRIVATE MODE] Warning: RAG reload failed")
+                                debug_print(f"[PRIVATE MODE] Warning: RAG reload failed")
 
                         # Update web status
                         self._update_web_status(self._get_state())
 
                         # Delete signal file
                         self.private_mode_change_file.unlink()
-                        print(f"[PRIVATE MODE] Change applied and signal file deleted")
+                        debug_print(f"[PRIVATE MODE] Change applied and signal file deleted")
 
                     except Exception as e:
-                        print(f"[PRIVATE MODE] Error processing change request: {e}")
+                        debug_print(f"[PRIVATE MODE] Error processing change request: {e}")
                         # Try to delete file anyway
                         try:
                             self.private_mode_change_file.unlink()
@@ -2622,7 +2631,7 @@ class RosieConversation:
 
     def shutdown(self):
         """Graceful shutdown with SIGINT handling"""
-        print("\n[SHUTDOWN] Stopping ROSIE system...")
+        debug_print("\n[SHUTDOWN] Stopping ROSIE system...")
         self._log("Shutting down ROSIE system...")
 
         # Signal all threads to stop
@@ -2631,27 +2640,27 @@ class RosieConversation:
         # Stop audio stream first (critical for clean shutdown)
         try:
             if self.audio_stream is not None:
-                print("[SHUTDOWN] Stopping audio stream...")
+                debug_print("[SHUTDOWN] Stopping audio stream...")
                 self._stop_audio_stream()
-                print("[SHUTDOWN] Audio stream stopped")
+                debug_print("[SHUTDOWN] Audio stream stopped")
         except Exception as e:
-            print(f"[SHUTDOWN] Error stopping audio stream: {e}")
+            debug_print(f"[SHUTDOWN] Error stopping audio stream: {e}")
 
         # Wait for threads to finish (with timeout)
-        print("[SHUTDOWN] Waiting for threads to finish...")
+        debug_print("[SHUTDOWN] Waiting for threads to finish...")
         threads = [self.whisper_thread, self.wake_word_thread]
         for thread in threads:
             if thread and thread.is_alive():
                 thread.join(timeout=2)
 
-        print("[SHUTDOWN] ROSIE system stopped cleanly")
+        debug_print("[SHUTDOWN] ROSIE system stopped cleanly")
         self._log("ROSIE system stopped")
         sys.exit(0)
 
 
 def signal_handler(sig, frame):
     """Handle CTRL+C for graceful shutdown"""
-    print("\nReceived shutdown signal (CTRL+C)")
+    print("\nShutting down...")
     if hasattr(signal_handler, 'rosie_instance'):
         signal_handler.rosie_instance.shutdown()
     else:
@@ -2660,11 +2669,7 @@ def signal_handler(sig, frame):
 
 def main():
     """Main entry point"""
-    print("="*70)
-    print("ROSIE Conversational AI System - Starting up...")
-    print("="*70)
-
-    # Parse command-line arguments
+    # Parse command-line arguments first to get debug mode
     parser = argparse.ArgumentParser(
         description='ROSIE Conversational AI System - Fully Local Voice Assistant',
         epilog='Examples:\n  ./rosie_conversation.py\n  ./rosie_conversation.py --test-audio "Rosie, what is the weather?"\n  ./rosie_conversation.py --text-only',
@@ -2676,15 +2681,28 @@ def main():
     parser.add_argument('--text-only', action='store_true',
                        help='Text-only mode: Bypass all audio processing (no Whisper/Piper). '
                             'Uses stdin for input and stdout for output.')
+    parser.add_argument('--debug', action='store_true',
+                       help='Debug mode: Show verbose output including RAG queries, Ollama calls, '
+                            'VAD status, and audio processing details. Default output shows only '
+                            'transcriptions and wake word detection.')
     args = parser.parse_args()
+
+    # Set global debug mode
+    global DEBUG_MODE
+    DEBUG_MODE = args.debug
+
+    # Now print startup messages (respects debug mode)
+    debug_print("="*70)
+    debug_print("ROSIE Conversational AI System - Starting up...")
+    debug_print("="*70)
 
     # Register signal handler for graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)
 
     # Create ROSIE instance
-    print("\n[INIT] Creating ROSIE instance...")
+    debug_print("\n[INIT] Creating ROSIE instance...")
     rosie = RosieConversation(test_mode=args.test_audio is not None, test_input=args.test_audio, text_only_mode=args.text_only)
-    print("[INIT] ROSIE instance created successfully")
+    debug_print("[INIT] ROSIE instance created successfully")
 
     # Store instance for signal handler
     signal_handler.rosie_instance = rosie

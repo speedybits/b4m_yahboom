@@ -46,6 +46,9 @@ for arg in "$@"; do
             ARGS+=("$arg")
             ENABLE_WEB=false
             ;;
+        --debug)
+            ARGS+=("$arg")
+            ;;
         --help|-h)
             echo "ROSIE Conversational AI Launch Script"
             echo ""
@@ -98,6 +101,16 @@ for arg in "$@"; do
             echo "        - Faster startup (no model loading)"
             echo "      This mode also disables the web interface."
             echo ""
+            echo "  --debug"
+            echo "      Enables verbose debug output. Shows all internal processing including:"
+            echo "        - RAG knowledge base queries and retrieved chunks"
+            echo "        - Ollama API calls and responses"
+            echo "        - VAD (Voice Activity Detection) status"
+            echo "        - Audio processing details"
+            echo "        - State transitions"
+            echo "      Default (without --debug): Only shows Whisper transcriptions,"
+            echo "      wake word detection, and ROSIE responses."
+            echo ""
             echo "EXAMPLES:"
             echo ""
             echo "  $0"
@@ -117,6 +130,10 @@ for arg in "$@"; do
             echo "  $0 --text-only"
             echo "      Start ROSIE in text mode. Type messages, read responses."
             echo "      No audio hardware needed."
+            echo ""
+            echo "  $0 --debug"
+            echo "      Start ROSIE with verbose debug output."
+            echo "      Useful for troubleshooting or development."
             echo ""
             echo "ENVIRONMENT:"
             echo ""
