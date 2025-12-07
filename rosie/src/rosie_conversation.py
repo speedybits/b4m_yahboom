@@ -85,7 +85,7 @@ class RosieRAG:
         self.knowledge_base_dir.mkdir(exist_ok=True)
         self.chroma_db_dir.mkdir(exist_ok=True)
 
-        debug_debug_print(f"[RAG] Initializing knowledge base...")
+        debug_print(f"[RAG] Initializing knowledge base...")
 
         # Setup Ollama embeddings (no LLM needed for retrieval-only RAG)
         Settings.embed_model = OllamaEmbedding(
@@ -103,8 +103,8 @@ class RosieRAG:
         md_files = list(self.knowledge_base_dir.rglob("*.md"))
 
         if not md_files:
-            debug_debug_print(f"[RAG] No .md files found in {self.knowledge_base_dir}")
-            debug_debug_print(f"[RAG] Knowledge base is empty. Add .md files and restart ROSIE.")
+            debug_print(f"[RAG] No .md files found in {self.knowledge_base_dir}")
+            debug_print(f"[RAG] Knowledge base is empty. Add .md files and restart ROSIE.")
             # Create empty index
             self.index = VectorStoreIndex.from_documents(
                 [],
@@ -125,7 +125,7 @@ class RosieRAG:
                     reader_kwargs["exclude"] = ["**/private/*", "**/private/**/*"]
 
                 documents = SimpleDirectoryReader(**reader_kwargs).load_data()
-                debug_debug_print(f"[RAG] Loading {len(documents)} document chunks...")
+                debug_print(f"[RAG] Loading {len(documents)} document chunks...")
 
                 # Create or update index
                 self.index = VectorStoreIndex.from_documents(
@@ -135,7 +135,7 @@ class RosieRAG:
                 )
 
             except Exception as e:
-                debug_debug_print(f"[RAG] Error loading documents: {e}")
+                debug_print(f"[RAG] Error loading documents: {e}")
                 # Create empty index on error
                 self.index = VectorStoreIndex.from_documents(
                     [],
@@ -150,7 +150,7 @@ class RosieRAG:
 
         # Check if Ollama is using GPU by examining recent logs
         # Skip journalctl check (can cause hangs) - just print ready message
-        debug_debug_print(f"[RAG] Ready ({len(md_files)} knowledge base files)")
+        debug_print(f"[RAG] Ready ({len(md_files)} knowledge base files)")
 
     def query(self, question, top_k=5):
         """
@@ -179,8 +179,8 @@ class RosieRAG:
             # Extract text from retrieved nodes
             if nodes:
                 contexts = []
-                debug_debug_print(f"[RAG] Query: '{question}'")
-                debug_debug_print(f"[RAG] Retrieved {len(nodes)} chunks:")
+                debug_print(f"[RAG] Query: '{question}'")
+                debug_print(f"[RAG] Retrieved {len(nodes)} chunks:")
                 for i, node in enumerate(nodes):
                     # Get the text content from each node
                     text = node.node.get_content()
@@ -189,16 +189,16 @@ class RosieRAG:
                     # Get similarity score if available
                     score = getattr(node, 'score', None)
                     score_str = f" (score: {score:.3f})" if score is not None else ""
-                    debug_debug_print(f"[RAG]   {i+1}. {source}{score_str}: {text[:80].replace(chr(10), ' ')}...")
+                    debug_print(f"[RAG]   {i+1}. {source}{score_str}: {text[:80].replace(chr(10), ' ')}...")
                     contexts.append(f"[From {source}]\n{text}")
 
                 return "\n\n".join(contexts)
             else:
-                debug_debug_print(f"[RAG] Query: '{question}' - No chunks retrieved")
+                debug_print(f"[RAG] Query: '{question}' - No chunks retrieved")
                 return ""
 
         except Exception as e:
-            debug_debug_print(f"[RAG] Query error: {e}")
+            debug_print(f"[RAG] Query error: {e}")
             import traceback
             traceback.print_exc()
             return ""
@@ -214,7 +214,7 @@ class RosieRAG:
             True if reload successful, False otherwise
         """
         try:
-            debug_debug_print(f"[RAG] Reloading with private_mode={private_mode}")
+            debug_print(f"[RAG] Reloading with private_mode={private_mode}")
 
             # Update private mode flag
             self.private_mode = private_mode
@@ -225,9 +225,9 @@ class RosieRAG:
             # Delete existing collection to force re-indexing
             try:
                 chroma_client.delete_collection("rosie_knowledge")
-                debug_debug_print(f"[RAG] Deleted existing collection")
+                debug_print(f"[RAG] Deleted existing collection")
             except Exception as e:
-                debug_debug_print(f"[RAG] Collection didn't exist or couldn't delete: {e}")
+                debug_print(f"[RAG] Collection didn't exist or couldn't delete: {e}")
 
             # Create new collection
             chroma_collection = chroma_client.get_or_create_collection("rosie_knowledge")
@@ -235,7 +235,7 @@ class RosieRAG:
             storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
             # Load documents with new private mode setting
-            debug_debug_print(f"[RAG] Loading documents...")
+            debug_print(f"[RAG] Loading documents...")
             reader_kwargs = {
                 "input_dir": str(self.knowledge_base_dir),
                 "required_exts": [".md"],
@@ -245,14 +245,14 @@ class RosieRAG:
             # Exclude private/ folder when private_mode is False
             if not self.private_mode:
                 reader_kwargs["exclude"] = ["**/private/*", "**/private/**/*"]
-                debug_debug_print(f"[RAG] Excluding private/ folder")
+                debug_print(f"[RAG] Excluding private/ folder")
             else:
-                debug_debug_print(f"[RAG] Including private/ folder")
+                debug_print(f"[RAG] Including private/ folder")
 
             documents = SimpleDirectoryReader(**reader_kwargs).load_data()
 
-            debug_debug_print(f"[RAG] Loaded {len(documents)} document chunks")
-            debug_debug_print(f"[RAG] Creating vector embeddings...")
+            debug_print(f"[RAG] Loaded {len(documents)} document chunks")
+            debug_print(f"[RAG] Creating vector embeddings...")
 
             # Create new index
             self.index = VectorStoreIndex.from_documents(
@@ -264,11 +264,11 @@ class RosieRAG:
             # Update retriever
             self.retriever = self.index.as_retriever(similarity_top_k=5)
 
-            debug_debug_print(f"[RAG] Reload complete")
+            debug_print(f"[RAG] Reload complete")
             return True
 
         except Exception as e:
-            debug_debug_print(f"[RAG] Error reloading: {e}")
+            debug_print(f"[RAG] Error reloading: {e}")
             import traceback
             traceback.print_exc()
             return False
@@ -2246,11 +2246,13 @@ class RosieConversation:
                         print(f"← ROSIE: {ollama_text}\n")
                     self._log(f"Ollama response: {ollama_text}")
 
-                    # Transition to SPEAKING state
-                    self._set_state(ConversationState.SPEAKING)
+                    # Skip TTS in test modes (text-only)
+                    if not self.test_questions_mode and not self.test_knowledge_mode:
+                        # Transition to SPEAKING state
+                        self._set_state(ConversationState.SPEAKING)
 
-                    # Trigger speech output
-                    threading.Thread(target=self._piper_speak, daemon=True).start()
+                        # Trigger speech output
+                        threading.Thread(target=self._piper_speak, daemon=True).start()
                 else:
                     self._log("Ollama returned empty response")
                     self._set_state(ConversationState.LISTENING)
