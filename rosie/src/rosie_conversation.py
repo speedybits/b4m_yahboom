@@ -1645,84 +1645,199 @@ class RosieConversation:
         """
         Run Google Calendar accuracy test.
 
-        Tests ROSIE's ability to retrieve and answer questions about calendar events
-        from the calendar_events.md file in the knowledge_base folder.
+        Dynamically reads calendar_events.md to find events for today and the upcoming week,
+        then generates a question about a randomly selected event and verifies the answer.
         """
         import random
         import datetime
+        import re
 
-        # Test cases based on calendar_events.md content
-        # Uses real dates from the calendar file
-        # Each test has a question with "Rosie" and expected keywords from the calendar data
-        # Questions include specific terms to improve RAG retrieval accuracy
-        test_cases = [
-            # Today events (December 6, 2025) - use exact terms from calendar for reliable RAG matching
-            {
-                "category": "today",
-                "question": "Rosie, what is the Portfolio event jcm on the calendar?",
-                "expected_keywords": ["portfolio", "jcm", "11:15", "11", "december"],
-                "expected_answer": "Portfolio event jcm at 11:15 AM on December 06"
-            },
-            {
-                "category": "today",
-                "question": "Rosie, when is the Portfolio event jcm happening?",
-                "expected_keywords": ["portfolio", "jcm", "december", "11", "saturday", "06"],
-                "expected_answer": "Portfolio event jcm at 11:15 AM on Saturday December 06"
-            },
-            # Past events - Thanksgiving is well-known
-            {
-                "category": "past",
-                "question": "Rosie, when was Thanksgiving in 2025?",
-                "expected_keywords": ["thanksgiving", "november 27", "november"],
-                "expected_answer": "November 27, 2025"
-            },
-            {
-                "category": "past",
-                "question": "Rosie, what was scheduled on Veterans Day November 11, 2025?",
-                "expected_keywords": ["veterans", "harris", "chris"],
-                "expected_answer": "Veterans Day, dr harris follow up at 4pm, 8pm Chris"
-            },
-            {
-                "category": "past",
-                "question": "Rosie, when did Henry have vet appointments in November?",
-                "expected_keywords": ["henry", "vet"],
-                "expected_answer": "Henry vet on November 7, November 12, November 26"
-            },
-            # Future events - use specific unique terms
-            {
-                "category": "future",
-                "question": "Rosie, when is the graduation ceremony in December?",
-                "expected_keywords": ["december 12", "graduation", "12"],
-                "expected_answer": "December 12, 2025 at 1:30 PM"
-            },
-            {
-                "category": "future",
-                "question": "Rosie, is Amy Hardin's birthday coming up?",
-                "expected_keywords": ["amy", "hardin", "december 11", "11"],
-                "expected_answer": "Amy Hardin's Birthday on December 11"
-            },
-            {
-                "category": "future",
-                "question": "Rosie, when is mahjong on the calendar?",
-                "expected_keywords": ["mahjong", "6pm", "monday"],
-                "expected_answer": "Mahjong 6pm on Monday"
-            },
+        def parse_calendar_events(calendar_path):
+            """Parse calendar_events.md and return list of events with dates."""
+            events = []
+            current_date = None
+            current_date_str = ""
+
+            try:
+                with open(calendar_path, 'r') as f:
+                    content = f.read()
+
+                # Pattern to match date headers: ## Day, Month DD, YYYY
+                date_pattern = re.compile(r'^## (\w+), (\w+) (\d{2}), (\d{4})$', re.MULTILINE)
+                # Pattern to match events: - **event name** ...
+                event_pattern = re.compile(r'^- \*\*(.+?)\*\*', re.MULTILINE)
+                # Pattern to match time: at HH:MM AM/PM
+                time_pattern = re.compile(r'at (\d{1,2}:\d{2} [AP]M)')
+
+                lines = content.split('\n')
+                i = 0
+                while i < len(lines):
+                    line = lines[i].strip()
+
+                    # Check for date header
+                    date_match = date_pattern.match(line)
+                    if date_match:
+                        day_name, month_name, day, year = date_match.groups()
+                        # Parse the date
+                        try:
+                            current_date = datetime.datetime.strptime(
+                                f"{month_name} {day}, {year}", "%B %d, %Y"
+                            ).date()
+                            current_date_str = f"{day_name}, {month_name} {day}, {year}"
+                        except ValueError:
+                            current_date = None
+                        i += 1
+                        continue
+
+                    # Check for event (skip metadata lines like "When:" and "Location:")
+                    event_match = event_pattern.match(line)
+                    if event_match and current_date:
+                        event_name = event_match.group(1).strip()
+                        # Skip metadata lines
+                        if event_name.lower() in ['when:', 'location:']:
+                            i += 1
+                            continue
+                        # Look for time in next few lines
+                        event_time = None
+                        for j in range(i, min(i + 3, len(lines))):
+                            time_match = time_pattern.search(lines[j])
+                            if time_match:
+                                event_time = time_match.group(1)
+                                break
+
+                        events.append({
+                            'name': event_name,
+                            'date': current_date,
+                            'date_str': current_date_str,
+                            'time': event_time,
+                            'day_name': current_date.strftime('%A')
+                        })
+
+                    i += 1
+
+            except Exception as e:
+                debug_print(f"[CALENDAR TEST] Error parsing calendar: {e}")
+
+            return events
+
+        def extract_keywords(event):
+            """
+            Extract searchable keywords from an event.
+
+            Returns two lists:
+            - name_keywords: Keywords from the event name (REQUIRED for test to pass)
+            - temporal_keywords: Day/month/date keywords (supplementary, not sufficient alone)
+
+            The test must find at least one name_keyword to pass. Finding only temporal
+            keywords (like 'saturday') is not enough because ROSIE might say
+            "nothing on Saturday" which would incorrectly pass.
+            """
+            # Event name keywords - at least one of these MUST be found
+            skip_words = {'the', 'a', 'an', 'to', 'for', 'and', 'or', 'in', 'on', 'at', 'is',
+                         'fw:', 'fw', 're:', 're', 'pm', 'am', 'reminder'}
+            name_words = re.findall(r'\b[a-zA-Z]{3,}\b', event['name'].lower())
+            name_keywords = [w for w in name_words if w not in skip_words][:4]
+
+            # Temporal keywords - supplementary info
+            temporal_keywords = []
+            temporal_keywords.append(event['day_name'].lower())
+            temporal_keywords.append(event['date'].strftime('%B').lower())
+            temporal_keywords.append(str(event['date'].day))
+            if event['time']:
+                temporal_keywords.append(event['time'].lower().replace(' ', ''))
+
+            return name_keywords, temporal_keywords
+
+        # Get today's date and calculate week range
+        today = datetime.date.today()
+        week_end = today + datetime.timedelta(days=7)
+
+        # Parse calendar events
+        calendar_path = self.knowledge_base_dir / 'calendar_events.md'
+        all_events = parse_calendar_events(calendar_path)
+
+        if not all_events:
+            print("\n" + "="*70)
+            print("ROSIE CALENDAR ACCURACY TEST")
+            print("="*70)
+            print("\nERROR: No events found in calendar_events.md")
+            print("Make sure calendar is synced before running this test.")
+            print("="*70 + "\n")
+            return False
+
+        # Filter events for today and upcoming week
+        week_events = [e for e in all_events if today <= e['date'] <= week_end]
+        today_events = [e for e in all_events if e['date'] == today]
+
+        # If no events this week, use all future events
+        if not week_events:
+            week_events = [e for e in all_events if e['date'] >= today]
+
+        if not week_events:
+            print("\n" + "="*70)
+            print("ROSIE CALENDAR ACCURACY TEST")
+            print("="*70)
+            print("\nERROR: No upcoming events found in calendar")
+            print("="*70 + "\n")
+            return False
+
+        # Randomly select an event
+        selected_event = random.choice(week_events)
+
+        # Generate questions - mix of day-based and event-name-based
+        # The validation requires event NAME keywords to pass, so if we ask
+        # "what is happening on Saturday?" and there's a graduation party,
+        # ROSIE must mention "graduation" or "party" - not just "Saturday"
+
+        event_name = selected_event['name']
+        day_name = selected_event['day_name']
+
+        # Extract searchable terms from the event name (2-4 significant words)
+        skip_words = {'the', 'for', 'and', 'with', 'from', 'this', 'that', 'your'}
+        name_words = [w for w in event_name.split() if len(w) > 2 and w.lower() not in skip_words][:4]
+        short_name = ' '.join(name_words)
+
+        # Mix of question types:
+        # 1. Day-based questions - tests if ROSIE knows what's on a specific day
+        # 2. Event-name questions - tests if ROSIE can find a specific event
+        # Include "this week" or date context to help RAG find the right week
+        date_str = selected_event['date'].strftime('%B %d')  # e.g., "December 13"
+
+        question_templates = [
+            # Day-based questions with context (ROSIE must respond with the actual event name)
+            f"Rosie, what is happening this {day_name}?",
+            f"Rosie, do I have anything scheduled for {day_name} this week?",
+            f"Rosie, what is on the calendar for {day_name}, {date_str}?",
+            # Event-name questions
+            f"Rosie, when is {short_name} on the calendar?",
+            f"Rosie, what day is {short_name} scheduled?",
         ]
 
-        # Randomly select a test case
-        test_case = random.choice(test_cases)
+        # Pick a random question
+        question = random.choice(question_templates)
+
+        # Extract expected keywords (name keywords are REQUIRED, temporal are supplementary)
+        name_keywords, temporal_keywords = extract_keywords(selected_event)
+
+        # Build expected answer description
+        time_str = f" at {selected_event['time']}" if selected_event['time'] else ""
+        expected_answer = f"{selected_event['name']}{time_str} on {selected_event['date_str']}"
 
         print("\n" + "="*70)
         print("ROSIE CALENDAR ACCURACY TEST")
         print("="*70)
-        print(f"\nTesting calendar category: {test_case['category']}")
-        print(f"Question: {test_case['question']}")
-        print(f"Expected answer: {test_case['expected_answer']}")
+        print(f"\nToday's date: {today.strftime('%A, %B %d, %Y')}")
+        print(f"Selected event: {selected_event['name']}")
+        print(f"Event date: {selected_event['date_str']}")
+        if selected_event['time']:
+            print(f"Event time: {selected_event['time']}")
+        print(f"\nQuestion: {question}")
+        print(f"Expected answer: {expected_answer}")
         print()
 
         # Add question to conversation history
         timestamp = datetime.datetime.now().strftime('%I:%M %p')
-        history_entry = f"Human [{timestamp}]: {test_case['question']}\n"
+        history_entry = f"Human [{timestamp}]: {question}\n"
         with open(self.history_file, 'a') as f:
             f.write(history_entry)
 
@@ -1742,26 +1857,37 @@ class RosieConversation:
         print("\nEvaluating response accuracy...\n")
 
         # Check if response contains expected keywords
-        # Keywords are treated as alternatives - finding ANY one of them means success
+        # CRITICAL: At least one NAME keyword must be found
+        # Temporal keywords alone are NOT sufficient (e.g., "nothing on Saturday" would incorrectly pass)
         answer_lower = answer_response.lower()
-        keywords_found = []
 
-        for keyword in test_case['expected_keywords']:
+        name_keywords_found = []
+        for keyword in name_keywords:
             if keyword.lower() in answer_lower:
-                keywords_found.append(keyword)
+                name_keywords_found.append(keyword)
 
-        # Success if at least one keyword variant was found
-        passed = len(keywords_found) > 0
+        temporal_keywords_found = []
+        for keyword in temporal_keywords:
+            if keyword.lower() in answer_lower:
+                temporal_keywords_found.append(keyword)
 
-        print(f"Expected (any of): {test_case['expected_keywords']}")
-        print(f"Found: {keywords_found if keywords_found else 'None'}")
+        # Success ONLY if at least one NAME keyword is found
+        # This prevents false positives like "nothing scheduled for Saturday"
+        passed = len(name_keywords_found) > 0
+
+        print(f"Required (event name): {name_keywords}")
+        print(f"Supplementary (date/time): {temporal_keywords}")
+        print(f"Name keywords found: {name_keywords_found if name_keywords_found else 'None'}")
+        print(f"Temporal keywords found: {temporal_keywords_found if temporal_keywords_found else 'None'}")
 
         print("\n" + "="*70)
         if passed:
             print("TEST RESULT: ✓ PASSED - Calendar retrieval successful")
             result = True
         else:
-            print("TEST RESULT: ✗ FAILED - Expected calendar information not found in response")
+            print("TEST RESULT: ✗ FAILED - Event name not found in response")
+            if temporal_keywords_found and not name_keywords_found:
+                print("(ROSIE mentioned the date/time but not the actual event)")
             print("(Check that calendar_events.md is properly synced and indexed)")
             result = False
         print("="*70 + "\n")
