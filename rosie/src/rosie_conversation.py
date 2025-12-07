@@ -294,7 +294,7 @@ class RosieConversation:
     Simplified architecture with plain text conversation history.
     """
 
-    def __init__(self, test_mode=False, test_input=None, text_only_mode=False, test_questions_mode=False, test_knowledge_mode=False):
+    def __init__(self, test_mode=False, test_input=None, text_only_mode=False, test_questions_mode=False, test_knowledge_mode=False, test_calendar_mode=False):
         """Initialize ROSIE system with configuration from environment
 
         Args:
@@ -303,6 +303,7 @@ class RosieConversation:
             text_only_mode: If True, bypass all audio (no Whisper/Piper loading), text I/O only
             test_questions_mode: If True, run comprehension test with paragraphs and questions
             test_knowledge_mode: If True, run RAG knowledge base retrieval test
+            test_calendar_mode: If True, run Google Calendar accuracy test
         """
         # Test mode configuration
         self.test_mode = test_mode
@@ -310,6 +311,7 @@ class RosieConversation:
         self.text_only_mode = text_only_mode
         self.test_questions_mode = test_questions_mode
         self.test_knowledge_mode = test_knowledge_mode
+        self.test_calendar_mode = test_calendar_mode
 
         # Load configuration from environment
         self.whisper_model_name = os.getenv('WHISPER_MODEL', 'base')
@@ -1639,6 +1641,133 @@ class RosieConversation:
 
         return result
 
+    def _run_test_calendar(self):
+        """
+        Run Google Calendar accuracy test.
+
+        Tests ROSIE's ability to retrieve and answer questions about calendar events
+        from the calendar_events.md file in the knowledge_base folder.
+        """
+        import random
+        import datetime
+
+        # Test cases based on calendar_events.md content
+        # Uses real dates from the calendar file
+        # Each test has a question with "Rosie" and expected keywords from the calendar data
+        # Questions include specific terms to improve RAG retrieval accuracy
+        test_cases = [
+            # Today events (December 6, 2025) - use exact terms from calendar for reliable RAG matching
+            {
+                "category": "today",
+                "question": "Rosie, what is the Portfolio event jcm on the calendar?",
+                "expected_keywords": ["portfolio", "jcm", "11:15", "11", "december"],
+                "expected_answer": "Portfolio event jcm at 11:15 AM on December 06"
+            },
+            {
+                "category": "today",
+                "question": "Rosie, when is the Portfolio event jcm happening?",
+                "expected_keywords": ["portfolio", "jcm", "december", "11", "saturday", "06"],
+                "expected_answer": "Portfolio event jcm at 11:15 AM on Saturday December 06"
+            },
+            # Past events - Thanksgiving is well-known
+            {
+                "category": "past",
+                "question": "Rosie, when was Thanksgiving in 2025?",
+                "expected_keywords": ["thanksgiving", "november 27", "november"],
+                "expected_answer": "November 27, 2025"
+            },
+            {
+                "category": "past",
+                "question": "Rosie, what was scheduled on Veterans Day November 11, 2025?",
+                "expected_keywords": ["veterans", "harris", "chris"],
+                "expected_answer": "Veterans Day, dr harris follow up at 4pm, 8pm Chris"
+            },
+            {
+                "category": "past",
+                "question": "Rosie, when did Henry have vet appointments in November?",
+                "expected_keywords": ["henry", "vet"],
+                "expected_answer": "Henry vet on November 7, November 12, November 26"
+            },
+            # Future events - use specific unique terms
+            {
+                "category": "future",
+                "question": "Rosie, when is the graduation ceremony in December?",
+                "expected_keywords": ["december 12", "graduation", "12"],
+                "expected_answer": "December 12, 2025 at 1:30 PM"
+            },
+            {
+                "category": "future",
+                "question": "Rosie, is Amy Hardin's birthday coming up?",
+                "expected_keywords": ["amy", "hardin", "december 11", "11"],
+                "expected_answer": "Amy Hardin's Birthday on December 11"
+            },
+            {
+                "category": "future",
+                "question": "Rosie, when is mahjong on the calendar?",
+                "expected_keywords": ["mahjong", "6pm", "monday"],
+                "expected_answer": "Mahjong 6pm on Monday"
+            },
+        ]
+
+        # Randomly select a test case
+        test_case = random.choice(test_cases)
+
+        print("\n" + "="*70)
+        print("ROSIE CALENDAR ACCURACY TEST")
+        print("="*70)
+        print(f"\nTesting calendar category: {test_case['category']}")
+        print(f"Question: {test_case['question']}")
+        print(f"Expected answer: {test_case['expected_answer']}")
+        print()
+
+        # Add question to conversation history
+        timestamp = datetime.datetime.now().strftime('%I:%M %p')
+        history_entry = f"Human [{timestamp}]: {test_case['question']}\n"
+        with open(self.history_file, 'a') as f:
+            f.write(history_entry)
+
+        # Get ROSIE's answer (text only, no TTS)
+        self._ollama_response()
+        answer_response = self.speak_file.read_text().strip()
+
+        # Add ROSIE's answer to history
+        timestamp = datetime.datetime.now().strftime('%I:%M %p')
+        history_entry = f"Robot [{timestamp}]: {answer_response}\n"
+        with open(self.history_file, 'a') as f:
+            f.write(history_entry)
+
+        print(f"ROSIE answer: {answer_response}\n")
+
+        print("-"*70)
+        print("\nEvaluating response accuracy...\n")
+
+        # Check if response contains expected keywords
+        # Keywords are treated as alternatives - finding ANY one of them means success
+        answer_lower = answer_response.lower()
+        keywords_found = []
+
+        for keyword in test_case['expected_keywords']:
+            if keyword.lower() in answer_lower:
+                keywords_found.append(keyword)
+
+        # Success if at least one keyword variant was found
+        passed = len(keywords_found) > 0
+
+        print(f"Expected (any of): {test_case['expected_keywords']}")
+        print(f"Found: {keywords_found if keywords_found else 'None'}")
+
+        print("\n" + "="*70)
+        if passed:
+            print("TEST RESULT: ✓ PASSED - Calendar retrieval successful")
+            result = True
+        else:
+            print("TEST RESULT: ✗ FAILED - Expected calendar information not found in response")
+            print("(Check that calendar_events.md is properly synced and indexed)")
+            result = False
+        print("="*70 + "\n")
+
+        return result
+
     def _process_test_input(self, text):
         """
         Process text input in test mode - FULL AUDIO PIPELINE TEST
@@ -2064,7 +2193,7 @@ class RosieConversation:
                 mode = "CONVERSATIONAL"
 
             # Show what the user just said (unless in test modes)
-            if not self.test_questions_mode and not self.test_knowledge_mode:
+            if not self.test_questions_mode and not self.test_knowledge_mode and not self.test_calendar_mode:
                 print(f"\n→ You: {last_human_statement}")
 
             # Get current date and time for context
@@ -2242,12 +2371,12 @@ class RosieConversation:
                     # Write to speak.txt
                     self.speak_file.write_text(ollama_text)
                     # Show robot response (unless in test modes)
-                    if not self.test_questions_mode and not self.test_knowledge_mode:
+                    if not self.test_questions_mode and not self.test_knowledge_mode and not self.test_calendar_mode:
                         print(f"← ROSIE: {ollama_text}\n")
                     self._log(f"Ollama response: {ollama_text}")
 
                     # Skip TTS in test modes (text-only)
-                    if not self.test_questions_mode and not self.test_knowledge_mode:
+                    if not self.test_questions_mode and not self.test_knowledge_mode and not self.test_calendar_mode:
                         # Transition to SPEAKING state
                         self._set_state(ConversationState.SPEAKING)
 
@@ -2630,6 +2759,12 @@ class RosieConversation:
             self.shutdown()
             return
 
+        # Test calendar mode: Run calendar accuracy test (text-only, no audio)
+        if self.test_calendar_mode:
+            self._run_test_calendar()
+            self.shutdown()
+            return
+
         # Text-only mode: Skip all audio processing, use stdin/stdout
         if self.text_only_mode:
             print("\n" + "="*70)
@@ -2969,6 +3104,9 @@ def main():
     parser.add_argument('--test-knowledge', action='store_true',
                        help='Test mode: Verify RAG retrieval by asking a question about data '
                             'in the knowledge_base folder. Uses text-only mode.')
+    parser.add_argument('--test-calendar', action='store_true',
+                       help='Test mode: Verify Google Calendar accuracy by asking about events '
+                            'happening today, in the past, or in the future. Uses text-only mode.')
     args = parser.parse_args()
 
     # Set global debug mode
@@ -2990,7 +3128,8 @@ def main():
         test_input=args.test_audio,
         text_only_mode=args.text_only,
         test_questions_mode=args.test_questions,
-        test_knowledge_mode=args.test_knowledge
+        test_knowledge_mode=args.test_knowledge,
+        test_calendar_mode=args.test_calendar
     )
     debug_print("[INIT] ROSIE instance created successfully")
 

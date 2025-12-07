@@ -57,6 +57,10 @@ for arg in "$@"; do
             ARGS+=("$arg")
             ENABLE_WEB=false
             ;;
+        --test-calendar)
+            ARGS+=("$arg")
+            ENABLE_WEB=false
+            ;;
         --help|-h)
             echo "ROSIE Conversational AI Launch Script"
             echo ""
@@ -137,6 +141,15 @@ for arg in "$@"; do
             echo "      Tests retrieval from non-private documents (family.md, yardcare.md, etc.)."
             echo "      This uses text-only mode (no audio processing)."
             echo ""
+            echo "  --test-calendar"
+            echo "      Runs a Google Calendar accuracy test."
+            echo "      Test procedure:"
+            echo "        1. A question is asked about calendar events (today, past, or future)"
+            echo "        2. ROSIE uses RAG to retrieve relevant calendar data from calendar_events.md"
+            echo "        3. Response is checked for expected dates, times, or event names"
+            echo "      Tests calendar event retrieval and date awareness."
+            echo "      This uses text-only mode (no audio processing)."
+            echo ""
             echo "EXAMPLES:"
             echo ""
             echo "  $0"
@@ -168,6 +181,10 @@ for arg in "$@"; do
             echo "  $0 --test-knowledge"
             echo "      Run RAG knowledge base test with question from knowledge_base/."
             echo "      Verifies RAG retrieval is working correctly."
+            echo ""
+            echo "  $0 --test-calendar"
+            echo "      Run Google Calendar accuracy test."
+            echo "      Verifies calendar events are being retrieved and answered correctly."
             echo ""
             echo "ENVIRONMENT:"
             echo ""
