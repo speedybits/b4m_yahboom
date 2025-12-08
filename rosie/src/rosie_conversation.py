@@ -448,13 +448,26 @@ class RosieConversation:
         # Conversation depth tracking (for transition display)
         self.last_conversation_depth = None
 
+        # Determine total initialization steps based on mode
+        # Text-only/test modes: 3 steps (files, RAG, config)
+        # Normal mode: 4 steps (files, RAG, config, Whisper - loaded in start())
+        self._is_text_mode = text_only_mode or test_questions_mode or test_knowledge_mode or test_calendar_mode or test_conversation_mode
+        self._total_init_steps = 3 if self._is_text_mode else 4
+        self._current_init_step = 0
+
         # Initialize files
+        self._current_init_step += 1
+        print(f"(Initialization step {self._current_init_step} of {self._total_init_steps}) Setting up files...", flush=True)
         self._initialize_files()
 
         # Initialize RAG system if available
+        self._current_init_step += 1
+        print(f"(Initialization step {self._current_init_step} of {self._total_init_steps}) Loading knowledge base...", flush=True)
         self._initialize_rag()
 
         # Validate configuration
+        self._current_init_step += 1
+        print(f"(Initialization step {self._current_init_step} of {self._total_init_steps}) Validating configuration...", flush=True)
         self._validate_configuration()
 
         self._log("ROSIE Conversational AI System initialized")
@@ -923,14 +936,8 @@ class RosieConversation:
         Uses VAD to detect when user finishes speaking, then transcribes complete phrases.
         NO MORE PARTIAL PHRASES!
         """
-        try:
-            self._log("Whisper worker started")
-            self._load_whisper_model()
-        except Exception as e:
-            debug_print(f"[WHISPER WORKER ERROR] Failed to start: {e}", flush=True)
-            import traceback
-            traceback.print_exc()
-            return
+        self._log("Whisper worker started")
+        # Note: Whisper model is already loaded in start() before this thread starts
 
         # Import VAD
         import webrtcvad
@@ -3423,7 +3430,12 @@ class RosieConversation:
 
         debug_print("[DEBUG] Web server check complete", flush=True)
 
-        # Start Whisper worker
+        # Load Whisper model (step 4 of 4) - do this synchronously to show progress
+        self._current_init_step += 1
+        print(f"(Initialization step {self._current_init_step} of {self._total_init_steps}) Loading speech recognition model...", flush=True)
+        self._load_whisper_model()
+
+        # Start Whisper worker (model already loaded)
         debug_print("[DEBUG] Starting Whisper thread...", flush=True)
         self.whisper_thread = threading.Thread(target=self._whisper_worker, daemon=True)
         self.whisper_thread.start()
