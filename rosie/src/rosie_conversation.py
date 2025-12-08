@@ -3272,9 +3272,12 @@ class RosieConversation:
             print("="*70)
             print("All audio processing bypassed (no Whisper/Piper)")
             print("Using text input/output only")
+            print("="*70)
+            print("\n" + "="*70)
+            print("✓ ROSIE IS READY")
+            print("="*70)
+            print("Type your messages and press Enter. Press CTRL+C to exit.")
             print("="*70 + "\n")
-
-            print("Type your messages and press Enter. Press CTRL+C to exit.\n")
 
             try:
                 while not self.shutdown_event.is_set():
@@ -3456,20 +3459,17 @@ class RosieConversation:
         protocol = "https" if ssl_cert_path.exists() else "http"
         debug_print(f"[DEBUG] Protocol: {protocol}", flush=True)
 
-        # Always print startup message and instructions
-        debug_print("[DEBUG] About to print READY message...", flush=True)
-        debug_print("\n" + "="*70, flush=True)
-        debug_print("[DEBUG] Printed banner top", flush=True)
-        print("ROSIE ready. Say 'Rosie' to interact. CTRL+C to exit.", flush=True)
-        debug_print("[DEBUG] Printed title", flush=True)
-        debug_print("="*70, flush=True)
-        debug_print("[DEBUG] Printed banner bottom", flush=True)
+        # Always print startup message and instructions - make it prominent!
+        print("\n" + "="*70, flush=True)
+        print("✓ ROSIE IS READY", flush=True)
+        print("="*70, flush=True)
+        print("Say 'Rosie' to start talking. Press CTRL+C to exit.", flush=True)
+        print("="*70 + "\n", flush=True)
+
+        # Debug info (only shown with --debug)
         debug_print(f"Current State: {self._get_state().name}", flush=True)
-        debug_print("[DEBUG] Printed state", flush=True)
         debug_print(f"Audio Mode: {self._get_audio_mode().name}", flush=True)
-        debug_print("[DEBUG] Printed audio mode", flush=True)
         debug_print(f"LLM (Ollama): {ollama_gpu_status}", flush=True)
-        debug_print("[DEBUG] Printed Ollama status", flush=True)
 
         # Show web interface URL if web server is available
         debug_print("[DEBUG] Checking web server module...", flush=True)
