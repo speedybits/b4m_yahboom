@@ -407,6 +407,7 @@ class RosieConversation:
         # Threads
         self.whisper_thread = None
         self.wake_word_thread = None
+        self.keyboard_thread = None
 
         # Audio configuration for continuous streaming
         self.sample_rate = 16000
@@ -2477,6 +2478,56 @@ class RosieConversation:
         # MEDIUM is the default for everything in between
         return 'medium'
 
+    def _keyboard_listener(self):
+        """
+        Keyboard listener thread for spacebar wake trigger
+
+        Monitors keyboard for spacebar press as alternative to voice wake word.
+        Only active during LISTENING state in normal (non-text) mode.
+        """
+        import sys
+        import select
+
+        # Try to set up terminal for raw input (Unix-specific)
+        try:
+            import termios
+            import tty
+
+            # Save original terminal settings
+            old_settings = termios.tcgetattr(sys.stdin)
+            self._log("Keyboard listener started (spacebar = wake word)")
+
+            try:
+                # Set terminal to raw mode (character-by-character input)
+                tty.setcbreak(sys.stdin.fileno())
+
+                while not self.shutdown_event.is_set():
+                    current_state = self._get_state()
+
+                    # Only active in LISTENING state
+                    if current_state == ConversationState.LISTENING:
+                        # Check if input is available (non-blocking)
+                        if select.select([sys.stdin], [], [], 0.1)[0]:
+                            char = sys.stdin.read(1)
+
+                            # Spacebar pressed
+                            if char == ' ':
+                                with self.wake_word_lock:
+                                    self.wake_word_detected = True
+                                debug_print("[KEYBOARD] Spacebar pressed - wake trigger!")
+                    else:
+                        # Not in LISTENING state, just sleep
+                        time.sleep(0.1)
+
+            finally:
+                # Restore terminal settings
+                termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+
+        except Exception as e:
+            # Terminal raw mode not available (e.g., not a TTY)
+            debug_print(f"[KEYBOARD] Keyboard listener not available: {e}")
+            return
+
     def _classify_intent(self, text):
         """
         Classify user message intent for appropriate response routing
@@ -3453,6 +3504,12 @@ class RosieConversation:
         self.web_audio_thread.start()
         debug_print("[DEBUG] Web audio poll thread started", flush=True)
 
+        # Start keyboard listener (spacebar = wake word)
+        debug_print("[DEBUG] Starting keyboard listener thread...", flush=True)
+        self.keyboard_thread = threading.Thread(target=self._keyboard_listener, daemon=True)
+        self.keyboard_thread.start()
+        debug_print("[DEBUG] Keyboard listener thread started", flush=True)
+
         # Check Ollama GPU status (skip journalctl - can cause hangs)
         ollama_gpu_status = "Active"
 
@@ -3475,7 +3532,8 @@ class RosieConversation:
         print("\n" + "="*70, flush=True)
         print("✓ ROSIE IS READY", flush=True)
         print("="*70, flush=True)
-        print("Say 'Rosie' to start talking. Press CTRL+C to exit.", flush=True)
+        print("Say 'Rosie' or press SPACEBAR to start talking.", flush=True)
+        print("Press CTRL+C to exit.", flush=True)
         print("="*70 + "\n", flush=True)
 
         # Debug info (only shown with --debug)

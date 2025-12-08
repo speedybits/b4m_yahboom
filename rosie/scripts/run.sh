@@ -81,6 +81,7 @@ for arg in "$@"; do
             echo "      A browser window is automatically opened to https://localhost:5000"
             echo "      (or http:// if SSL is not configured)."
             echo "      Audio I/O uses the LOCAL microphone and speakers."
+            echo "      Say 'Rosie' or press SPACEBAR to trigger a response."
             echo ""
             echo "  --no-web, --no-browser, --headless"
             echo "      Runs ROSIE in console-only mode without the web status interface."
