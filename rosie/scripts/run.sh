@@ -61,6 +61,10 @@ for arg in "$@"; do
             ARGS+=("$arg")
             ENABLE_WEB=false
             ;;
+        --test-conversation)
+            ARGS+=("$arg")
+            ENABLE_WEB=false
+            ;;
         --help|-h)
             echo "ROSIE Conversational AI Launch Script"
             echo ""
@@ -152,6 +156,18 @@ for arg in "$@"; do
             echo "      Tests dynamic calendar retrieval with real upcoming events."
             echo "      This uses text-only mode (no audio processing)."
             echo ""
+            echo "  --test-conversation"
+            echo "      Runs a conversation quality test."
+            echo "      Test procedure:"
+            echo "        1. Tests intent classification for greetings, farewells, acknowledgments,"
+            echo "           questions, and general conversation"
+            echo "        2. Verifies responses are appropriate for each intent type:"
+            echo "           - Greetings should not mention schedules/calendars"
+            echo "           - Acknowledgments should be very brief (under 10 words)"
+            echo "           - Farewells should include goodbye phrases"
+            echo "        3. Checks response length and content appropriateness"
+            echo "      This uses text-only mode (no audio processing)."
+            echo ""
             echo "EXAMPLES:"
             echo ""
             echo "  $0"
@@ -187,6 +203,10 @@ for arg in "$@"; do
             echo "  $0 --test-calendar"
             echo "      Run Google Calendar accuracy test."
             echo "      Verifies calendar events are being retrieved and answered correctly."
+            echo ""
+            echo "  $0 --test-conversation"
+            echo "      Run conversation quality test."
+            echo "      Verifies greetings, acknowledgments, and farewells get appropriate responses."
             echo ""
             echo "ENVIRONMENT:"
             echo ""

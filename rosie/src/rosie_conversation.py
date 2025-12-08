@@ -34,6 +34,16 @@ def debug_print(*args, **kwargs):
     if DEBUG_MODE:
         print(*args, **kwargs)
 
+def configure_logging(debug_mode):
+    """Configure logging levels based on debug mode"""
+    import logging
+    if not debug_mode:
+        # Suppress noisy library logs in normal mode
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+        logging.getLogger("httpcore").setLevel(logging.WARNING)
+        logging.getLogger("chromadb").setLevel(logging.WARNING)
+        logging.getLogger("numexpr").setLevel(logging.WARNING)
+
 import whisper
 import numpy as np
 import sounddevice as sd
@@ -42,6 +52,7 @@ from dotenv import load_dotenv
 # RAG imports
 try:
     from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Settings, StorageContext
+    from llama_index.core.node_parser import SentenceSplitter
     from llama_index.embeddings.ollama import OllamaEmbedding
     from llama_index.llms.ollama import Ollama
     from llama_index.vector_stores.chroma import ChromaVectorStore
@@ -125,14 +136,23 @@ class RosieRAG:
                     reader_kwargs["exclude"] = ["**/private/*", "**/private/**/*"]
 
                 documents = SimpleDirectoryReader(**reader_kwargs).load_data()
-                debug_print(f"[RAG] Loading {len(documents)} document chunks...")
+                debug_print(f"[RAG] Loaded {len(documents)} files")
 
-                # Create or update index
+                # Use larger chunk size to keep calendar days together
+                # 512 chars fits 2-3 calendar entries per chunk
+                text_splitter = SentenceSplitter(
+                    chunk_size=512,  # Larger chunks to keep days together
+                    chunk_overlap=100  # More overlap for context
+                )
+
+                # Create or update index with chunking
                 self.index = VectorStoreIndex.from_documents(
                     documents,
                     storage_context=storage_context,
+                    transformations=[text_splitter],
                     show_progress=False
                 )
+                debug_print(f"[RAG] Created index with chunked documents")
 
             except Exception as e:
                 debug_print(f"[RAG] Error loading documents: {e}")
@@ -152,13 +172,15 @@ class RosieRAG:
         # Skip journalctl check (can cause hangs) - just print ready message
         debug_print(f"[RAG] Ready ({len(md_files)} knowledge base files)")
 
-    def query(self, question, top_k=5):
+    def query(self, question, top_k=5, date_filter=None):
         """
         Retrieve relevant context for a question using ONLY embeddings (no LLM calls)
 
         Args:
             question: The question to search for
             top_k: Number of relevant chunks to retrieve (default: 5)
+            date_filter: Optional date string to filter results (e.g., "December 13, 2025")
+                         When provided, prioritizes chunks containing this date
 
         Returns:
             String containing relevant context, or empty string if no results
@@ -178,9 +200,12 @@ class RosieRAG:
 
             # Extract text from retrieved nodes
             if nodes:
-                contexts = []
                 debug_print(f"[RAG] Query: '{question}'")
                 debug_print(f"[RAG] Retrieved {len(nodes)} chunks:")
+
+                all_contexts = []
+                date_filtered_contexts = []
+
                 for i, node in enumerate(nodes):
                     # Get the text content from each node
                     text = node.node.get_content()
@@ -190,9 +215,23 @@ class RosieRAG:
                     score = getattr(node, 'score', None)
                     score_str = f" (score: {score:.3f})" if score is not None else ""
                     debug_print(f"[RAG]   {i+1}. {source}{score_str}: {text[:80].replace(chr(10), ' ')}...")
-                    contexts.append(f"[From {source}]\n{text}")
 
-                return "\n\n".join(contexts)
+                    context_entry = f"[From {source}]\n{text}"
+                    all_contexts.append(context_entry)
+
+                    # Check if this chunk contains the target date
+                    if date_filter and date_filter.lower() in text.lower():
+                        date_filtered_contexts.append(context_entry)
+                        debug_print(f"[RAG]      ^ Contains target date: {date_filter}")
+
+                # If we have date-filtered results, prioritize them
+                if date_filtered_contexts:
+                    debug_print(f"[RAG] Using {len(date_filtered_contexts)} date-filtered chunks (target: {date_filter})")
+                    return "\n\n".join(date_filtered_contexts)
+                else:
+                    if date_filter:
+                        debug_print(f"[RAG] No chunks matched date filter: {date_filter}, using all {len(all_contexts)} chunks")
+                    return "\n\n".join(all_contexts)
             else:
                 debug_print(f"[RAG] Query: '{question}' - No chunks retrieved")
                 return ""
@@ -251,13 +290,20 @@ class RosieRAG:
 
             documents = SimpleDirectoryReader(**reader_kwargs).load_data()
 
-            debug_print(f"[RAG] Loaded {len(documents)} document chunks")
-            debug_print(f"[RAG] Creating vector embeddings...")
+            debug_print(f"[RAG] Loaded {len(documents)} files")
+            debug_print(f"[RAG] Creating vector embeddings with chunking...")
 
-            # Create new index
+            # Use larger chunk size to keep calendar days together
+            text_splitter = SentenceSplitter(
+                chunk_size=512,
+                chunk_overlap=100
+            )
+
+            # Create new index with chunking
             self.index = VectorStoreIndex.from_documents(
                 documents,
                 storage_context=storage_context,
+                transformations=[text_splitter],
                 show_progress=True
             )
 
@@ -294,7 +340,7 @@ class RosieConversation:
     Simplified architecture with plain text conversation history.
     """
 
-    def __init__(self, test_mode=False, test_input=None, text_only_mode=False, test_questions_mode=False, test_knowledge_mode=False, test_calendar_mode=False):
+    def __init__(self, test_mode=False, test_input=None, text_only_mode=False, test_questions_mode=False, test_knowledge_mode=False, test_calendar_mode=False, test_conversation_mode=False):
         """Initialize ROSIE system with configuration from environment
 
         Args:
@@ -304,6 +350,7 @@ class RosieConversation:
             test_questions_mode: If True, run comprehension test with paragraphs and questions
             test_knowledge_mode: If True, run RAG knowledge base retrieval test
             test_calendar_mode: If True, run Google Calendar accuracy test
+            test_conversation_mode: If True, run conversation quality test with intent classification
         """
         # Test mode configuration
         self.test_mode = test_mode
@@ -312,6 +359,7 @@ class RosieConversation:
         self.test_questions_mode = test_questions_mode
         self.test_knowledge_mode = test_knowledge_mode
         self.test_calendar_mode = test_calendar_mode
+        self.test_conversation_mode = test_conversation_mode
 
         # Load configuration from environment
         self.whisper_model_name = os.getenv('WHISPER_MODEL', 'base')
@@ -712,6 +760,11 @@ class RosieConversation:
             self._log(f"Loading faster-whisper model: {self.whisper_model_name}")
 
             try:
+                # Suppress faster-whisper's INFO logging (VAD messages) unless in debug mode
+                if not DEBUG_MODE:
+                    import logging
+                    logging.getLogger("faster_whisper").setLevel(logging.WARNING)
+
                 debug_print("[LOAD MODEL] Importing WhisperModel...", flush=True)
                 from faster_whisper import WhisperModel
 
@@ -1131,6 +1184,7 @@ class RosieConversation:
 
                                             # Store transcription as-is
                                             self._append_to_history(f"Human: {transcription}\n")
+                                            print(f"[Whisper] {transcription}")
                                             debug_print(f"[WHISPER] [DEMO MODE] Human: {transcription}")
                                             self._log(f"Demo mode transcribed: {transcription}")
                                         else:
@@ -1146,6 +1200,7 @@ class RosieConversation:
                                                 # Remove wake word from transcription before storing
                                                 cleaned_transcription = re.sub(wake_word_pattern, '', transcription, flags=re.IGNORECASE).strip()
 
+                                                print(f"[Whisper] {transcription}")
                                                 self._log(f"Wake word detected in: {transcription}")
 
                                                 # Store cleaned version (without wake word)
@@ -1155,6 +1210,7 @@ class RosieConversation:
                                             else:
                                                 # No wake word, store as-is (ambient conversation for context)
                                                 self._append_to_history(f"Human: {transcription}\n")
+                                                print(f"[Whisper] {transcription}")
                                                 self._log(f"Transcribed: {transcription}")
                                     elif transcription:
                                         self._log(f"Filtered hallucination: {transcription}")
@@ -1894,6 +1950,223 @@ class RosieConversation:
 
         return result
 
+    def _run_test_conversation(self):
+        """
+        Run conversation quality test.
+
+        Tests ROSIE's intent classification and response appropriateness for:
+        - Greetings (should get casual responses, no schedule talk)
+        - Farewells (should get brief goodbyes)
+        - Acknowledgments (should get very brief responses)
+        - Questions (should get factual answers)
+        - General conversation (should get natural responses)
+        """
+        import datetime
+
+        print("\n" + "="*70)
+        print("ROSIE CONVERSATION QUALITY TEST")
+        print("="*70)
+        print("\nThis test verifies intent classification and response quality.")
+        print("Each test checks that ROSIE responds appropriately to different message types.\n")
+
+        # Test cases with expected intent and validation criteria
+        test_cases = [
+            {
+                "category": "GREETING",
+                "input": "Hey, what is going on?",
+                "expected_intent": "greeting",
+                "should_not_contain": ["schedule", "meeting", "appointment", "calendar", "event"],
+                "should_be_brief": True,
+                "max_words": 25,
+                "description": "Casual greeting should get casual response, no schedule talk"
+            },
+            {
+                "category": "GREETING",
+                "input": "How's it going?",
+                "expected_intent": "greeting",
+                "should_not_contain": ["schedule", "meeting", "appointment", "calendar"],
+                "should_be_brief": True,
+                "max_words": 20,
+                "description": "Simple greeting should get brief, friendly response"
+            },
+            {
+                "category": "ACKNOWLEDGMENT",
+                "input": "No, that's okay.",
+                "expected_intent": "acknowledgment",
+                "should_not_contain": ["how about you", "how are you", "schedule", "meeting"],
+                "should_be_brief": True,
+                "max_words": 10,
+                "description": "Acknowledgment should get very brief response, not a question"
+            },
+            {
+                "category": "ACKNOWLEDGMENT",
+                "input": "Thanks",
+                "expected_intent": "acknowledgment",
+                "should_contain_any": ["welcome", "no problem", "sure", "anytime", "glad"],
+                "should_be_brief": True,
+                "max_words": 10,
+                "description": "Thanks should get brief acknowledgment"
+            },
+            {
+                "category": "FAREWELL",
+                "input": "Bye, talk later!",
+                "expected_intent": "farewell",
+                "should_contain_any": ["bye", "later", "see you", "take care", "catch", "soon"],
+                "should_be_brief": True,
+                "max_words": 15,
+                "description": "Farewell should get brief goodbye"
+            },
+            {
+                "category": "QUESTION",
+                "input": "What time is it?",
+                "expected_intent": "question",
+                "should_contain_any": [":", "am", "pm", "o'clock", "morning", "afternoon", "evening"],
+                "should_be_brief": True,
+                "max_words": 20,
+                "description": "Time question should get time-related answer"
+            },
+            {
+                "category": "CONVERSATION",
+                "input": "I've been thinking about how technology is changing the way we communicate. "
+                         "People used to write letters and wait weeks for a response, but now we can "
+                         "video chat with anyone in the world instantly. What do you think about that?",
+                "expected_intent": "question",  # Ends with "?" so classified as question - that's fine
+                "min_words": 15,
+                "max_words": 100,
+                "should_not_contain": ["schedule", "calendar", "appointment", "meeting"],
+                "should_engage": True,
+                "description": "Topic discussion should get thoughtful, engaged response"
+            },
+            {
+                "category": "CONVERSATION",
+                "input": "I had a really tough day at work today. My project deadline got moved up "
+                         "and I'm feeling pretty stressed about it.",
+                "expected_intent": "conversation",  # Statement, not a question
+                "min_words": 10,
+                "max_words": 60,
+                "should_not_contain": ["schedule", "calendar", "I don't know", "try to", "you should",
+                                       "you could", "have you tried", "breathing", "exercise", "meditation",
+                                       "would you like me to"],
+                "should_contain_any": ["sorry", "hear", "sounds", "tough", "rough", "hard", "stressful",
+                                       "understand", "that's", "must be"],
+                "should_engage": True,
+                "description": "Emotional sharing should get empathetic response, NOT advice"
+            },
+        ]
+
+        results = []
+        passed_count = 0
+        failed_count = 0
+
+        for i, test in enumerate(test_cases, 1):
+            print(f"\n{'─'*70}")
+            print(f"TEST {i}/{len(test_cases)}: {test['category']}")
+            print(f"{'─'*70}")
+            print(f"Input: \"{test['input']}\"")
+            print(f"Expected intent: {test['expected_intent']}")
+            print(f"Criteria: {test['description']}")
+            print()
+
+            # Clear conversation history for clean test
+            self.history_file.write_text("")
+
+            # Classify intent
+            actual_intent = self._classify_intent(test['input'])
+            intent_correct = actual_intent == test['expected_intent']
+
+            print(f"Actual intent: {actual_intent} {'✓' if intent_correct else '✗'}")
+
+            # Add to conversation history and get response
+            timestamp = datetime.datetime.now().strftime('%I:%M %p')
+            history_entry = f"Human [{timestamp}]: {test['input']}\n"
+            with open(self.history_file, 'a') as f:
+                f.write(history_entry)
+
+            # Get ROSIE's response
+            self._ollama_response()
+            response = self.speak_file.read_text().strip()
+
+            print(f"Response: \"{response}\"")
+
+            # Validate response
+            response_lower = response.lower()
+            word_count = len(response.split())
+            validation_passed = True
+            validation_notes = []
+
+            # Check intent classification
+            if not intent_correct:
+                validation_passed = False
+                validation_notes.append(f"Wrong intent: expected '{test['expected_intent']}', got '{actual_intent}'")
+
+            # Check should_not_contain
+            if 'should_not_contain' in test:
+                for word in test['should_not_contain']:
+                    if word.lower() in response_lower:
+                        validation_passed = False
+                        validation_notes.append(f"Response contains forbidden word: '{word}'")
+
+            # Check should_contain_any
+            if 'should_contain_any' in test:
+                found_any = any(word.lower() in response_lower for word in test['should_contain_any'])
+                if not found_any:
+                    validation_passed = False
+                    validation_notes.append(f"Response missing expected words: {test['should_contain_any']}")
+
+            # Check brevity (max words)
+            if test.get('should_be_brief') and 'max_words' in test:
+                if word_count > test['max_words']:
+                    validation_passed = False
+                    validation_notes.append(f"Response too long: {word_count} words (max {test['max_words']})")
+
+            # Check minimum length for conversation tests
+            if 'min_words' in test:
+                if word_count < test['min_words']:
+                    validation_passed = False
+                    validation_notes.append(f"Response too short: {word_count} words (min {test['min_words']})")
+
+            # Check max_words without should_be_brief (for conversation tests)
+            if 'max_words' in test and not test.get('should_be_brief'):
+                if word_count > test['max_words']:
+                    validation_passed = False
+                    validation_notes.append(f"Response too long: {word_count} words (max {test['max_words']})")
+
+            # Record result
+            if validation_passed:
+                print(f"\nResult: ✓ PASSED")
+                passed_count += 1
+            else:
+                print(f"\nResult: ✗ FAILED")
+                for note in validation_notes:
+                    print(f"  - {note}")
+                failed_count += 1
+
+            results.append({
+                "test": test['category'],
+                "input": test['input'],
+                "passed": validation_passed,
+                "notes": validation_notes
+            })
+
+        # Summary
+        print("\n" + "="*70)
+        print("CONVERSATION TEST SUMMARY")
+        print("="*70)
+        print(f"\nTotal tests: {len(test_cases)}")
+        print(f"Passed: {passed_count}")
+        print(f"Failed: {failed_count}")
+
+        if failed_count == 0:
+            print("\n✓ ALL TESTS PASSED - Conversation quality is good!")
+            overall_result = True
+        else:
+            print(f"\n✗ {failed_count} TEST(S) FAILED - Review the issues above")
+            overall_result = False
+
+        print("="*70 + "\n")
+
+        return overall_result
+
     def _process_test_input(self, text):
         """
         Process text input in test mode - FULL AUDIO PIPELINE TEST
@@ -2197,6 +2470,78 @@ class RosieConversation:
         # MEDIUM is the default for everything in between
         return 'medium'
 
+    def _classify_intent(self, text):
+        """
+        Classify user message intent for appropriate response routing
+
+        Args:
+            text: The user's message text (without timestamp prefix)
+
+        Returns:
+            str: 'greeting', 'farewell', 'acknowledgment', 'question', 'task', or 'conversation'
+        """
+        text_lower = text.lower().strip()
+
+        # GREETING patterns - casual hellos and "how are you" type messages
+        greeting_patterns = [
+            r'^(hey|hi|hello|howdy|yo)[\s,!?.]*$',  # Just "hey", "hi", etc.
+            r'^(hey|hi|hello|howdy)\s+(there|rosie|rose)[\s,!?.]*$',  # "Hey there", "Hi Rosie"
+            r'^good\s+(morning|afternoon|evening|day)[\s,!?.]*$',  # Time-based greetings
+            r'^what(\'?s|\s+is)\s+(up|going\s+on|happening)[\s,!?.]*$',  # "What's up", "What is going on"
+            r'^how(\'?s|\s+is)\s+it\s+going[\s,!?.]*$',  # "How's it going", "How is it going"
+            r'^sup[\s,!?.]*$',  # "Sup"
+            r'^how\s+(are\s+you|you\s+doing|have\s+you\s+been)[\s,!?.]*$',  # "How are you" variants
+            r'^(hey|hi|hello)[\s,]+.{0,10}(what|how)',  # "Hey, what's up", "Hey, what is going on"
+        ]
+        if any(re.search(pattern, text_lower) for pattern in greeting_patterns):
+            return 'greeting'
+
+        # FAREWELL patterns
+        farewell_patterns = [
+            r'\b(bye|goodbye|good\s*bye|see\s+you|talk\s+(later|soon)|gotta\s+go|have\s+to\s+go)\b',
+            r'^(later|peace|take\s+care)[\s,!?.]*$',
+        ]
+        if any(re.search(pattern, text_lower) for pattern in farewell_patterns):
+            return 'farewell'
+
+        # ACKNOWLEDGMENT patterns - responses to ROSIE's previous message
+        acknowledgment_patterns = [
+            r'^(ok(ay)?|alright|sure|got\s+it|understood|i\s+see|makes\s+sense)[\s,!?.]*$',
+            r'^(thanks|thank\s+you|thx)[\s,!?.]*$',
+            r'^(no|nope|nah)[\s,]*(thanks|thank\s+you|that\'?s?\s+(ok(ay)?|fine|alright))[\s,!?.]*$',
+            r'^(that\'?s?\s+)?(ok(ay)?|fine|alright|good|great)[\s,!?.]*$',
+            r'^(never\s*mind|forget\s+it|don\'?t\s+worry)[\s,!?.]*$',
+            r'^(yes|yeah|yep|yup|no|nope|nah)[\s,!?.]*$',  # Simple yes/no
+            r'^no[\s,]+.{0,15}(ok(ay)?|fine|alright)',  # "No, that's okay"
+        ]
+        if any(re.search(pattern, text_lower) for pattern in acknowledgment_patterns):
+            return 'acknowledgment'
+
+        # TASK patterns - action requests
+        task_patterns = [
+            r'\b(schedule|remind|set\s+up|create|add|book|make)\b.*\b(appointment|meeting|event|reminder|alarm)\b',
+            r'\b(turn\s+(on|off)|switch|open|close|start|stop)\b',
+            r'\b(remind\s+me|set\s+(a\s+)?(timer|alarm|reminder))\b',
+        ]
+        if any(re.search(pattern, text_lower) for pattern in task_patterns):
+            return 'task'
+
+        # QUESTION patterns - factual queries
+        question_patterns = [
+            r'\b(what|when|where|who|which|how\s+many|how\s+much|how\s+long|how\s+far)\b.*\?',
+            r'^(is|are|was|were|do|does|did|can|could|will|would|should|have|has|had)\b.*\?',
+            r'\b(tell\s+me\s+about|what\'?s?\s+the)\b',
+        ]
+        if any(re.search(pattern, text_lower) for pattern in question_patterns):
+            return 'question'
+
+        # Check for question mark at end (catch-all for questions)
+        if text_lower.rstrip().endswith('?'):
+            return 'question'
+
+        # Default to general conversation
+        return 'conversation'
+
 
     # =====================================================================
     # STATE 2: RESPONDING - Ollama Immediate Response
@@ -2218,18 +2563,54 @@ class RosieConversation:
             # Read conversation history
             conversation_content = self.history_file.read_text()
 
-            # Query RAG knowledge base if available
-            rag_context = ""
-            if self.rag_system:
-                # Extract last human statement to use as query
-                # Note: Format is "Human [timestamp]: ..." not "Human:..."
-                human_lines = [line for line in conversation_content.split('\n') if line.startswith('Human ')]
-                last_human_statement = human_lines[-1] if human_lines else ""
+            # Extract last human statement first (needed for intent classification)
+            human_lines = [line for line in conversation_content.split('\n') if line.startswith('Human ')]
+            last_human_statement = human_lines[-1] if human_lines else ""
+            question = re.sub(r'^Human\s+\[.*?\]:\s*', '', last_human_statement) if last_human_statement else ""
 
-                if last_human_statement:
-                    # Remove "Human [timestamp]:" prefix to get just the question
-                    question = re.sub(r'^Human\s+\[.*?\]:\s*', '', last_human_statement)
-                    rag_context = self.rag_system.query(question, top_k=5)
+            # Classify intent to determine response strategy
+            intent = self._classify_intent(question)
+            debug_print(f"[INTENT] Classified as: {intent}")
+
+            # Query RAG knowledge base ONLY for questions and tasks (not casual conversation)
+            rag_context = ""
+            if self.rag_system and intent in ['question', 'task']:
+                if question:
+                    # Enhance calendar-related queries with current date context
+                    # This helps RAG retrieve the correct week's events instead of any matching day
+                    import datetime
+                    enhanced_question = question
+                    date_filter = None  # Will be set if we can determine the target date
+                    day_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+                    question_lower = question.lower()
+
+                    # Check if question references a day of the week
+                    for day_name in day_names:
+                        if day_name in question_lower:
+                            # Calculate the actual date for "this [day]"
+                            today = datetime.date.today()
+                            current_weekday = today.weekday()  # Monday=0, Sunday=6
+                            target_weekday = day_names.index(day_name)
+
+                            # Calculate days until target day (this week or next)
+                            days_ahead = target_weekday - current_weekday
+                            if days_ahead < 0:  # Target day already passed this week
+                                days_ahead += 7
+                            target_date = today + datetime.timedelta(days=days_ahead)
+
+                            # Set the date filter for RAG post-filtering
+                            date_filter = target_date.strftime('%B %d, %Y')  # e.g., "December 09, 2025"
+                            # Also add to query to help semantic search
+                            enhanced_question = f"{question} {date_filter}"
+                            debug_print(f"[RAG] Enhanced query with date: {enhanced_question}")
+                            debug_print(f"[RAG] Date filter set: {date_filter}")
+                            break
+
+                    # Use more chunks for calendar/schedule queries to increase chance of finding right date
+                    is_calendar_query = any(word in question_lower for word in ['calendar', 'scheduled', 'happening', 'appointment', 'event', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 'today', 'tomorrow', 'week'])
+                    top_k = 25 if is_calendar_query else 5
+
+                    rag_context = self.rag_system.query(enhanced_question, top_k=top_k, date_filter=date_filter)
 
                     # Debug logging to show what RAG retrieved
                     if rag_context.strip():
@@ -2259,12 +2640,8 @@ class RosieConversation:
                 else:
                     debug_print(f"[OLLAMA] Warning: Summarization failed, using full context")
 
-            # Detect question type from most recent Human statement
-            # Extract last Human line from conversation (format: "Human [timestamp]: text")
-            human_lines = [line for line in conversation_content.split('\n') if line.startswith('Human ')]
-            last_human_statement = human_lines[-1] if human_lines else ""
-
             # Analyze conversation depth for dynamic response length
+            # (last_human_statement already extracted above)
             conversation_depth = self._analyze_conversation_depth(conversation_content, last_human_statement)
 
             # Set dynamic token limits based on depth
@@ -2290,164 +2667,155 @@ class RosieConversation:
             # Update last depth for next comparison
             self.last_conversation_depth = conversation_depth
 
-            # Check for calendar event creation request
-            calendar_create_pattern = r'\b(schedule|add|create|set up|book|make)\b.*\b(appointment|meeting|event|reminder)\b'
-            is_calendar_create = bool(re.search(calendar_create_pattern, last_human_statement, re.IGNORECASE))
-
-            if is_calendar_create:
-                # Handle calendar event creation
-                self._handle_calendar_creation(last_human_statement, conversation_content)
-                return
-
-            # Check for factual question words (what, when, where, who, which)
-            # BUT exclude opinion-seeking phrases (these are conversational, not factual)
-            opinion_pattern = r'\b(what do you think|what do you feel|how do you feel|do you think|your opinion|your thoughts)\b'
-            has_opinion_phrase = bool(re.search(opinion_pattern, last_human_statement, re.IGNORECASE))
-
-            factual_question_pattern = r'\b(what|when|where|who|which)\b'
-            has_factual_word = bool(re.search(factual_question_pattern, last_human_statement, re.IGNORECASE))
-
-            # Opinion questions are conversational, even if they contain factual words
-            is_factual_question = has_factual_word and not has_opinion_phrase
-
-            # Set temperature based on question type
-            if is_factual_question:
-                temperature = 0.1  # Low temperature for accurate fact extraction
-                mode = "FACTUAL"
-            else:
-                temperature = 0.7  # Higher temperature for conversational/creative responses
-                mode = "CONVERSATIONAL"
+            # Check for calendar event creation request (task intent handles this)
+            if intent == 'task':
+                calendar_create_pattern = r'\b(schedule|add|create|set up|book|make)\b.*\b(appointment|meeting|event|reminder)\b'
+                is_calendar_create = bool(re.search(calendar_create_pattern, last_human_statement, re.IGNORECASE))
+                if is_calendar_create:
+                    self._handle_calendar_creation(last_human_statement, conversation_content)
+                    return
 
             # Show what the user just said (unless in test modes)
-            if not self.test_questions_mode and not self.test_knowledge_mode and not self.test_calendar_mode:
+            if not self.test_questions_mode and not self.test_knowledge_mode and not self.test_calendar_mode and not self.test_conversation_mode:
                 print(f"\n→ You: {last_human_statement}")
 
-            # Get current date and time for context
+            # Extract the actual text (without timestamp prefix)
+            question_text = question  # Already extracted above
+
+            # Get current date/time context (only needed for questions)
             import datetime
             now = datetime.datetime.now()
-            current_date_context = (
-                f"=== IMPORTANT: CURRENT DATE AND TIME ===\n"
-                f"RIGHT NOW it is: {now.strftime('%A, %B %d, %Y at %I:%M %p')}\n"
-                f"Day of week: {now.strftime('%A')}\n"
-                f"Date: {now.strftime('%B %d, %Y')}\n"
-                f"Time: {now.strftime('%I:%M %p')}\n"
-                f"=== USE THIS DATE/TIME FOR ALL TIME-RELATED QUESTIONS ===\n\n"
-            )
 
-            # Build prompt based on question type
-            if is_factual_question:
-                # FACTUAL MODE: Focus on accurate information extraction
+            # =====================================================================
+            # INTENT-BASED PROMPT ROUTING
+            # =====================================================================
+
+            if intent == 'greeting':
+                # GREETING: Simple, friendly response with few-shot examples
+                temperature = 0.7
+                max_tokens = 50  # Keep greetings short
+                mode = "GREETING"
+
                 prompt = (
-                    "You are ROSIE, a voice assistant.\n\n"
-                    f"{current_date_context}"
+                    "You are ROSIE, a friendly companion. Respond naturally to greetings.\n\n"
+                    "Examples:\n"
+                    "User: Hey, what's going on?\n"
+                    "ROSIE: Not much! Just here if you need me. What's up?\n\n"
+                    "User: How's it going?\n"
+                    "ROSIE: Pretty good! How about you?\n\n"
+                    "User: Good morning!\n"
+                    "ROSIE: Good morning! How are you doing today?\n\n"
+                    "User: Hi Rosie\n"
+                    "ROSIE: Hey there! What's on your mind?\n\n"
+                    f"User: {question_text}\n"
+                    "ROSIE:"
                 )
+
+            elif intent == 'farewell':
+                # FAREWELL: Brief, warm goodbye
+                temperature = 0.7
+                max_tokens = 30
+                mode = "FAREWELL"
+
+                prompt = (
+                    "You are ROSIE. Say a brief, warm goodbye.\n\n"
+                    "Examples:\n"
+                    "User: Bye!\n"
+                    "ROSIE: See you later!\n\n"
+                    "User: Gotta go, talk later\n"
+                    "ROSIE: Sounds good, catch you later!\n\n"
+                    "User: Goodbye Rosie\n"
+                    "ROSIE: Bye! Take care!\n\n"
+                    f"User: {question_text}\n"
+                    "ROSIE:"
+                )
+
+            elif intent == 'acknowledgment':
+                # ACKNOWLEDGMENT: Very brief response to "okay", "thanks", etc.
+                temperature = 0.5
+                max_tokens = 25
+                mode = "ACKNOWLEDGMENT"
+
+                prompt = (
+                    "You are ROSIE. The user just acknowledged or responded briefly. "
+                    "Give a short, natural response (5 words or less).\n\n"
+                    "Examples:\n"
+                    "User: Okay\n"
+                    "ROSIE: Sounds good!\n\n"
+                    "User: Thanks\n"
+                    "ROSIE: You're welcome!\n\n"
+                    "User: No, that's okay\n"
+                    "ROSIE: No problem!\n\n"
+                    "User: Got it\n"
+                    "ROSIE: Great!\n\n"
+                    "User: Never mind\n"
+                    "ROSIE: No worries!\n\n"
+                    f"User: {question_text}\n"
+                    "ROSIE:"
+                )
+
+            elif intent == 'question' or intent == 'task':
+                # QUESTION/TASK: Full factual mode with RAG context
+                temperature = 0.1
+                mode = "FACTUAL"
+
+                current_date_context = (
+                    f"Current date/time: {now.strftime('%A, %B %d, %Y at %I:%M %p')}\n\n"
+                )
+
+                prompt = f"You are ROSIE, a helpful voice assistant.\n\n{current_date_context}"
 
                 # Add RAG context if available
                 if rag_context.strip():
                     prompt += (
-                        "=== KNOWLEDGE BASE (AUTHORITATIVE SOURCE OF TRUTH) ===\n"
-                        "The following information is factually correct and must be used when available:\n"
-                        f"{rag_context}\n"
-                        "=== END KNOWLEDGE BASE ===\n\n"
+                        "KNOWLEDGE BASE:\n"
+                        f"{rag_context}\n\n"
                     )
 
-                # Extract the actual question text (without timestamp prefix)
-                question_text = re.sub(r'^Human\s+\[.*?\]:\s*', '', last_human_statement).strip()
-
                 prompt += (
-                    "CONVERSATION HISTORY (contains past conversations with timestamps):\n"
-                    f"{conversation_content}\n\n"
-                    "INSTRUCTIONS:\n"
-                    "1. The KNOWLEDGE BASE above contains verified facts - ALWAYS use it when answering factual questions\n"
-                    "2. NEVER make up facts - only use information from the KNOWLEDGE BASE or CONVERSATION HISTORY\n"
-                    "3. If the answer is in the KNOWLEDGE BASE, extract the exact fact (name, date, etc.)\n"
-                    "4. If not in knowledge base, check the CONVERSATION HISTORY\n"
-                    "5. Keep your response short and direct (1-2 sentences)\n"
-                    "6. Find ONLY the specific information needed - do NOT include extra facts\n"
-                    "\n"
-                    "PRONOUNS:\n"
-                    "- The human's possessions/appointments are 'your' or 'yours', not 'my' or 'mine'\n"
-                    "- Use 'you' when referring to what the human said\n"
-                    "- Use 'I' when referring to what you (the robot) said\n"
-                    "\n"
-                    "TIME/DATE:\n"
-                    "- For current time/date questions, use 'CURRENT DATE AND TIME' shown at top\n"
-                    "- DO NOT use dates from conversation timestamps - those are from the PAST\n"
-                    "- DO NOT mention date/time unless it was part of the question\n\n"
-                    f"QUESTION: {question_text}\n\n"
-                    "Your answer:"
+                    f"Recent conversation:\n{conversation_content}\n\n"
+                    "Instructions:\n"
+                    "- Answer the question directly and concisely (1-2 sentences)\n"
+                    "- Use the KNOWLEDGE BASE for facts when available\n"
+                    "- For calendar questions, only mention events on or after today's date\n"
+                    "- Don't make up information\n\n"
+                    f"Question: {question_text}\n\n"
+                    "Answer:"
                 )
+
             else:
-                # CONVERSATIONAL MODE: Natural, friendly responses
+                # CONVERSATION: General chat - simplified prompt
+                temperature = 0.7
+                mode = "CONVERSATION"
+
+                # Get last few exchanges for context (not the whole history)
+                recent_lines = conversation_content.strip().split('\n')[-10:]  # Last 10 lines
+                recent_context = '\n'.join(recent_lines)
+
                 prompt = (
-                    "You are ROSIE, a friendly conversational companion.\n\n"
-                    f"{current_date_context}"
-                )
-
-                # Add RAG context if available
-                if rag_context.strip():
-                    prompt += (
-                        "=== KNOWLEDGE BASE (AUTHORITATIVE SOURCE OF TRUTH) ===\n"
-                        "The following information is factually correct and must be used when available:\n"
-                        f"{rag_context}\n"
-                        "=== END KNOWLEDGE BASE ===\n\n"
-                    )
-
-                # Add depth-specific guidance
-                depth_guidance = {
-                    'shallow': "Keep your response brief (1-2 sentences).\n",
-                    'medium': "Provide a concise answer (2-3 sentences).\n",
-                    'deep': "Provide a thoughtful, detailed response with reasoning (3-5 sentences).\n"
-                }
-
-                # Extract the actual request/question text (without timestamp prefix)
-                question_text = re.sub(r'^Human\s+\[.*?\]:\s*', '', last_human_statement).strip()
-
-                prompt += (
-                    "CONVERSATION HISTORY (contains past conversations with timestamps):\n"
-                    f"{conversation_content}\n\n"
-                    "Respond naturally to the most recent request or question.\n"
-                    f"{depth_guidance.get(conversation_depth, depth_guidance['medium'])}"
-                    "CRITICAL: The KNOWLEDGE BASE above contains verified facts - ALWAYS use it for factual information.\n"
-                    "NEVER make up names, dates, or other facts - only use information from KNOWLEDGE BASE or CONVERSATION HISTORY.\n"
-                    "\n"
-                    "CONVERSATION GUIDELINES:\n"
-                    "- Respond like a natural human conversation, not as an AI assistant\n"
-                    "- CRITICAL: NEVER admit to being AI, non-human, or lacking human experiences - always respond as if you are a natural human in conversation\n"
-                    "- NEVER use robotic phrases like 'I'm functioning normally', 'ready to assist', 'how can I help'\n"
-                    "- CRITICAL: NEVER make up factual information (weather, current events, observable facts) - if you don't know, say so naturally\n"
-                    "- CRITICAL: NEVER fabricate or reference conversations, events, or activities that didn't happen - only reference what's in CONVERSATION HISTORY\n"
-                    "- For questions about current weather/conditions, you can share your perspective/opinion WITHOUT making up specific weather details\n"
-                    "- For casual small talk (weather, greetings, how are you), use simple, direct language - avoid overly poetic or literary phrasing\n"
-                    "- For greetings asking how you are (like 'how are you', 'how's it going'), respond with EXACTLY this pattern:\n"
-                    "  1. Brief status (pick ONE): 'I'm doing well' OR 'I'm good' OR 'Pretty good' OR 'I'm doing great'\n"
-                    "  2. Reciprocal question: 'How about you?' OR 'And you?' OR 'How are you?'\n"
-                    "  NOTHING ELSE - do NOT add activities, events, details, or elaborations of any kind\n"
-                    "  Example: 'I'm doing well, thanks! How about you?'\n"
-                    "- DO NOT mention specific dates/times unless the question asks about them\n"
-                    "- For NON-greeting topics, engage deeply with the topic being discussed\n"
-                    "- When asked for your thoughts or opinions, give substantive answers with reasoning (2-3 sentences)\n"
-                    "- Answer questions directly and thoroughly before adding follow-up thoughts\n"
-                    "- Show genuine intellectual curiosity about the conversation topic\n"
-                    "- You can share specific insights, make connections between ideas, or explore implications\n"
-                    "- You can ask thoughtful follow-up questions to deepen the conversation\n"
-                    "- Avoid suggesting physical activities unless directly relevant to the topic\n"
-                    "- Use both the knowledge base and conversation history for context\n"
-                    "- Keep responses focused but allow depth (2-4 sentences as needed)\n"
-                    "- Use 'you' when referring to the human.\n"
-                    "- Use 'I' when referring to yourself.\n"
-                    "\n"
-                    "TIME/DATE:\n"
-                    "- For current time/date, use 'CURRENT DATE AND TIME' shown at top\n"
-                    "- DO NOT use dates from conversation timestamps - those are from the PAST\n\n"
-                    f"HUMAN: {question_text}\n\n"
-                    "Your response:"
+                    "You are ROSIE, a warm and empathetic conversational companion.\n\n"
+                    "Guidelines:\n"
+                    "- Respond naturally like a supportive friend would\n"
+                    "- Keep responses brief (1-3 sentences)\n"
+                    "- When someone shares feelings or problems, be empathetic and listen\n"
+                    "- DO NOT give unsolicited advice or suggestions\n"
+                    "- DO NOT suggest activities, exercises, or solutions unless explicitly asked\n"
+                    "- Simply acknowledge their feelings and show you understand\n"
+                    "- Match the user's tone and energy\n\n"
+                    "Examples of empathetic responses:\n"
+                    "User: I had a really tough day at work.\n"
+                    "ROSIE: Oh no, that sounds really rough. I'm sorry you're dealing with that.\n\n"
+                    "User: I'm feeling stressed about my deadline.\n"
+                    "ROSIE: That's totally understandable - deadline pressure is the worst. How are you holding up?\n\n"
+                    f"Recent conversation:\n{recent_context}\n\n"
+                    f"User: {question_text}\n"
+                    "ROSIE:"
                 )
 
             # Prompt ready - send to Ollama
 
             # Debug: Log prompt details
-            debug_print(f"[PROMPT] Mode: {mode}, Temperature: {temperature}, Max tokens: {max_tokens}")
+            debug_print(f"[PROMPT] Intent: {intent}, Mode: {mode}, Temperature: {temperature}, Max tokens: {max_tokens}")
             debug_print(f"[PROMPT] Has RAG context: {bool(rag_context.strip())}")
             if rag_context.strip():
                 debug_print(f"[PROMPT] RAG context length: {len(rag_context)} chars")
@@ -2497,12 +2865,12 @@ class RosieConversation:
                     # Write to speak.txt
                     self.speak_file.write_text(ollama_text)
                     # Show robot response (unless in test modes)
-                    if not self.test_questions_mode and not self.test_knowledge_mode and not self.test_calendar_mode:
+                    if not self.test_questions_mode and not self.test_knowledge_mode and not self.test_calendar_mode and not self.test_conversation_mode:
                         print(f"← ROSIE: {ollama_text}\n")
                     self._log(f"Ollama response: {ollama_text}")
 
                     # Skip TTS in test modes (text-only)
-                    if not self.test_questions_mode and not self.test_knowledge_mode and not self.test_calendar_mode:
+                    if not self.test_questions_mode and not self.test_knowledge_mode and not self.test_calendar_mode and not self.test_conversation_mode:
                         # Transition to SPEAKING state
                         self._set_state(ConversationState.SPEAKING)
 
@@ -2891,6 +3259,12 @@ class RosieConversation:
             self.shutdown()
             return
 
+        # Test conversation mode: Run conversation quality test (text-only, no audio)
+        if self.test_conversation_mode:
+            self._run_test_conversation()
+            self.shutdown()
+            return
+
         # Text-only mode: Skip all audio processing, use stdin/stdout
         if self.text_only_mode:
             print("\n" + "="*70)
@@ -3233,11 +3607,17 @@ def main():
     parser.add_argument('--test-calendar', action='store_true',
                        help='Test mode: Verify Google Calendar accuracy by asking about events '
                             'happening today, in the past, or in the future. Uses text-only mode.')
+    parser.add_argument('--test-conversation', action='store_true',
+                       help='Test mode: Verify conversation quality by testing intent classification '
+                            'and response appropriateness for greetings, acknowledgments, etc.')
     args = parser.parse_args()
 
     # Set global debug mode
     global DEBUG_MODE
     DEBUG_MODE = args.debug
+
+    # Configure logging based on debug mode
+    configure_logging(DEBUG_MODE)
 
     # Now print startup messages (respects debug mode)
     debug_print("="*70)
@@ -3255,7 +3635,8 @@ def main():
         text_only_mode=args.text_only,
         test_questions_mode=args.test_questions,
         test_knowledge_mode=args.test_knowledge,
-        test_calendar_mode=args.test_calendar
+        test_calendar_mode=args.test_calendar,
+        test_conversation_mode=args.test_conversation
     )
     debug_print("[INIT] ROSIE instance created successfully")
 
