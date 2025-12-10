@@ -44,6 +44,104 @@ def configure_logging(debug_mode):
         logging.getLogger("chromadb").setLevel(logging.WARNING)
         logging.getLogger("numexpr").setLevel(logging.WARNING)
 
+
+def sync_google_calendar(silent=False):
+    """
+    Sync Google Calendar events to knowledge base on startup.
+
+    Handles authentication, including re-authentication if refresh token expired.
+
+    Args:
+        silent: If True, suppress most output (for background sync)
+
+    Returns:
+        True if sync successful, False otherwise
+    """
+    import subprocess
+    import json
+    from pathlib import Path
+
+    rosie_dir = Path(__file__).parent.parent
+    sync_script = rosie_dir / 'src' / 'rosie_calendar_sync.py'
+    setup_script = rosie_dir / 'src' / 'rosie_calendar_setup.py'
+
+    if not sync_script.exists():
+        if not silent:
+            print("[CALENDAR] Calendar sync script not found, skipping")
+        return False
+
+    # Check if calendar config exists
+    config_file = rosie_dir / 'data' / 'calendar_config.json'
+    if not config_file.exists():
+        if not silent:
+            print("[CALENDAR] No calendar configuration found, skipping sync")
+            print("[CALENDAR] Run 'python3 src/rosie_calendar_setup.py' to configure calendars")
+        return False
+
+    if not silent:
+        print("[CALENDAR] Syncing Google Calendar events...")
+
+    try:
+        # Try to run the sync script
+        result = subprocess.run(
+            ['python3', str(sync_script)],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=str(rosie_dir)
+        )
+
+        # Check if auth failed with invalid_grant (refresh token expired)
+        if 'invalid_grant' in result.stderr or 'RefreshError' in result.stderr:
+            print("[CALENDAR] ⚠ Google Calendar credentials expired - re-authentication required")
+            print("[CALENDAR] Opening browser for Google authentication...")
+
+            # Run the setup script to re-authenticate
+            auth_result = subprocess.run(
+                ['python3', str(setup_script)],
+                capture_output=False,  # Show output to user for browser auth
+                text=True,
+                timeout=120,  # Allow more time for browser auth
+                cwd=str(rosie_dir)
+            )
+
+            if auth_result.returncode != 0:
+                print("[CALENDAR] ✗ Re-authentication failed")
+                return False
+
+            # Retry sync after re-authentication
+            print("[CALENDAR] Retrying calendar sync...")
+            result = subprocess.run(
+                ['python3', str(sync_script)],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=str(rosie_dir)
+            )
+
+        if result.returncode == 0:
+            # Extract event count from output
+            import re
+            match = re.search(r'Total events fetched: (\d+)', result.stdout)
+            event_count = match.group(1) if match else "?"
+            if not silent:
+                print(f"[CALENDAR] ✓ Synced {event_count} events to knowledge base")
+            return True
+        else:
+            if not silent:
+                print(f"[CALENDAR] ✗ Sync failed: {result.stderr[:200] if result.stderr else 'Unknown error'}")
+            return False
+
+    except subprocess.TimeoutExpired:
+        if not silent:
+            print("[CALENDAR] ✗ Sync timed out")
+        return False
+    except Exception as e:
+        if not silent:
+            print(f"[CALENDAR] ✗ Sync error: {e}")
+        return False
+
+
 import whisper
 import numpy as np
 import sounddevice as sd
@@ -450,16 +548,21 @@ class RosieConversation:
         self.last_conversation_depth = None
 
         # Determine total initialization steps based on mode
-        # Text-only/test modes: 3 steps (files, RAG, config)
-        # Normal mode: 4 steps (files, RAG, config, Whisper - loaded in start())
+        # Text-only/test modes: 4 steps (files, calendar, RAG, config)
+        # Normal mode: 5 steps (files, calendar, RAG, config, Whisper - loaded in start())
         self._is_text_mode = text_only_mode or test_questions_mode or test_knowledge_mode or test_calendar_mode or test_conversation_mode
-        self._total_init_steps = 3 if self._is_text_mode else 4
+        self._total_init_steps = 4 if self._is_text_mode else 5
         self._current_init_step = 0
 
         # Initialize files
         self._current_init_step += 1
         print(f"(Initialization step {self._current_init_step} of {self._total_init_steps}) Setting up files...", flush=True)
         self._initialize_files()
+
+        # Sync Google Calendar (before RAG so knowledge base has fresh data)
+        self._current_init_step += 1
+        print(f"(Initialization step {self._current_init_step} of {self._total_init_steps}) Syncing calendar...", flush=True)
+        sync_google_calendar(silent=False)
 
         # Initialize RAG system if available
         self._current_init_step += 1
@@ -2641,28 +2744,53 @@ class RosieConversation:
                     date_filter = None  # Will be set if we can determine the target date
                     day_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
                     question_lower = question.lower()
+                    today = datetime.date.today()
+
+                    # Check for "today" or "tonight"
+                    if 'today' in question_lower or 'tonight' in question_lower:
+                        target_date = today
+                        date_filter = target_date.strftime('%B %d, %Y')  # e.g., "December 09, 2025"
+                        enhanced_question = f"{question} {date_filter}"
+                        debug_print(f"[RAG] Enhanced query with today's date: {enhanced_question}")
+                        debug_print(f"[RAG] Date filter set: {date_filter}")
+
+                    # Check for "tomorrow"
+                    elif 'tomorrow' in question_lower:
+                        target_date = today + datetime.timedelta(days=1)
+                        date_filter = target_date.strftime('%B %d, %Y')  # e.g., "December 10, 2025"
+                        enhanced_question = f"{question} {date_filter}"
+                        debug_print(f"[RAG] Enhanced query with tomorrow's date: {enhanced_question}")
+                        debug_print(f"[RAG] Date filter set: {date_filter}")
+
+                    # Check for "yesterday"
+                    elif 'yesterday' in question_lower:
+                        target_date = today - datetime.timedelta(days=1)
+                        date_filter = target_date.strftime('%B %d, %Y')
+                        enhanced_question = f"{question} {date_filter}"
+                        debug_print(f"[RAG] Enhanced query with yesterday's date: {enhanced_question}")
+                        debug_print(f"[RAG] Date filter set: {date_filter}")
 
                     # Check if question references a day of the week
-                    for day_name in day_names:
-                        if day_name in question_lower:
-                            # Calculate the actual date for "this [day]"
-                            today = datetime.date.today()
-                            current_weekday = today.weekday()  # Monday=0, Sunday=6
-                            target_weekday = day_names.index(day_name)
+                    else:
+                        for day_name in day_names:
+                            if day_name in question_lower:
+                                # Calculate the actual date for "this [day]"
+                                current_weekday = today.weekday()  # Monday=0, Sunday=6
+                                target_weekday = day_names.index(day_name)
 
-                            # Calculate days until target day (this week or next)
-                            days_ahead = target_weekday - current_weekday
-                            if days_ahead < 0:  # Target day already passed this week
-                                days_ahead += 7
-                            target_date = today + datetime.timedelta(days=days_ahead)
+                                # Calculate days until target day (this week or next)
+                                days_ahead = target_weekday - current_weekday
+                                if days_ahead < 0:  # Target day already passed this week
+                                    days_ahead += 7
+                                target_date = today + datetime.timedelta(days=days_ahead)
 
-                            # Set the date filter for RAG post-filtering
-                            date_filter = target_date.strftime('%B %d, %Y')  # e.g., "December 09, 2025"
-                            # Also add to query to help semantic search
-                            enhanced_question = f"{question} {date_filter}"
-                            debug_print(f"[RAG] Enhanced query with date: {enhanced_question}")
-                            debug_print(f"[RAG] Date filter set: {date_filter}")
-                            break
+                                # Set the date filter for RAG post-filtering
+                                date_filter = target_date.strftime('%B %d, %Y')  # e.g., "December 09, 2025"
+                                # Also add to query to help semantic search
+                                enhanced_question = f"{question} {date_filter}"
+                                debug_print(f"[RAG] Enhanced query with date: {enhanced_question}")
+                                debug_print(f"[RAG] Date filter set: {date_filter}")
+                                break
 
                     # Use more chunks for calendar/schedule queries to increase chance of finding right date
                     is_calendar_query = any(word in question_lower for word in ['calendar', 'scheduled', 'happening', 'appointment', 'event', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 'today', 'tomorrow', 'week'])

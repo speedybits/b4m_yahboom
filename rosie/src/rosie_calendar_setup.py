@@ -139,8 +139,18 @@ def authenticate():
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             print("[AUTH] Refreshing expired credentials...")
-            creds.refresh(Request())
-            save_token_data(creds)
+            try:
+                creds.refresh(Request())
+                save_token_data(creds)
+            except Exception as e:
+                # Refresh failed (e.g., invalid_grant) - need full re-auth
+                print(f"[AUTH] Refresh failed: {e}")
+                print("[AUTH] Token expired or revoked - starting fresh authentication...")
+                print("\n[AUTH] Starting OAuth2 authentication flow...")
+                print("[AUTH] A browser window will open for you to authorize access")
+                flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
+                creds = flow.run_local_server(port=0)
+                save_token_data(creds)
         else:
             print("\n[AUTH] Starting OAuth2 authentication flow...")
             print("[AUTH] A browser window will open for you to authorize access")
