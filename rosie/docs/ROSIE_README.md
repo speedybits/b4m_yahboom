@@ -29,7 +29,9 @@ ROSIE combines these components for a streamlined conversational experience:
 - **Continuous listening**: Whisper transcribes everything to conversation_history.txt
 - **Trigger detected**: Say "Rosie" OR press SPACEBAR to activate
 - **Wake word filtered**: "Rosie" removed from stored conversation (spacebar trigger adds nothing)
-- **Response generation**: Full context sent to Ollama for intelligent response
+- **Intent classification**: ROSIE classifies your message (greeting, question, task, conversation, etc.)
+- **Smart RAG routing**: Only queries knowledge base for questions/tasks (not greetings)
+- **Response generation**: Intent-specific prompts sent to Ollama with appropriate temperature
 - **Robot speaks**: Response added to conversation history and spoken via Piper
 - **Automatic context management**: When history too large, Ollama summarizes it
 
@@ -49,6 +51,7 @@ LISTENING → RESPONDING → SPEAKING → LISTENING
 - `rosie/data/.rosie_vector_db/` - Vector embeddings database (ChromaDB persistence)
 - `rosie/data/rosie_state.json` - Current state for web display
 - `rosie/data/calendar_config.json` - Google Calendar configuration
+- `rosie/data/calendar_token.json` - OAuth token (auto-saved, persists across restarts)
 - `rosie/data/calendar_create_queue.json` - Pending calendar event creations
 
 ### Intelligent Context Management
@@ -66,18 +69,26 @@ LISTENING → RESPONDING → SPEAKING → LISTENING
 - **Reset**: Say "Rosie, forget everything" or delete `rosie/data/conversation_history.txt` to start fresh
 - **Transparency**: All conversation visible in plain text file
 
-### Intelligent Response Modes
-ROSIE automatically adapts its response style based on your question:
+### Intent-Based Response Routing
+ROSIE uses intelligent intent classification to provide appropriate responses:
 
-**Factual Mode** (when/where/who questions):
-- Temperature: 0.1 (highly focused, accurate)
-- Extracts specific information from conversation history
-- Examples: "When is my appointment?", "Where did I put my keys?", "Who is my doctor?"
+**Intent Types:**
+- **Greeting** ("Hey", "What's up?", "Good morning") → Friendly, brief response (temp 0.7, max 50 tokens)
+- **Farewell** ("Bye", "See you later") → Warm goodbye (temp 0.7, max 30 tokens)
+- **Acknowledgment** ("Okay", "Thanks", "Got it") → Very brief response (temp 0.5, max 25 tokens)
+- **Question** ("What's on my calendar?", "When is...?") → Factual mode with RAG (temp 0.1)
+- **Task** ("Schedule a meeting", "Remind me to...") → Action-oriented with RAG (temp 0.1)
+- **Conversation** (everything else) → Empathetic, natural chat (temp 0.7)
 
-**Conversational Mode** (everything else):
-- Temperature: 0.7 (creative, natural)
-- Can tell jokes, share opinions, have casual conversation
-- Examples: "Tell me a joke", "What do you think about...", "How are you?"
+**Smart RAG Routing:**
+- Questions and tasks trigger knowledge base queries
+- Greetings, farewells, and acknowledgments skip RAG for faster responses
+- Calendar queries automatically expand relative dates ("today" → "December 11, 2025")
+
+**Conversation Guidelines:**
+- ROSIE is empathetic but doesn't give unsolicited advice
+- Response length adapts to conversation depth (longer for deeper discussions)
+- Few-shot examples in prompts ensure consistent, natural responses
 
 ### RAG Knowledge Base
 ROSIE can retrieve relevant information from markdown documents to enhance responses:
@@ -85,9 +96,10 @@ ROSIE can retrieve relevant information from markdown documents to enhance respo
 **Features**:
 - **Document Indexing**: Automatically indexes all `.md` files in `knowledge_base/` directory
 - **Semantic Search**: Uses Ollama embeddings (nomic-embed-text) for intelligent retrieval
-- **Top-K Retrieval**: Retrieves 3 most relevant chunks for each query
+- **Top-K Retrieval**: Retrieves 5-25 relevant chunks (more for calendar queries)
+- **Date Filtering**: Calendar queries filter results by target date
+- **Fresh Rebuild**: Index is rebuilt on each startup to ensure fresh calendar data
 - **Source Attribution**: Shows which file information came from
-- **Persistent Storage**: ChromaDB vector database with on-disk persistence
 
 **Context Hierarchy** (information priority in prompts):
 1. Current date/time
@@ -268,6 +280,38 @@ export PIPER_CONFIG_PATH="/path/to/model.onnx.json"  # Required
 - To start fresh: Delete `rosie/data/conversation_history.txt` or say "Rosie, forget everything"
 - Check the console output to monitor conversation flow
 
+### Test Modes
+
+ROSIE includes several test modes for diagnostics and quality verification:
+
+```bash
+# Test full audio pipeline (Piper → Speakers → Microphone → Whisper)
+./rosie/scripts/run.sh --test-audio "Hello, can you hear me?"
+
+# Test conversation quality and intent classification
+./rosie/scripts/run.sh --test-conversation
+
+# Test calendar integration
+./rosie/scripts/run.sh --test-calendar
+
+# Test RAG knowledge base retrieval
+./rosie/scripts/run.sh --test-knowledge
+
+# Test LLM comprehension
+./rosie/scripts/run.sh --test-questions
+
+# Text-only mode (no audio hardware needed)
+./rosie/scripts/run.sh --text-only
+
+# Debug mode (verbose output)
+./rosie/scripts/run.sh --debug
+```
+
+**Test Mode Optimizations:**
+- Test modes skip calendar sync and RAG loading where not needed
+- `--test-audio` only loads Whisper (fastest startup for audio testing)
+- `--test-calendar` syncs calendar but other test modes skip it
+
 ### Interaction
 
 1. **System starts** and begins listening
@@ -344,11 +388,13 @@ an IMU for pose estimation, and a camera for computer vision tasks."
 ROSIE integrates with Google Calendar to provide intelligent calendar awareness and event management:
 
 **Features:**
-- **Automatic Event Sync**: Calendar events synced to knowledge base on startup
-- **Natural Language Queries**: Ask about appointments, schedules, and upcoming events
+- **Automatic Event Sync**: Calendar events synced on every startup (before RAG initialization)
+- **Auto Re-authentication**: Expired OAuth tokens trigger automatic browser re-auth
+- **Natural Language Queries**: Ask about appointments using relative dates ("today", "tomorrow")
+- **Date Expansion**: "What's happening tomorrow?" automatically expands to actual date
 - **Event Creation**: Create calendar events through natural conversation
-- **Smart Context**: Calendar information available for all queries
-- **Persistent Knowledge**: Events stored in `knowledge_base/calendar_events.md` for RAG retrieval
+- **Fresh RAG Index**: Knowledge base rebuilt on each startup for current calendar data
+- **Token Persistence**: OAuth tokens saved to file for seamless restarts
 
 **Setup:**
 
@@ -357,19 +403,18 @@ ROSIE integrates with Google Calendar to provide intelligent calendar awareness 
    python3 rosie/src/rosie_calendar_setup.py
    ```
    This will guide you through Google Calendar API authentication.
+   Token is automatically saved to `rosie/data/calendar_token.json`.
 
-2. **Configure environment variables:**
-   Add to your `~/.bashrc`:
-   ```bash
-   export ROSIE_CALENDAR_CREDENTIALS="/path/to/credentials.json"
-   export ROSIE_CALENDAR_TOKEN="/path/to/token.json"
-   export ROSIE_CALENDAR_ID="primary"  # or specific calendar ID
-   ```
+2. **That's it!** Token is persisted to file, no environment variables needed.
+   (Optional: Add token to `~/.bashrc` for faster startup)
 
-3. **Reload environment:**
-   ```bash
-   source ~/.bashrc
-   ```
+**Automatic Sync on Startup:**
+```
+(Initialization step 1 of 5) Setting up files...
+(Initialization step 2 of 5) Syncing calendar...
+[CALENDAR] ✓ Synced 61 events to knowledge base
+(Initialization step 3 of 5) Loading knowledge base...
+```
 
 **Usage:**
 
@@ -753,10 +798,12 @@ rosie/
 │   ├── web_audio_output/          # Piper TTS for browser
 │   ├── ssl/                       # HTTPS certificates (self-signed)
 │   ├── calendar_config.json       # Google Calendar configuration
+│   ├── calendar_token.json        # OAuth token (auto-saved)
 │   ├── calendar_create_queue.json # Pending event creations
 │   └── calendar_create_log.txt    # Event creation log
 ├── docs/                          # Documentation
 │   ├── ROSIE_README.md            # Main ROSIE documentation (this file)
+│   ├── ROSIE_FLOW.md              # Conversation processing flowchart
 │   ├── ROSIE_CALENDAR.md          # Calendar integration guide
 │   ├── ROSIE_NEWS.md              # Release notes and changelog
 │   ├── animation_README.md        # Animation image guide
@@ -856,11 +903,12 @@ ollama pull qwen2.5:7b    # Advanced reasoning
 
 ### Worker Threads
 
-1. **WhisperWorker** - Continuous speech-to-text to conversation_history.txt
-2. **WakeWordDetector** - Monitors for "Rosie" trigger, spacebar press, and "forget everything" command
-3. **KeyboardListener** - Detects spacebar presses for silent activation
-4. **OllamaResponder** - Generates responses using full conversation context
-5. **PiperSpeaker** - Text-to-speech output
+1. **WhisperWorker** - Continuous speech-to-text with hallucination filtering
+2. **WakeWordDetector** - Monitors for "Rosie" trigger and "forget everything" command
+3. **KeyboardListener** - Detects spacebar presses for silent activation (terminal raw mode)
+4. **OllamaResponder** - Intent classification + response generation
+5. **PiperSpeaker** - Text-to-speech output with interrupt support
+6. **WebAudioPollWorker** - Monitors for web audio mode switching
 
 ### Conversation Flow
 
