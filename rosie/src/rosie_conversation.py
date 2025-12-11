@@ -1528,10 +1528,13 @@ class RosieConversation:
 
         # Normalize both strings for comparison:
         # - lowercase
+        # - remove punctuation
         # - collapse multiple whitespace to single space
         # - strip leading/trailing whitespace
-        orig_normalized = regex.sub(r'\s+', ' ', original.lower().strip())
-        trans_normalized = regex.sub(r'\s+', ' ', transcribed.lower().strip())
+        orig_normalized = regex.sub(r'[^\w\s]', '', original.lower())  # Remove punctuation
+        orig_normalized = regex.sub(r'\s+', ' ', orig_normalized).strip()
+        trans_normalized = regex.sub(r'[^\w\s]', '', transcribed.lower())  # Remove punctuation
+        trans_normalized = regex.sub(r'\s+', ' ', trans_normalized).strip()
 
         # Character-level accuracy using Levenshtein distance
         if len(orig_normalized) == 0:
