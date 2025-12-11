@@ -2329,10 +2329,11 @@ class RosieConversation:
         debug_print(f"[TEST] Starting audio pipeline: Text → Piper → Speakers → Microphone → VAD → Whisper")
         print("="*70)
 
-        # Reset transcription capture
+        # Reset transcription capture and force-transcribe flag
         with self.test_transcription_lock:
             self.test_last_transcription = None
             self.test_transcription_event.clear()
+        self.test_force_transcribe.clear()  # Reset force transcribe flag from previous test
 
         # Step 1: Generate audio with Piper
         print(f"\n[TEST STEP 1] Generating audio with Piper...")
