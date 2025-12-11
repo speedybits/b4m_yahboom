@@ -18,6 +18,7 @@ NC='\033[0m' # No Color
 
 # Parse command-line arguments
 ENABLE_WEB=true
+SKIP_CALENDAR_SYNC=false
 ARGS=()
 TEST_MODE_NEXT=false
 
@@ -41,6 +42,7 @@ for arg in "$@"; do
             ARGS+=("$arg")
             TEST_MODE_NEXT=true
             ENABLE_WEB=false
+            SKIP_CALENDAR_SYNC=true
             ;;
         --text-only)
             ARGS+=("$arg")
@@ -52,18 +54,22 @@ for arg in "$@"; do
         --test-questions)
             ARGS+=("$arg")
             ENABLE_WEB=false
+            SKIP_CALENDAR_SYNC=true
             ;;
         --test-knowledge)
             ARGS+=("$arg")
             ENABLE_WEB=false
+            SKIP_CALENDAR_SYNC=true
             ;;
         --test-calendar)
+            # test-calendar DOES need calendar sync
             ARGS+=("$arg")
             ENABLE_WEB=false
             ;;
         --test-conversation)
             ARGS+=("$arg")
             ENABLE_WEB=false
+            SKIP_CALENDAR_SYNC=true
             ;;
         --help|-h)
             echo "ROSIE Conversational AI Launch Script"
@@ -234,10 +240,12 @@ echo "ROSIE Conversational AI System"
 echo "======================================================================"
 echo ""
 
-# Sync calendar events before starting ROSIE (if configured)
-echo "Syncing calendar events..."
-python3 "$ROSIE_DIR/src/rosie_calendar_sync.py" > /dev/null 2>&1 || true
-echo ""
+# Sync calendar events before starting ROSIE (skip for test modes that don't need it)
+if [ "$SKIP_CALENDAR_SYNC" = false ]; then
+    echo "Syncing calendar events..."
+    python3 "$ROSIE_DIR/src/rosie_calendar_sync.py" > /dev/null 2>&1 || true
+    echo ""
+fi
 
 if [ "$ENABLE_WEB" = true ]; then
     # Web interface mode
