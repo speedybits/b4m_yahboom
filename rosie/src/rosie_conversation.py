@@ -3552,6 +3552,10 @@ class RosieConversation:
             # Disable web server for test mode (LOCAL audio only)
             self._disable_web_audio_status()
 
+            # Load Whisper model first (required for transcription)
+            print("[TEST] Loading speech recognition model...", flush=True)
+            self._load_whisper_model()
+
             # Start Whisper worker
             debug_print("[TEST] Starting Whisper thread for audio capture...", flush=True)
             self.whisper_thread = threading.Thread(target=self._whisper_worker, daemon=True)
@@ -3564,7 +3568,7 @@ class RosieConversation:
 
             # Wait for threads to initialize
             debug_print("[TEST] Waiting for audio system to initialize...", flush=True)
-            time.sleep(2)  # Give Whisper time to load model and start audio stream
+            time.sleep(1)  # Brief wait for threads to start (model already loaded)
 
             debug_print("[TEST] Audio system ready!\n", flush=True)
 
