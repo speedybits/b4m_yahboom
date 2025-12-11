@@ -202,8 +202,14 @@ class RosieRAG:
             base_url="http://localhost:11434"
         )
 
-        # Initialize ChromaDB
+        # Initialize ChromaDB - always delete and recreate to ensure fresh data
+        # (Calendar events change daily, so we need fresh embeddings)
         chroma_client = chromadb.PersistentClient(path=str(self.chroma_db_dir))
+        try:
+            chroma_client.delete_collection("rosie_knowledge")
+            debug_print(f"[RAG] Cleared old index for fresh rebuild")
+        except Exception:
+            pass  # Collection didn't exist
         chroma_collection = chroma_client.get_or_create_collection("rosie_knowledge")
         vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
