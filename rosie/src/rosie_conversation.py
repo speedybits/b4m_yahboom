@@ -549,13 +549,22 @@ class RosieConversation:
 
         # Determine total initialization steps based on mode
         # Skip calendar sync for test modes (except test_calendar_mode which needs it)
+        # Skip RAG for --test-audio (only tests audio pipeline, doesn't need knowledge base)
         self._is_text_mode = text_only_mode or test_questions_mode or test_knowledge_mode or test_calendar_mode or test_conversation_mode
         self._skip_calendar_sync = test_mode or test_questions_mode or test_knowledge_mode or test_conversation_mode
-        # Step counts: normal=5 (files, calendar, RAG, config, Whisper), text=4, test_without_calendar=3
-        if self._skip_calendar_sync:
-            self._total_init_steps = 3 if self._is_text_mode else 4
-        else:
-            self._total_init_steps = 4 if self._is_text_mode else 5
+        self._skip_rag = test_mode  # --test-audio doesn't need knowledge base
+
+        # Calculate step count based on what we're skipping
+        # Base: files + config = 2 steps
+        # Optional: calendar (+1), RAG (+1), Whisper (+1 if not text mode)
+        step_count = 2  # files + config
+        if not self._skip_calendar_sync:
+            step_count += 1
+        if not self._skip_rag:
+            step_count += 1
+        if not self._is_text_mode:
+            step_count += 1  # Whisper model loading
+        self._total_init_steps = step_count
         self._current_init_step = 0
 
         # Initialize files
@@ -569,10 +578,11 @@ class RosieConversation:
             print(f"(Initialization step {self._current_init_step} of {self._total_init_steps}) Syncing calendar...", flush=True)
             sync_google_calendar(silent=False)
 
-        # Initialize RAG system if available
-        self._current_init_step += 1
-        print(f"(Initialization step {self._current_init_step} of {self._total_init_steps}) Loading knowledge base...", flush=True)
-        self._initialize_rag()
+        # Initialize RAG system (skip for --test-audio)
+        if not self._skip_rag:
+            self._current_init_step += 1
+            print(f"(Initialization step {self._current_init_step} of {self._total_init_steps}) Loading knowledge base...", flush=True)
+            self._initialize_rag()
 
         # Validate configuration
         self._current_init_step += 1
@@ -2386,8 +2396,8 @@ class RosieConversation:
             transcribed_text = self.test_last_transcription
 
         print(f"\n[TEST STEP 4] Transcription received!")
-        debug_print(f"[TEST] Original:    \"{text}\"")
-        debug_print(f"[TEST] Transcribed: \"{transcribed_text}\"")
+        print(f"  Original:    \"{text}\"")
+        print(f"  Transcribed: \"{transcribed_text}\"")
 
         # Step 5: Calculate accuracy
         accuracy, word_accuracy = self._calculate_transcription_accuracy(text, transcribed_text)
