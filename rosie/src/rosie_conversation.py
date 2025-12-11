@@ -548,10 +548,14 @@ class RosieConversation:
         self.last_conversation_depth = None
 
         # Determine total initialization steps based on mode
-        # Text-only/test modes: 4 steps (files, calendar, RAG, config)
-        # Normal mode: 5 steps (files, calendar, RAG, config, Whisper - loaded in start())
+        # Skip calendar sync for test modes (except test_calendar_mode which needs it)
         self._is_text_mode = text_only_mode or test_questions_mode or test_knowledge_mode or test_calendar_mode or test_conversation_mode
-        self._total_init_steps = 4 if self._is_text_mode else 5
+        self._skip_calendar_sync = test_mode or test_questions_mode or test_knowledge_mode or test_conversation_mode
+        # Step counts: normal=5 (files, calendar, RAG, config, Whisper), text=4, test_without_calendar=3
+        if self._skip_calendar_sync:
+            self._total_init_steps = 3 if self._is_text_mode else 4
+        else:
+            self._total_init_steps = 4 if self._is_text_mode else 5
         self._current_init_step = 0
 
         # Initialize files
@@ -559,10 +563,11 @@ class RosieConversation:
         print(f"(Initialization step {self._current_init_step} of {self._total_init_steps}) Setting up files...", flush=True)
         self._initialize_files()
 
-        # Sync Google Calendar (before RAG so knowledge base has fresh data)
-        self._current_init_step += 1
-        print(f"(Initialization step {self._current_init_step} of {self._total_init_steps}) Syncing calendar...", flush=True)
-        sync_google_calendar(silent=False)
+        # Sync Google Calendar (skip for test modes that don't need it)
+        if not self._skip_calendar_sync:
+            self._current_init_step += 1
+            print(f"(Initialization step {self._current_init_step} of {self._total_init_steps}) Syncing calendar...", flush=True)
+            sync_google_calendar(silent=False)
 
         # Initialize RAG system if available
         self._current_init_step += 1
