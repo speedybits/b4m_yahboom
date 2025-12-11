@@ -1333,7 +1333,8 @@ class RosieConversation:
 
                                             # Store transcription as-is
                                             self._append_to_history(f"Human: {transcription}\n")
-                                            print(f"[Whisper] {transcription}")
+                                            if not self.test_mode:  # Don't duplicate in test mode
+                                                print(f"[Whisper] {transcription}")
                                             debug_print(f"[WHISPER] [DEMO MODE] Human: {transcription}")
                                             self._log(f"Demo mode transcribed: {transcription}")
                                         else:
@@ -1349,7 +1350,8 @@ class RosieConversation:
                                                 # Remove wake word from transcription before storing
                                                 cleaned_transcription = re.sub(wake_word_pattern, '', transcription, flags=re.IGNORECASE).strip()
 
-                                                print(f"[Whisper] {transcription}")
+                                                if not self.test_mode:  # Don't duplicate in test mode
+                                                    print(f"[Whisper] {transcription}")
                                                 self._log(f"Wake word detected in: {transcription}")
 
                                                 # Store cleaned version (without wake word)
@@ -1359,7 +1361,8 @@ class RosieConversation:
                                             else:
                                                 # No wake word, store as-is (ambient conversation for context)
                                                 self._append_to_history(f"Human: {transcription}\n")
-                                                print(f"[Whisper] {transcription}")
+                                                if not self.test_mode:  # Don't duplicate in test mode
+                                                    print(f"[Whisper] {transcription}")
                                                 self._log(f"Transcribed: {transcription}")
                                     elif transcription:
                                         self._log(f"Filtered hallucination: {transcription}")
