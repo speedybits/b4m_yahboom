@@ -72,29 +72,40 @@ def get_client_config():
 
 def get_token_data():
     """
-    Get stored token data from environment variable
+    Get stored token data from environment variable or file
 
-    Token is stored as JSON string in GOOGLE_CALENDAR_TOKEN environment variable.
-    This contains the access token, refresh token, and expiry information.
+    Checks in order:
+    1. GOOGLE_CALENDAR_TOKEN environment variable
+    2. rosie/data/calendar_token.json file
 
     Returns:
         Dictionary with token data, or None if not found
     """
+    # First check environment variable
     token_json = os.getenv('GOOGLE_CALENDAR_TOKEN')
     if token_json:
         try:
             return json.loads(token_json)
         except json.JSONDecodeError:
             print("[AUTH] Warning: Invalid token data in GOOGLE_CALENDAR_TOKEN")
-            return None
+
+    # Fall back to token file
+    token_file = ROSIE_DIR / 'data' / 'calendar_token.json'
+    if token_file.exists():
+        try:
+            token_json = token_file.read_text()
+            return json.loads(token_json)
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"[AUTH] Warning: Could not read token file: {e}")
+
     return None
 
 
 def save_token_data(creds):
     """
-    Save token data to environment variable (for this session)
+    Save token data to file and environment variable
 
-    Note: User must manually copy the token to their ~/.bashrc for persistence.
+    Token is saved to rosie/data/calendar_token.json for persistence across sessions.
 
     Args:
         creds: Credentials object with token data
@@ -104,13 +115,19 @@ def save_token_data(creds):
     # Set for current session
     os.environ['GOOGLE_CALENDAR_TOKEN'] = token_json
 
-    # Print instructions for user to save permanently
+    # Save to file for persistence
+    token_file = ROSIE_DIR / 'data' / 'calendar_token.json'
+    token_file.parent.mkdir(parents=True, exist_ok=True)
+    token_file.write_text(token_json)
+    print(f"[AUTH] Token saved to {token_file}")
+
+    # Print instructions for optional ~/.bashrc setup
     print("\n" + "=" * 80)
-    print("TOKEN GENERATED - SAVE TO ~/.bashrc FOR PERSISTENCE")
+    print("TOKEN SAVED SUCCESSFULLY")
     print("=" * 80)
-    print("\nAdd this line to your ~/.bashrc:")
+    print(f"\nToken saved to: {token_file}")
+    print("\nOptionally, for faster startup, add to ~/.bashrc:")
     print(f"\nexport GOOGLE_CALENDAR_TOKEN='{token_json}'")
-    print("\nThen run: source ~/.bashrc")
     print("\nIMPORTANT: Keep this token secret - treat it like a password!")
     print("=" * 80)
 

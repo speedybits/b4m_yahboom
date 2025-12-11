@@ -35,26 +35,41 @@ SCOPES = ['https://www.googleapis.com/auth/calendar']
 
 def get_token_data():
     """
-    Get stored token data from environment variable
+    Get stored token data from file or environment variable
+
+    Checks in order (file first since it's more likely to be up-to-date):
+    1. rosie/data/calendar_token.json file
+    2. GOOGLE_CALENDAR_TOKEN environment variable (fallback)
 
     Returns:
         Dictionary with token data, or None if not found
     """
+    # First check token file (more likely to have fresh token after re-auth)
+    token_file = ROSIE_DIR / 'data' / 'calendar_token.json'
+    if token_file.exists():
+        try:
+            token_json = token_file.read_text()
+            data = json.loads(token_json)
+            print("[AUTH] Using token from file")
+            return data
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"[AUTH] Warning: Could not read token file: {e}")
+
+    # Fall back to environment variable
     token_json = os.getenv('GOOGLE_CALENDAR_TOKEN')
     if token_json:
         try:
+            print("[AUTH] Using token from environment variable")
             return json.loads(token_json)
         except json.JSONDecodeError:
             print("[AUTH] Warning: Invalid token data in GOOGLE_CALENDAR_TOKEN")
-            return None
+
     return None
 
 
 def save_token_data(creds):
     """
-    Save refreshed token data back to environment (for this session)
-
-    User must update ~/.bashrc with the new token for persistence.
+    Save refreshed token data to file and environment
 
     Args:
         creds: Credentials object with updated token data
@@ -62,8 +77,11 @@ def save_token_data(creds):
     token_json = creds.to_json()
     os.environ['GOOGLE_CALENDAR_TOKEN'] = token_json
 
-    print("\n[AUTH] Token was refreshed. Update your ~/.bashrc with:")
-    print(f"export GOOGLE_CALENDAR_TOKEN='{token_json}'")
+    # Save to file for persistence
+    token_file = ROSIE_DIR / 'data' / 'calendar_token.json'
+    token_file.parent.mkdir(parents=True, exist_ok=True)
+    token_file.write_text(token_json)
+    print(f"[AUTH] Token refreshed and saved to {token_file}")
 
 
 def load_config():

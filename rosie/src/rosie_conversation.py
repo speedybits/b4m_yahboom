@@ -818,6 +818,26 @@ class RosieConversation:
             r'www\.',
             r'\.com',
             r'http',
+            # Voice assistant / AI training data leakage
+            r'(piper|whisper).*for.*speech',
+            r'speech.*synthesis',
+            r'speech.*recognition',
+            r'voice assistant',
+            r'language model',
+            r'artificial intelligence',
+            r'she\s+(is|uses|has).*assistant',
+            r'transcri(be|bing|ption)',
+            r'subtitles? (by|provided|created)',
+            # Podcast/video intros
+            r'welcome (back )?to',
+            r'in this (video|episode)',
+            r'today we',
+            r"let's (get )?start",
+            r'don\'t forget to',
+            # Common background noise misinterpretations
+            r'^(hmm+|uh+|um+|ah+)[,.\s]*$',
+            r'^(yeah|yep|okay|ok)[,.\s]*$',
+            r'^it\'?s? good\.?$',
         ]
 
         text_lower = text.lower()
@@ -1246,10 +1266,12 @@ class RosieConversation:
                                 audio_data = np.concatenate(speech_buffer)
                                 debug_print(f"[TRANSCRIBE] Concatenated {len(speech_buffer)} chunks into {len(audio_data)} samples")
 
-                                # Check if there's actual speech (double-check)
+                                # Check if there's actual speech (more aggressive filtering)
                                 audio_level = np.abs(audio_data).max()
-                                debug_print(f"[TRANSCRIBE] Audio level check: {audio_level:.4f} (threshold: 0.01)")
-                                if audio_level > 0.01:
+                                rms_level = np.sqrt(np.mean(audio_data ** 2))
+                                debug_print(f"[TRANSCRIBE] Audio level check: peak={audio_level:.4f}, rms={rms_level:.4f}")
+                                # Require both peak and RMS to be above thresholds
+                                if audio_level > 0.05 and rms_level > 0.01:
                                     debug_print(f"[TRANSCRIBE] Starting Whisper transcription...")
                                     # Transcribe with faster-whisper (superior hallucination suppression)
                                     segments, info = self.whisper_model.transcribe(
@@ -1259,7 +1281,8 @@ class RosieConversation:
                                         best_of=5,
                                         temperature=0.0,
                                         condition_on_previous_text=False,
-                                        initial_prompt="Rosie is a voice assistant. She uses Piper for speech synthesis and Whisper for recognition.",  # Help recognize key terms
+                                        # NOTE: Do NOT use initial_prompt - Whisper often outputs the prompt
+                                        # itself as hallucination when audio is unclear
                                         vad_filter=True,  # Extra VAD filtering from faster-whisper
                                         vad_parameters=dict(min_silence_duration_ms=500),
                                         # CRITICAL: Skip segments with >50% silence to prevent hallucinations
