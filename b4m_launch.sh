@@ -540,14 +540,53 @@ setup_wifi_interactive() {
     # Step 2: USB Connection
     echo "Step 2/6: USB Connection"
     echo "------------------------"
-    echo "📱 Please connect your robot via USB cable and power it on."
     echo ""
-    read -p "Press Enter when robot is connected and powered on..."
+    echo "⚠️  IMPORTANT: Use a DATA cable, not a power-only cable!"
+    echo "   (Many phone charger cables only have power wires)"
     echo ""
-    
-    echo "🔍 Scanning for serial devices..."
-    
-    # Get available serial ports
+    echo "Follow these steps IN ORDER:"
+    echo "  1. Connect USB data cable to your computer"
+    echo "  2. Connect USB cable to robot's USB port"
+    echo "  3. Power ON the robot (LEDs should light up)"
+    echo "  4. Wait 5-10 seconds for the robot to boot"
+    echo ""
+
+    # Capture ports BEFORE robot connection
+    echo "🔍 Scanning current USB ports..."
+    local ports_before
+    ports_before=$(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null | sort)
+    if [ -n "$ports_before" ]; then
+        echo "   Existing ports: $ports_before"
+    else
+        echo "   No serial ports currently detected"
+    fi
+    echo ""
+
+    read -p "Press Enter AFTER completing steps 1-4 above..."
+    echo ""
+
+    echo "🔍 Scanning for new serial devices..."
+
+    # Wait a moment for USB enumeration
+    sleep 2
+
+    # Capture ports AFTER robot connection
+    local ports_after
+    ports_after=$(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null | sort)
+
+    # Show what changed
+    if [ -n "$ports_after" ]; then
+        echo "   Current ports: $ports_after"
+
+        # Highlight new ports
+        if [ "$ports_before" != "$ports_after" ]; then
+            echo ""
+            echo "   ✨ NEW port detected!"
+        fi
+    fi
+    echo ""
+
+    # Get available serial ports via config_robot.py
     local available_ports
     available_ports=$(python3 "$WORKSPACE_ROOT/config_robot.py" --list-ports 2>/dev/null | grep -E '^\s+/' | sed 's/^[ \t]*//')
     
