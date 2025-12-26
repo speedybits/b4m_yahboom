@@ -10,8 +10,15 @@ OLLAMA_PID=""
 # Cleanup function - called on exit or signal
 cleanup() {
     echo ""
+
+    # In setup-wifi mode, no ROS2 processes are running - exit immediately
+    if [ "$SETUP_WIFI" = true ]; then
+        echo "🛑 WiFi setup cancelled"
+        exit 0
+    fi
+
     echo "🛑 Shutdown signal received - cleaning up processes..."
-    
+
     # Kill Ollama exploration if running
     if [ ! -z "$OLLAMA_PID" ] && kill -0 "$OLLAMA_PID" 2>/dev/null; then
         echo "Stopping Ollama exploration (PID: $OLLAMA_PID)"
@@ -19,7 +26,7 @@ cleanup() {
         sleep 2
         kill -KILL "$OLLAMA_PID" 2>/dev/null
     fi
-    
+
     # Kill tracked child processes
     for pid in "${CHILD_PIDS[@]}"; do
         if kill -0 "$pid" 2>/dev/null; then
@@ -29,19 +36,19 @@ cleanup() {
             kill -KILL "$pid" 2>/dev/null
         fi
     done
-    
+
     # Force kill GUI applications
     pkill -f "gazebo" 2>/dev/null
     pkill -f "rviz" 2>/dev/null
-    pkill -f "gzclient" 2>/dev/null  
+    pkill -f "gzclient" 2>/dev/null
     pkill -f "gzserver" 2>/dev/null
-    
+
     # Run the shutdown script
     echo "Running shutdown script..."
     if [ -f "./b4m_shutdown.sh" ]; then
         timeout 30 ./b4m_shutdown.sh --keep-agent
     fi
-    
+
     echo "✅ Cleanup completed"
     exit 0
 }
