@@ -3,9 +3,9 @@ data/rosie_state.json
 data/conversation_history.txt
 data/speak.txt
 data/calendar_config.json
-data/calendar_token.json
 data/calendar_create_queue.json
 data/calendar_create_log.txt
+data/docs_config.json
 data/web_audio_status.json
 data/web_audio_input/
 data/web_server.log

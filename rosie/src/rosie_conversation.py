@@ -22,6 +22,7 @@ import time
 import json
 import re
 import argparse
+import hashlib
 from enum import Enum
 from pathlib import Path
 import requests
@@ -139,6 +140,103 @@ def sync_google_calendar(silent=False):
     except Exception as e:
         if not silent:
             print(f"[CALENDAR] ✗ Sync error: {e}")
+        return False
+
+
+def sync_google_docs(silent=False):
+    """
+    Sync Google Docs from selected folders to knowledge base on startup.
+
+    Handles authentication, including re-authentication if refresh token expired.
+
+    Args:
+        silent: If True, suppress most output (for background sync)
+
+    Returns:
+        True if sync successful, False otherwise
+    """
+    import subprocess
+    import json
+    from pathlib import Path
+
+    rosie_dir = Path(__file__).parent.parent
+    sync_script = rosie_dir / 'src' / 'rosie_docs_sync.py'
+    setup_script = rosie_dir / 'src' / 'rosie_docs_setup.py'
+
+    if not sync_script.exists():
+        if not silent:
+            print("[DOCS] Google Docs sync script not found, skipping")
+        return False
+
+    # Check if docs config exists
+    config_file = rosie_dir / 'data' / 'docs_config.json'
+    if not config_file.exists():
+        if not silent:
+            print("[DOCS] No Google Docs configuration found, skipping sync")
+            print("[DOCS] Run 'python3 src/rosie_docs_setup.py' to configure folders")
+        return False
+
+    if not silent:
+        print("[DOCS] Syncing Google Docs...")
+
+    try:
+        # Try to run the sync script
+        result = subprocess.run(
+            ['python3', str(sync_script)],
+            capture_output=True,
+            text=True,
+            timeout=120,  # Allow more time for docs (may have many files)
+            cwd=str(rosie_dir)
+        )
+
+        # Check if auth failed with invalid_grant (refresh token expired)
+        if 'invalid_grant' in result.stderr or 'RefreshError' in result.stderr:
+            print("[DOCS] ⚠ Google Docs credentials expired - re-authentication required")
+            print("[DOCS] Opening browser for Google authentication...")
+
+            # Run the setup script to re-authenticate
+            auth_result = subprocess.run(
+                ['python3', str(setup_script)],
+                capture_output=False,  # Show output to user for browser auth
+                text=True,
+                timeout=120,  # Allow more time for browser auth
+                cwd=str(rosie_dir)
+            )
+
+            if auth_result.returncode != 0:
+                print("[DOCS] ✗ Re-authentication failed")
+                return False
+
+            # Retry sync after re-authentication
+            print("[DOCS] Retrying Google Docs sync...")
+            result = subprocess.run(
+                ['python3', str(sync_script)],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd=str(rosie_dir)
+            )
+
+        if result.returncode == 0:
+            # Extract document count from output
+            import re
+            match = re.search(r'Documents synced: (\d+)', result.stdout)
+            doc_count = match.group(1) if match else "?"
+            if not silent:
+                print(f"[DOCS] ✓ Synced {doc_count} documents to knowledge base")
+            return True
+        else:
+            if not silent:
+                print(f"[DOCS] ✗ Sync failed: {result.stderr[:200] if result.stderr else 'Unknown error'}")
+            return False
+
+    except subprocess.TimeoutExpired:
+        if not silent:
+            print("[DOCS] ✗ Sync timed out")
+        return False
+    except Exception as e:
+        if not silent:
+            print(f"[DOCS] ✗ Sync error: {e}")
         return False
 
 
@@ -492,6 +590,12 @@ class RosieConversation:
         self.chroma_db_dir = Path(os.getenv('CHROMA_DB_DIR', self.rosie_dir / 'data' / '.rosie_vector_db'))
         self.rag_system = None  # Initialized later if RAG is available
 
+        # RAG background sync configuration
+        self.rag_lock = threading.RLock()  # Protect RAG during reload
+        self.last_kb_hash = None  # Track knowledge base state
+        self.docs_sync_interval = 60  # Check every 60 seconds
+        self.docs_sync_thread = None  # Background sync thread
+
         # Private mode state (always starts disabled per requirements)
         self.private_mode_enabled = False
         self.private_mode_authenticated = False
@@ -554,17 +658,20 @@ class RosieConversation:
         self.last_conversation_depth = None
 
         # Determine total initialization steps based on mode
-        # Skip calendar sync for test modes (except test_calendar_mode which needs it)
+        # Skip calendar/docs sync for test modes (except test_calendar_mode which needs it)
         # Skip RAG for --test-audio (only tests audio pipeline, doesn't need knowledge base)
         self._is_text_mode = text_only_mode or test_questions_mode or test_knowledge_mode or test_calendar_mode or test_conversation_mode
         self._skip_calendar_sync = test_mode or test_questions_mode or test_knowledge_mode or test_conversation_mode
+        self._skip_docs_sync = test_mode or test_questions_mode or test_knowledge_mode or test_conversation_mode
         self._skip_rag = test_mode  # --test-audio doesn't need knowledge base
 
         # Calculate step count based on what we're skipping
         # Base: files + config = 2 steps
-        # Optional: calendar (+1), RAG (+1), Whisper (+1 if not text mode)
+        # Optional: calendar (+1), docs (+1), RAG (+1), Whisper (+1 if not text mode)
         step_count = 2  # files + config
         if not self._skip_calendar_sync:
+            step_count += 1
+        if not self._skip_docs_sync:
             step_count += 1
         if not self._skip_rag:
             step_count += 1
@@ -583,6 +690,12 @@ class RosieConversation:
             self._current_init_step += 1
             print(f"(Initialization step {self._current_init_step} of {self._total_init_steps}) Syncing calendar...", flush=True)
             sync_google_calendar(silent=False)
+
+        # Sync Google Docs (skip for test modes that don't need it)
+        if not self._skip_docs_sync:
+            self._current_init_step += 1
+            print(f"(Initialization step {self._current_init_step} of {self._total_init_steps}) Syncing Google Docs...", flush=True)
+            sync_google_docs(silent=False)
 
         # Initialize RAG system (skip for --test-audio)
         if not self._skip_rag:
@@ -625,10 +738,76 @@ class RosieConversation:
                 private_mode=False
             )
             debug_print("RAG knowledge base initialized successfully")
+
+            # Compute initial knowledge base hash
+            self.last_kb_hash = self._compute_knowledge_base_hash()
+
+            # Start background sync thread
+            self.docs_sync_thread = threading.Thread(
+                target=self._docs_sync_worker,
+                daemon=True,
+                name="DocsSync"
+            )
+            self.docs_sync_thread.start()
+            debug_print("[DOCS-SYNC] Background sync thread started")
+
         except Exception as e:
             debug_print(f"Warning: Could not initialize RAG system: {e}")
             debug_print("ROSIE will continue without knowledge base features")
             self.rag_system = None
+
+    def _compute_knowledge_base_hash(self):
+        """Compute hash of all .md file modification times to detect changes"""
+        md_files = list(self.knowledge_base_dir.rglob("*.md"))
+        # Use file paths and modification times (faster than reading contents)
+        file_info = []
+        for f in sorted(md_files):
+            if f.is_file():
+                stat = f.stat()
+                file_info.append(f"{f}:{stat.st_mtime}:{stat.st_size}")
+
+        combined = '\n'.join(file_info)
+        return hashlib.sha256(combined.encode()).hexdigest()
+
+    def _reload_rag_system(self):
+        """Reload RAG system with new documents (thread-safe)"""
+        if not self.rag_system:
+            return False
+
+        with self.rag_lock:
+            try:
+                # Use existing reload method
+                success = self.rag_system.reload_with_private_mode(
+                    self.private_mode_enabled if hasattr(self, 'private_mode_enabled') else False
+                )
+                return success
+            except Exception as e:
+                debug_print(f"[RAG] Hot-reload error: {e}")
+                return False
+
+    def _docs_sync_worker(self):
+        """Background thread: Periodically sync Google Docs and reload RAG if changed"""
+        debug_print("[DOCS-SYNC] Background sync thread started")
+
+        while not self.shutdown_event.is_set():
+            # Wait for interval (interruptible by shutdown)
+            if self.shutdown_event.wait(self.docs_sync_interval):
+                break  # Shutdown requested
+
+            try:
+                # Run Google Docs sync (silent mode)
+                sync_google_docs(silent=True)
+
+                # Check if knowledge base changed
+                new_hash = self._compute_knowledge_base_hash()
+                if new_hash != self.last_kb_hash:
+                    debug_print("[DOCS-SYNC] Knowledge base changed, reloading RAG...")
+                    self._reload_rag_system()
+                    self.last_kb_hash = new_hash
+                    debug_print("[DOCS-SYNC] RAG hot-reload complete")
+
+            except Exception as e:
+                debug_print(f"[DOCS-SYNC] Error in background sync: {e}")
 
     def _estimate_token_count(self, text):
         """Estimate token count (rough approximation: 1 token ≈ 0.75 words)"""
@@ -2847,7 +3026,9 @@ class RosieConversation:
                     is_calendar_query = any(word in question_lower for word in ['calendar', 'scheduled', 'happening', 'appointment', 'event', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 'today', 'tomorrow', 'week'])
                     top_k = 25 if is_calendar_query else 5
 
-                    rag_context = self.rag_system.query(enhanced_question, top_k=top_k, date_filter=date_filter)
+                    # Query RAG with thread-safe lock (protects against concurrent reload)
+                    with self.rag_lock:
+                        rag_context = self.rag_system.query(enhanced_question, top_k=top_k, date_filter=date_filter)
 
                     # Debug logging to show what RAG retrieved
                     if rag_context.strip():
@@ -3814,7 +3995,7 @@ class RosieConversation:
 
         # Wait for threads to finish (with timeout)
         debug_print("[SHUTDOWN] Waiting for threads to finish...")
-        threads = [self.whisper_thread, self.wake_word_thread]
+        threads = [self.whisper_thread, self.wake_word_thread, self.docs_sync_thread]
         for thread in threads:
             if thread and thread.is_alive():
                 thread.join(timeout=2)

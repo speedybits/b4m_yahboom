@@ -27,3 +27,11 @@ pynput>=1.7.6
 
 # Optional: For better audio handling
 pyaudio>=0.2.13
+
+# Google Drive/Docs Integration
+google-api-python-client>=2.0.0
+google-auth-oauthlib>=1.0.0
+google-auth-httplib2>=0.1.0
+
+# PDF text extraction (for Google Drive PDF sync)
+pypdf>=4.0.0

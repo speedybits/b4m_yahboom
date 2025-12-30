@@ -3,7 +3,24 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Secret keys
-Never use the actual value of environment variables located in the .bashrc in the code you write. Only use the environment variables themselves
+**NEVER store secrets or secret keys in files.** All secrets must be stored ONLY in environment variables in ~/.bashrc.
+
+**Requirements:**
+- Never use the actual value of environment variables in the code you write - only reference the environment variables themselves
+- OAuth tokens, API keys, and credentials must ONLY be stored in ~/.bashrc environment variables
+- Never save tokens to JSON files, config files, or any other files in the repository
+- When writing setup scripts that generate tokens, display the token for the user to manually add to ~/.bashrc
+- Never auto-save tokens to files - always require manual ~/.bashrc configuration
+
+**Example - WRONG (saving token to file):**
+```python
+token_file.write_text(token_json)  # NEVER DO THIS
+```
+
+**Example - CORRECT (display for user to add to ~/.bashrc):**
+```python
+print(f"Add to ~/.bashrc: export MY_TOKEN='{token_json}'")
+```
 
 ## System File Modifications
 **NEVER modify system files (like ~/.bashrc, ~/.bash_profile, /etc files) without explicit user permission.**
@@ -438,5 +455,62 @@ All Python files use relative paths from the rosie root directory:
 - **LlamaIndex + ChromaDB**: RAG knowledge base
 - **Flask**: Web status interface
 - **Google Calendar API**: Calendar integration
+
+### Google Docs Integration
+
+ROSIE can sync Google Docs and PDFs from a hardcoded folder structure into the RAG knowledge base, enabling conversations about document content with support for private mode.
+
+**Integration Files:**
+- `rosie/src/rosie_docs_setup.py` - OAuth setup wizard (auto-finds Rosie_Knowledge folders)
+- `rosie/src/rosie_docs_sync.py` - Sync script for Google Docs and PDFs
+
+**Data Files (stored in `rosie/data/`, not committed to git):**
+- `docs_config.json` - Selected folders and sync settings
+
+**Required Google Drive Folder Structure:**
+```
+Google Drive/
+└── Rosie_Knowledge/
+    ├── Public/     # Always synced, always in RAG
+    └── Private/    # Synced to knowledge_base/private/, only in RAG when private mode enabled
+```
+
+**Output Locations:**
+- `Rosie_Knowledge/Public` -> `rosie/knowledge_base/google_docs/`
+- `Rosie_Knowledge/Private` -> `rosie/knowledge_base/private/google_docs/`
+
+**Supported File Types:**
+- Google Docs (exported as plain text, converted to markdown)
+- PDF files (text extracted using pypdf)
+
+**How It Works:**
+1. Uses Google Drive API with read-only scope (`https://www.googleapis.com/auth/drive.readonly`)
+2. Can reuse same OAuth app as calendar integration (falls back to `GOOGLE_CALENDAR_*` env vars)
+3. Syncs automatically on ROSIE startup (rebuilds RAG index with fresh documents)
+4. **Background sync runs every 60 seconds** - detects new documents and hot-reloads RAG automatically
+5. Downloads Google Docs as plain text and PDFs, converts to markdown format
+6. Removes stale documents that no longer exist in source folders
+7. Private folder mirrors local `knowledge_base/private/` behavior - only included in RAG when private mode is enabled
+
+**Real-Time Document Detection:**
+- Background thread monitors Google Drive every 60 seconds while ROSIE is running
+- When new documents are added, ROSIE automatically syncs and reloads the RAG index
+- No restart required - documents become available within ~60 seconds of being added
+
+**Setup Steps:**
+```bash
+# 1. Create folders in Google Drive: Rosie_Knowledge/Public and Rosie_Knowledge/Private
+# 2. Run setup wizard to authenticate
+python3 rosie/src/rosie_docs_setup.py
+
+# 3. Test sync manually (optional - ROSIE auto-syncs on startup and every 60 seconds)
+python3 rosie/src/rosie_docs_sync.py
+```
+
+**OAuth Configuration:**
+- Uses `GOOGLE_CALENDAR_CLIENT_ID` and `GOOGLE_CALENDAR_CLIENT_SECRET` environment variables
+- Requires Google Drive API enabled in Google Cloud Console
+- Same OAuth app can be used for both Calendar and Docs integration
+- Token stored separately from calendar token for security isolation
 
 See `rosie/docs/ROSIE_README.md` for complete setup and usage instructions.

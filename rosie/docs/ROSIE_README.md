@@ -51,7 +51,7 @@ LISTENING → RESPONDING → SPEAKING → LISTENING
 - `rosie/data/.rosie_vector_db/` - Vector embeddings database (ChromaDB persistence)
 - `rosie/data/rosie_state.json` - Current state for web display
 - `rosie/data/calendar_config.json` - Google Calendar configuration
-- `rosie/data/calendar_token.json` - OAuth token (auto-saved, persists across restarts)
+- `rosie/data/docs_config.json` - Google Docs folder configuration
 - `rosie/data/calendar_create_queue.json` - Pending calendar event creations
 
 ### Intelligent Context Management
@@ -394,7 +394,7 @@ ROSIE integrates with Google Calendar to provide intelligent calendar awareness 
 - **Date Expansion**: "What's happening tomorrow?" automatically expands to actual date
 - **Event Creation**: Create calendar events through natural conversation
 - **Fresh RAG Index**: Knowledge base rebuilt on each startup for current calendar data
-- **Token Persistence**: OAuth tokens saved to file for seamless restarts
+- **Token Security**: OAuth tokens stored only in environment variables (~/.bashrc)
 
 **Setup:**
 
@@ -403,10 +403,12 @@ ROSIE integrates with Google Calendar to provide intelligent calendar awareness 
    python3 rosie/src/rosie_calendar_setup.py
    ```
    This will guide you through Google Calendar API authentication.
-   Token is automatically saved to `rosie/data/calendar_token.json`.
 
-2. **That's it!** Token is persisted to file, no environment variables needed.
-   (Optional: Add token to `~/.bashrc` for faster startup)
+2. **Add the token to ~/.bashrc** as instructed by the setup wizard:
+   ```bash
+   export GOOGLE_CALENDAR_TOKEN='...'  # Provided by setup wizard
+   ```
+   Then run `source ~/.bashrc`
 
 **Automatic Sync on Startup:**
 ```
@@ -798,7 +800,7 @@ rosie/
 │   ├── web_audio_output/          # Piper TTS for browser
 │   ├── ssl/                       # HTTPS certificates (self-signed)
 │   ├── calendar_config.json       # Google Calendar configuration
-│   ├── calendar_token.json        # OAuth token (auto-saved)
+│   ├── docs_config.json           # Google Docs folder configuration
 │   ├── calendar_create_queue.json # Pending event creations
 │   └── calendar_create_log.txt    # Event creation log
 ├── docs/                          # Documentation
@@ -833,11 +835,11 @@ rosie/
 - `KNOWLEDGE_BASE_DIR` - Path to markdown documents (default: rosie/knowledge_base)
 - `CHROMA_DB_DIR` - Path to vector database (default: rosie/data/.rosie_vector_db)
 
-**Calendar Integration (optional, for Google Calendar features):**
-- `ROSIE_CALENDAR_CREDENTIALS` - Path to Google Calendar credentials JSON file
-- `ROSIE_CALENDAR_TOKEN` - Path to OAuth token JSON file
-- `ROSIE_CALENDAR_ID` - Calendar ID to use (default: "primary")
-- `ROSIE_CALENDAR_DAYS_AHEAD` - Days to look ahead for events (default: 30)
+**Google Integration (optional, for Calendar and Docs features):**
+- `GOOGLE_CALENDAR_CLIENT_ID` - OAuth Client ID from Google Cloud Console
+- `GOOGLE_CALENDAR_CLIENT_SECRET` - OAuth Client Secret
+- `GOOGLE_CALENDAR_TOKEN` - OAuth token JSON (from setup wizard, stored in ~/.bashrc)
+- `GOOGLE_DOCS_TOKEN` - OAuth token JSON for Google Docs (from setup wizard, stored in ~/.bashrc)
 
 **Dual-Mode Intelligence:**
 ROSIE automatically adjusts temperature based on question type:
