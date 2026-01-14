@@ -105,6 +105,10 @@ def save_token_data(creds):
     # Set for current session
     os.environ['GOOGLE_CALENDAR_TOKEN'] = token_json
 
+    # Machine-parseable line for parent process to capture new token
+    # This allows rosie_conversation.py to update its environment after re-auth
+    print(f"ROSIE_TOKEN_UPDATE:{token_json}")
+
     # Print instructions for ~/.bashrc setup (REQUIRED, not optional)
     print("\n" + "=" * 80)
     print("IMPORTANT: ADD TOKEN TO ~/.bashrc")

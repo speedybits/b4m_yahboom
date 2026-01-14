@@ -48,6 +48,10 @@ for arg in "$@"; do
             ARGS+=("$arg")
             ENABLE_WEB=false
             ;;
+        --speech-in-text-out|--speech_in_text_out)
+            ARGS+=("--speech-in-text-out")
+            ENABLE_WEB=false
+            ;;
         --debug)
             ARGS+=("$arg")
             ;;
@@ -123,6 +127,16 @@ for arg in "$@"; do
             echo "        - Scripted interactions or automated testing"
             echo "        - Faster startup (no model loading)"
             echo "      This mode also disables the web interface."
+            echo ""
+            echo "  --speech-in-text-out, --speech_in_text_out"
+            echo "      Hybrid mode: Voice input via Whisper, text output to console."
+            echo "      Whisper speech-to-text model IS loaded for voice recognition."
+            echo "      Piper text-to-speech model is NOT loaded - responses print to console."
+            echo "      Useful for:"
+            echo "        - Voice control without audio output"
+            echo "        - Quiet environments where TTS would be disruptive"
+            echo "        - Testing voice recognition with readable output"
+            echo "      This mode disables the web interface."
             echo ""
             echo "  --debug"
             echo "      Enables verbose debug output. Shows all internal processing including:"

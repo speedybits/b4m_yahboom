@@ -98,17 +98,37 @@ def sync_google_calendar(silent=False):
             print("[CALENDAR] Opening browser for Google authentication...")
 
             # Run the setup script to re-authenticate
-            auth_result = subprocess.run(
+            # Use Popen to show output in real-time while capturing for token parsing
+            process = subprocess.Popen(
                 ['python3', str(setup_script)],
-                capture_output=False,  # Show output to user for browser auth
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 text=True,
-                timeout=120,  # Allow more time for browser auth
                 cwd=str(rosie_dir)
             )
 
-            if auth_result.returncode != 0:
+            # Tee output: show to user while capturing for token extraction
+            captured_output = []
+            for line in process.stdout:
+                print(line, end='')  # Show to user in real-time
+                captured_output.append(line)
+
+            try:
+                process.wait(timeout=120)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                print("[CALENDAR] ✗ Re-authentication timed out")
+                return False
+
+            if process.returncode != 0:
                 print("[CALENDAR] ✗ Re-authentication failed")
                 return False
+
+            # Extract new token from captured output and update parent environment
+            auth_output = ''.join(captured_output)
+            token_match = re.search(r'ROSIE_TOKEN_UPDATE:(.+)$', auth_output, re.MULTILINE)
+            if token_match:
+                os.environ['GOOGLE_CALENDAR_TOKEN'] = token_match.group(1)
 
             # Retry sync after re-authentication
             print("[CALENDAR] Retrying calendar sync...")
@@ -542,13 +562,14 @@ class RosieConversation:
     Simplified architecture with plain text conversation history.
     """
 
-    def __init__(self, test_mode=False, test_input=None, text_only_mode=False, test_questions_mode=False, test_knowledge_mode=False, test_calendar_mode=False, test_conversation_mode=False):
+    def __init__(self, test_mode=False, test_input=None, text_only_mode=False, speech_in_text_out_mode=False, test_questions_mode=False, test_knowledge_mode=False, test_calendar_mode=False, test_conversation_mode=False):
         """Initialize ROSIE system with configuration from environment
 
         Args:
             test_mode: If True, run full audio pipeline test (Piper → Speakers → Microphone → Whisper)
             test_input: In test mode, the text to inject (None for interactive)
             text_only_mode: If True, bypass all audio (no Whisper/Piper loading), text I/O only
+            speech_in_text_out_mode: If True, use Whisper for voice input but skip Piper TTS (text output only)
             test_questions_mode: If True, run comprehension test with paragraphs and questions
             test_knowledge_mode: If True, run RAG knowledge base retrieval test
             test_calendar_mode: If True, run Google Calendar accuracy test
@@ -558,6 +579,7 @@ class RosieConversation:
         self.test_mode = test_mode
         self.test_input = test_input
         self.text_only_mode = text_only_mode
+        self.speech_in_text_out_mode = speech_in_text_out_mode
         self.test_questions_mode = test_questions_mode
         self.test_knowledge_mode = test_knowledge_mode
         self.test_calendar_mode = test_calendar_mode
@@ -814,12 +836,78 @@ class RosieConversation:
         words = len(text.split())
         return int(words * 1.3)  # Conservative estimate
 
+    def _check_ollama_gpu(self):
+        """Check if Ollama is using GPU acceleration. Exit if CPU-only."""
+        try:
+            # First check if Ollama is running
+            response = requests.get('http://localhost:11434/api/ps', timeout=5)
+            if response.status_code != 200:
+                print("\nERROR: Ollama not responding properly")
+                sys.exit(1)
+
+            data = response.json()
+            models = data.get('models', [])
+
+            # If no models loaded, trigger a load with embedding model
+            if not models:
+                debug_print("[GPU CHECK] No models loaded, warming up embedding model...")
+                try:
+                    requests.post(
+                        'http://localhost:11434/api/embeddings',
+                        json={'model': 'nomic-embed-text', 'prompt': 'test'},
+                        timeout=60
+                    )
+                except:
+                    pass  # Ignore errors, we'll check ps again
+
+                # Re-check after warm-up
+                response = requests.get('http://localhost:11434/api/ps', timeout=5)
+                data = response.json()
+                models = data.get('models', [])
+
+            # Check if ANY model is using GPU (size_vram > 0)
+            for model in models:
+                if model.get('size_vram', 0) > 0:
+                    debug_print(f"[GPU CHECK] GPU active: {model.get('name')} using {model.get('size_vram')} bytes VRAM")
+                    return True  # GPU is being used
+
+            # All models show size_vram=0 - CPU only
+            print("\n" + "="*70)
+            print("ERROR: Ollama is running on CPU, not GPU!")
+            print("="*70)
+            print("\nROSIE requires GPU acceleration for acceptable performance.")
+            print("CPU inference is 10-30x slower and will cause timeouts.")
+            print("\nQuick diagnostics:")
+            print("  nvidia-smi                    # Check if GPU driver is working")
+            print("  curl localhost:11434/api/ps   # Check Ollama GPU status")
+            print("\nTo fix:")
+            print("  1. Check driver: nvidia-smi")
+            print("  2. If driver failed, see: rosie/GPU_SETUP_INSTRUCTIONS.md")
+            print("  3. After fixing driver: sudo systemctl restart ollama")
+            print("\nExiting.")
+            print("="*70 + "\n")
+            sys.exit(1)
+
+        except requests.exceptions.ConnectionError:
+            print("\nERROR: Cannot connect to Ollama at http://localhost:11434")
+            print("Please start Ollama: ollama serve")
+            sys.exit(1)
+        except Exception as e:
+            print(f"\nWarning: Could not check Ollama GPU status: {e}")
+            # Continue anyway - might work
+
+        return True
+
     def _validate_configuration(self):
         """Validate required configuration"""
+        # Check Piper TTS model
         if not self.piper_model_path or not Path(self.piper_model_path).exists():
             debug_print(f"ERROR: PIPER_MODEL_PATH not found: {self.piper_model_path}")
             debug_print("Please set PIPER_MODEL_PATH in ~/.bashrc")
             sys.exit(1)
+
+        # Check Ollama is running and using GPU
+        self._check_ollama_gpu()
 
     def _get_state(self):
         """Thread-safe state getter"""
@@ -3516,9 +3604,9 @@ class RosieConversation:
         """
         self._log("Piper TTS started")
 
-        # Skip audio output in text-only mode
-        if self.text_only_mode:
-            self._log("Text-only mode: Skipping Piper TTS")
+        # Skip audio output in text-only or speech-in-text-out mode
+        if self.text_only_mode or self.speech_in_text_out_mode:
+            self._log("Text output mode: Skipping Piper TTS")
             self._set_state(ConversationState.LISTENING)
             return
 
@@ -4028,6 +4116,8 @@ def main():
     parser.add_argument('--text-only', action='store_true',
                        help='Text-only mode: Bypass all audio processing (no Whisper/Piper). '
                             'Uses stdin for input and stdout for output.')
+    parser.add_argument('--speech-in-text-out', action='store_true',
+                       help='Hybrid mode: Whisper voice input, text console output (no Piper TTS).')
     parser.add_argument('--debug', action='store_true',
                        help='Debug mode: Show verbose output including RAG queries, Ollama calls, '
                             'VAD status, and audio processing details. Default output shows only '
@@ -4067,6 +4157,7 @@ def main():
         test_mode=args.test_audio is not None,
         test_input=args.test_audio,
         text_only_mode=args.text_only,
+        speech_in_text_out_mode=args.speech_in_text_out,
         test_questions_mode=args.test_questions,
         test_knowledge_mode=args.test_knowledge,
         test_calendar_mode=args.test_calendar,
