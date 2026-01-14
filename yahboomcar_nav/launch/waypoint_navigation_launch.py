@@ -13,7 +13,7 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
     namespace = LaunchConfiguration('namespace', default='')
     map_yaml_path = LaunchConfiguration(
-        'maps', default=os.path.join(package_path, 'maps', 'yahboom_map.yaml')) 
+        'maps', default=os.path.join(package_path, 'maps', 'yahboom_map.yaml'))
     nav2_param_path = LaunchConfiguration('params_file', default=os.path.join(
         package_path, 'params', 'dwb_nav_params.yaml'))
 

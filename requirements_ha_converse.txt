@@ -1,0 +1,17 @@
+# Requirements for HA_converse Speech-to-Text System
+# Install with: pip install -r requirements_ha_converse.txt
+
+# Core Whisper dependency
+openai-whisper==20231117
+
+# Audio capture
+sounddevice==0.4.6
+
+# Numerical operations (required by both Whisper and sounddevice)
+numpy>=1.24.0
+
+# Optional but recommended for better performance
+# Uncomment if you want to use GPU acceleration (requires CUDA)
+# torch>=2.0.0
+# torchvision
+# torchaudio

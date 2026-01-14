@@ -1,0 +1,43 @@
+# Google Calendar API Environment Variables for ROSIE
+# Add these lines to your ~/.bashrc file
+
+# =============================================================================
+# Google Calendar OAuth2 Credentials
+# =============================================================================
+# To get these values:
+# 1. Go to https://console.cloud.google.com/
+# 2. Create/select project → Enable Google Calendar API
+# 3. Create OAuth 2.0 Desktop credentials
+# 4. Copy Client ID and Client Secret from the credentials page
+#
+# SECURITY: Never commit these to git or share publicly!
+# =============================================================================
+
+export GOOGLE_CALENDAR_CLIENT_ID='your-client-id-here.apps.googleusercontent.com'
+export GOOGLE_CALENDAR_CLIENT_SECRET='your-client-secret-here'
+
+# =============================================================================
+# Google Calendar OAuth2 Token (Generated after first authentication)
+# =============================================================================
+# This will be generated when you run: python3 rosie_calendar_setup.py
+# The setup script will print the exact export command to paste here
+#
+# The token contains:
+# - Access token (short-lived, ~1 hour)
+# - Refresh token (long-lived, used to get new access tokens)
+# - Token expiry timestamp
+#
+# SECURITY: Treat this like a password - it grants access to your calendars!
+# =============================================================================
+
+# PLACEHOLDER - Replace with token from rosie_calendar_setup.py output:
+# export GOOGLE_CALENDAR_TOKEN='{"token": "...", "refresh_token": "...", ...}'
+
+# =============================================================================
+# After adding these variables:
+# =============================================================================
+# 1. Save ~/.bashrc
+# 2. Run: source ~/.bashrc
+# 3. Verify: echo $GOOGLE_CALENDAR_CLIENT_ID
+# 4. Run setup: python3 rosie_calendar_setup.py
+# =============================================================================

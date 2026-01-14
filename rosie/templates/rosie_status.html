@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ROSIE Status</title>
+    <!-- Socket.IO client library -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: white;
+            padding: 20px;
+        }
+
+        .container {
+            text-align: center;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            max-width: 600px;
+            width: 100%;
+        }
+
+        h1 {
+            font-size: 3em;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .gif-container {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .status-gif {
+            max-width: 100%;
+            height: auto;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 20px;
+            font-size: 0.9em;
+        }
+
+        .connected {
+            color: #4caf50;
+        }
+
+        .disconnected {
+            color: #f44336;
+        }
+
+        .audio-controls {
+            margin-top: 30px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+        }
+
+        .audio-button {
+            padding: 15px 30px;
+            font-size: 1.1em;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: bold;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .audio-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .audio-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .enable-audio {
+            background: #4caf50;
+            color: white;
+        }
+
+        .disable-audio {
+            background: #f44336;
+            color: white;
+        }
+
+        .audio-status {
+            margin-top: 15px;
+            font-size: 0.9em;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .audio-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+            animation: pulse 2s infinite;
+        }
+
+        .audio-active {
+            background-color: #4caf50;
+        }
+
+        .audio-inactive {
+            background-color: #f44336;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Private Mode Styles */
+        .private-mode-controls {
+            margin-top: 20px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+        }
+
+        .private-mode-button {
+            padding: 12px 25px;
+            font-size: 1em;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: bold;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            margin: 5px;
+        }
+
+        .private-mode-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .private-mode-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .lock-button-locked {
+            background: #f44336;
+            color: white;
+        }
+
+        .lock-button-unlocked {
+            background: #4caf50;
+            color: white;
+        }
+
+        .toggle-button {
+            background: #2196F3;
+            color: white;
+        }
+
+        .private-status {
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        /* PIN Modal Styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-overlay.show {
+            display: flex;
+        }
+
+        .modal-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            text-align: center;
+            min-width: 300px;
+        }
+
+        .modal-title {
+            font-size: 1.5em;
+            margin-bottom: 20px;
+            color: white;
+        }
+
+        .pin-input {
+            width: 200px;
+            padding: 15px;
+            font-size: 1.5em;
+            text-align: center;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            margin-bottom: 20px;
+            letter-spacing: 10px;
+        }
+
+        .pin-input:focus {
+            outline: none;
+            border-color: rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .pin-input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+            letter-spacing: normal;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .modal-button {
+            padding: 12px 30px;
+            font-size: 1em;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: bold;
+        }
+
+        .modal-button:hover {
+            transform: translateY(-2px);
+        }
+
+        .submit-button {
+            background: #4caf50;
+            color: white;
+        }
+
+        .cancel-button {
+            background: #f44336;
+            color: white;
+        }
+
+        .error-message {
+            color: #ffcdd2;
+            margin-top: 10px;
+            font-size: 0.9em;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="connection-status">
+        <span id="connection-indicator" class="disconnected">● Disconnected</span>
+    </div>
+
+    <div class="container">
+        <h1>ROSIE</h1>
+
+        <div class="gif-container" id="gif-container">
+            <img id="status-gif" class="status-gif" src="/animation/waiting.gif" alt="ROSIE Status" onerror="this.style.display='none'">
+        </div>
+
+        <div class="audio-controls">
+            <button id="audio-toggle-btn" class="audio-button enable-audio" onclick="toggleWebAudio()">
+                Enable Web Audio
+            </button>
+            <div class="audio-status">
+                <span id="audio-indicator" class="audio-indicator audio-inactive"></span>
+                <span id="audio-status-text">Web audio disabled (using local microphone/speakers)</span>
+            </div>
+        </div>
+
+        <div class="private-mode-controls">
+            <div>
+                <button id="lock-btn" class="private-mode-button lock-button-locked" onclick="handleLockButton()">
+                    🔒 Unlock Private Mode
+                </button>
+                <button id="toggle-btn" class="private-mode-button toggle-button" onclick="togglePrivateMode()" disabled>
+                    Enable Private Mode
+                </button>
+            </div>
+            <div class="private-status">
+                <span id="private-status-text">Private mode locked (authentication required)</span>
+                <br>
+                <span id="private-timer-text"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- PIN Modal -->
+    <div id="pin-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h2 class="modal-title">Enter Private Mode PIN</h2>
+            <input type="password" id="pin-input" class="pin-input" maxlength="4" placeholder="****" inputmode="numeric" pattern="[0-9]*">
+            <div id="pin-error" class="error-message"></div>
+            <div class="modal-buttons">
+                <button class="modal-button submit-button" onclick="submitPin()">Submit</button>
+                <button class="modal-button cancel-button" onclick="closeModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const statusGif = document.getElementById('status-gif');
+        const gifContainer = document.getElementById('gif-container');
+        const connectionIndicator = document.getElementById('connection-indicator');
+        const audioToggleBtn = document.getElementById('audio-toggle-btn');
+        const audioIndicator = document.getElementById('audio-indicator');
+        const audioStatusText = document.getElementById('audio-status-text');
+
+        // Private mode elements
+        const pinModal = document.getElementById('pin-modal');
+        const pinInput = document.getElementById('pin-input');
+        const pinError = document.getElementById('pin-error');
+        const lockBtn = document.getElementById('lock-btn');
+        const toggleBtn = document.getElementById('toggle-btn');
+        const privateStatusText = document.getElementById('private-status-text');
+        const privateTimerText = document.getElementById('private-timer-text');
+
+        // Private mode state
+        let isAuthenticated = false;
+        let isPrivateModeEnabled = false;
+        let lastActivityTimestamp = 0;
+        let countdownTimer = null;
+
+        // Image cycling state
+        let currentImages = [];
+        let currentImageIndex = 0;
+        let lastImageIndex = -1;
+        let cycleTimer = null;
+        let imageCache = {};  // Preloaded images
+
+        // Web audio state
+        let webAudioEnabled = false;
+        let audioContext = null;
+        let mediaStream = null;
+        let audioWorkletNode = null;
+        let socket = null;
+
+        // Preload images for smooth transitions
+        function preloadImages(images) {
+            images.forEach(img => {
+                if (!imageCache[img]) {
+                    const imageObj = new Image();
+                    imageObj.src = '/animation/' + img;
+                    imageCache[img] = imageObj;
+                }
+            });
+        }
+
+        // Get random image index, avoiding immediate repeats
+        function getRandomImageIndex(imageCount, lastIndex) {
+            if (imageCount <= 1) return 0;
+
+            let newIndex;
+            do {
+                newIndex = Math.floor(Math.random() * imageCount);
+            } while (newIndex === lastIndex && imageCount > 1);
+
+            return newIndex;
+        }
+
+        // Cycle through images
+        function cycleImages() {
+            if (!currentImages || currentImages.length === 0) {
+                console.log('No images to cycle');
+                return;
+            }
+
+            // Get next random image (avoiding immediate repeat)
+            currentImageIndex = getRandomImageIndex(currentImages.length, lastImageIndex);
+            lastImageIndex = currentImageIndex;
+
+            const imageName = currentImages[currentImageIndex];
+            console.log(`Cycling to image ${currentImageIndex + 1}/${currentImages.length}: ${imageName}`);
+
+            // Update image
+            statusGif.src = '/animation/' + imageName;
+            statusGif.style.display = 'block';
+
+            // Schedule next cycle (random 500-1000ms)
+            const nextCycle = 500 + Math.random() * 500;
+            cycleTimer = setTimeout(cycleImages, nextCycle);
+        }
+
+        // Start cycling for new image set
+        function startImageCycling(images) {
+            // Stop existing cycle
+            if (cycleTimer) {
+                clearTimeout(cycleTimer);
+                cycleTimer = null;
+            }
+
+            currentImages = images;
+            lastImageIndex = -1;  // Reset for new set
+
+            if (!currentImages || currentImages.length === 0) {
+                console.warn('No images available for current state');
+                statusGif.style.display = 'none';
+                return;
+            }
+
+            console.log(`Starting image cycling with ${currentImages.length} images:`, currentImages);
+
+            // Preload all images
+            preloadImages(currentImages);
+
+            // Start cycling immediately
+            cycleImages();
+        }
+
+        // Stop cycling (when page hidden to save battery)
+        function stopImageCycling() {
+            if (cycleTimer) {
+                clearTimeout(cycleTimer);
+                cycleTimer = null;
+            }
+        }
+
+        // ============================================================================
+        // Private Mode Functions
+        // ============================================================================
+
+        function handleLockButton() {
+            if (isAuthenticated) {
+                // Already authenticated - this is a "lock" action
+                logout();
+            } else {
+                // Not authenticated - show PIN modal
+                showModal();
+            }
+        }
+
+        function showModal() {
+            pinModal.classList.add('show');
+            pinInput.value = '';
+            pinError.textContent = '';
+            pinInput.focus();
+        }
+
+        function closeModal() {
+            pinModal.classList.remove('show');
+            pinInput.value = '';
+            pinError.textContent = '';
+        }
+
+        function submitPin() {
+            const pin = pinInput.value;
+
+            if (pin.length !== 4) {
+                pinError.textContent = 'PIN must be 4 digits';
+                return;
+            }
+
+            if (!/^\d+$/.test(pin)) {
+                pinError.textContent = 'PIN must contain only numbers';
+                return;
+            }
+
+            // Send PIN to server for verification
+            console.log('[Private Mode] Submitting PIN for verification');
+            socket.emit('verify_private_pin', { pin: pin });
+        }
+
+        function togglePrivateMode() {
+            if (!isAuthenticated) {
+                alert('Please authenticate first by unlocking private mode');
+                return;
+            }
+
+            // Toggle the state
+            const newEnabled = !isPrivateModeEnabled;
+
+            console.log('[Private Mode] Toggling private mode to:', newEnabled);
+            socket.emit('toggle_private_mode', {
+                enabled: newEnabled,
+                authenticated: isAuthenticated
+            });
+        }
+
+        function logout() {
+            console.log('[Private Mode] Logging out');
+            isAuthenticated = false;
+            if (isPrivateModeEnabled) {
+                // Turn off private mode when logging out
+                socket.emit('toggle_private_mode', {
+                    enabled: false,
+                    authenticated: false
+                });
+            }
+            updatePrivateModeUI();
+        }
+
+        function updatePrivateModeUI() {
+            // Update lock button
+            if (isAuthenticated) {
+                lockBtn.textContent = '🔓 Lock Private Mode';
+                lockBtn.className = 'private-mode-button lock-button-unlocked';
+                toggleBtn.disabled = false;
+            } else {
+                lockBtn.textContent = '🔒 Unlock Private Mode';
+                lockBtn.className = 'private-mode-button lock-button-locked';
+                toggleBtn.disabled = true;
+            }
+
+            // Update toggle button
+            if (isPrivateModeEnabled) {
+                toggleBtn.textContent = 'Disable Private Mode';
+            } else {
+                toggleBtn.textContent = 'Enable Private Mode';
+            }
+
+            // Update status text
+            let statusText = '';
+            if (!isAuthenticated) {
+                statusText = 'Private mode locked (authentication required)';
+            } else if (isPrivateModeEnabled) {
+                statusText = 'Private mode ACTIVE - private documents included';
+            } else {
+                statusText = 'Private mode unlocked but OFF';
+            }
+            privateStatusText.textContent = statusText;
+
+            // Update countdown timer
+            if (isAuthenticated && isPrivateModeEnabled) {
+                startCountdownTimer();
+            } else {
+                stopCountdownTimer();
+                privateTimerText.textContent = '';
+            }
+        }
+
+        function startCountdownTimer() {
+            // Stop existing timer if any
+            stopCountdownTimer();
+
+            // Update every second
+            countdownTimer = setInterval(function() {
+                if (!isAuthenticated || !isPrivateModeEnabled) {
+                    stopCountdownTimer();
+                    return;
+                }
+
+                const currentTime = Date.now() / 1000; // Convert to seconds
+                const timeElapsed = currentTime - lastActivityTimestamp;
+                const timeoutSeconds = 30 * 60; // 30 minutes
+                const timeRemaining = Math.max(0, timeoutSeconds - timeElapsed);
+
+                if (timeRemaining <= 0) {
+                    // Timeout occurred
+                    privateTimerText.textContent = 'Session timed out';
+                    stopCountdownTimer();
+                    isAuthenticated = false;
+                    isPrivateModeEnabled = false;
+                    updatePrivateModeUI();
+                } else {
+                    // Display remaining time
+                    const minutes = Math.floor(timeRemaining / 60);
+                    const seconds = Math.floor(timeRemaining % 60);
+                    privateTimerText.textContent = `Auto-logout in ${minutes}:${seconds.toString().padStart(2, '0')}`;
+                }
+            }, 1000);
+        }
+
+        function stopCountdownTimer() {
+            if (countdownTimer) {
+                clearInterval(countdownTimer);
+                countdownTimer = null;
+            }
+        }
+
+        // Allow Enter key in PIN input
+        pinInput.addEventListener('keyup', function(event) {
+            if (event.key === 'Enter') {
+                submitPin();
+            }
+        });
+
+        // ============================================================================
+        // WebSocket Connection
+        // ============================================================================
+
+        // Connect to WebSocket server
+        socket = io();
+
+        socket.on('connect', function() {
+            connectionIndicator.textContent = '● Connected';
+            connectionIndicator.className = 'connected';
+            console.log('Connected to ROSIE WebSocket server');
+        });
+
+        socket.on('disconnect', function() {
+            connectionIndicator.textContent = '● Disconnected';
+            connectionIndicator.className = 'disconnected';
+            console.log('Disconnected from WebSocket server');
+
+            stopImageCycling();
+
+            // Disable web audio if it was enabled
+            if (webAudioEnabled) {
+                disableWebAudio();
+            }
+        });
+
+        socket.on('state_update', function(data) {
+            console.log('State update:', data);
+
+            // Start cycling with new images
+            if (data.images && data.images.length > 0) {
+                startImageCycling(data.images);
+            } else {
+                stopImageCycling();
+                statusGif.style.display = 'none';
+            }
+
+            // Update private mode state from server
+            if (data.hasOwnProperty('private_mode_enabled')) {
+                isPrivateModeEnabled = data.private_mode_enabled;
+            }
+            if (data.hasOwnProperty('private_mode_authenticated')) {
+                isAuthenticated = data.private_mode_authenticated;
+            }
+            if (data.hasOwnProperty('last_activity_timestamp')) {
+                lastActivityTimestamp = data.last_activity_timestamp;
+            }
+
+            updatePrivateModeUI();
+        });
+
+        socket.on('audio_enabled', function(data) {
+            console.log('Web audio enabled:', data);
+            updateAudioUI(true);
+        });
+
+        socket.on('audio_disabled', function(data) {
+            console.log('Web audio disabled:', data);
+            updateAudioUI(false);
+        });
+
+        socket.on('audio_error', function(data) {
+            console.error('Audio error:', data);
+            alert('Audio Error: ' + data.error);
+            disableWebAudio();
+        });
+
+        socket.on('audio_output', function(audioData) {
+            console.log('Received TTS audio from server, type:', typeof audioData, 'length:', audioData?.byteLength || audioData?.length);
+            playAudioOutput(audioData);
+        });
+
+        socket.on('pin_verification_result', function(data) {
+            console.log('[Private Mode] PIN verification result:', data);
+
+            if (data.success) {
+                // Authentication successful
+                isAuthenticated = true;
+                closeModal();
+                updatePrivateModeUI();
+                console.log('[Private Mode] Authentication successful');
+            } else {
+                // Authentication failed
+                pinError.textContent = data.error || 'Incorrect PIN';
+                pinInput.value = '';
+                pinInput.focus();
+                console.log('[Private Mode] Authentication failed:', data.error);
+            }
+        });
+
+        socket.on('private_mode_changed', function(data) {
+            console.log('[Private Mode] Mode changed:', data);
+            isPrivateModeEnabled = data.enabled;
+            isAuthenticated = data.authenticated;
+            updatePrivateModeUI();
+        });
+
+        socket.on('private_mode_error', function(data) {
+            console.error('[Private Mode] Error:', data.error);
+            alert('Private Mode Error: ' + data.error);
+        });
+
+        // ============================================================================
+        // Web Audio Functions
+        // ============================================================================
+
+        function updateAudioUI(enabled) {
+            webAudioEnabled = enabled;
+
+            if (enabled) {
+                audioToggleBtn.textContent = 'Disable Web Audio';
+                audioToggleBtn.className = 'audio-button disable-audio';
+                audioIndicator.className = 'audio-indicator audio-active';
+                audioStatusText.textContent = 'Web audio active (using this device)';
+            } else {
+                audioToggleBtn.textContent = 'Enable Web Audio';
+                audioToggleBtn.className = 'audio-button enable-audio';
+                audioIndicator.className = 'audio-indicator audio-inactive';
+                audioStatusText.textContent = 'Web audio disabled (using local microphone/speakers)';
+            }
+        }
+
+        async function toggleWebAudio() {
+            if (webAudioEnabled) {
+                disableWebAudio();
+            } else {
+                await enableWebAudio();
+            }
+        }
+
+        async function enableWebAudio() {
+            try {
+                console.log('Requesting microphone access...');
+                audioToggleBtn.disabled = true;
+
+                // Request microphone access
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        channelCount: 1,
+                        sampleRate: 16000,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                });
+
+                console.log('Microphone access granted');
+
+                // Create audio context
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                const source = audioContext.createMediaStreamSource(mediaStream);
+
+                // Create script processor for audio capture (4096 buffer size = ~256ms at 16kHz)
+                const processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+                processor.onaudioprocess = function(e) {
+                    if (!webAudioEnabled) return;
+
+                    // Get audio data
+                    const inputData = e.inputBuffer.getChannelData(0);
+
+                    // Convert Float32Array to Int16Array (PCM 16-bit)
+                    const pcmData = new Int16Array(inputData.length);
+                    for (let i = 0; i < inputData.length; i++) {
+                        const s = Math.max(-1, Math.min(1, inputData[i]));
+                        pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                    }
+
+                    // Send to server via WebSocket
+                    socket.emit('audio_input', pcmData.buffer);
+                };
+
+                source.connect(processor);
+                processor.connect(audioContext.destination);
+
+                // Notify server
+                socket.emit('enable_web_audio', {});
+                audioToggleBtn.disabled = false;
+
+                console.log('Web audio enabled successfully');
+
+            } catch (error) {
+                console.error('Failed to enable web audio:', error);
+                alert('Failed to access microphone: ' + error.message);
+                audioToggleBtn.disabled = false;
+                disableWebAudio();
+            }
+        }
+
+        function disableWebAudio() {
+            console.log('Disabling web audio...');
+
+            // Stop microphone
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream = null;
+            }
+
+            // Close audio context
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+
+            // Notify server
+            if (socket && socket.connected) {
+                socket.emit('disable_web_audio', {});
+            }
+
+            updateAudioUI(false);
+            audioToggleBtn.disabled = false;
+        }
+
+        async function playAudioOutput(audioData) {
+            try {
+                console.log('[Audio Output] Starting playback...');
+
+                if (!audioContext) {
+                    // Create audio context for playback only
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    console.log('[Audio Output] Created AudioContext, state:', audioContext.state);
+                }
+
+                // Resume audio context if suspended (browser autoplay policy)
+                if (audioContext.state === 'suspended') {
+                    await audioContext.resume();
+                    console.log('[Audio Output] Resumed AudioContext');
+                }
+
+                // Convert to ArrayBuffer if needed
+                let arrayBuffer;
+                if (audioData instanceof ArrayBuffer) {
+                    arrayBuffer = audioData;
+                } else if (audioData instanceof Blob) {
+                    arrayBuffer = await audioData.arrayBuffer();
+                } else if (audioData.buffer) {
+                    // Typed array (like Uint8Array)
+                    arrayBuffer = audioData.buffer;
+                } else {
+                    console.error('[Audio Output] Unexpected audio data type:', typeof audioData);
+                    return;
+                }
+
+                console.log('[Audio Output] ArrayBuffer size:', arrayBuffer.byteLength, 'bytes');
+
+                // Decode audio data (expecting WAV format from server)
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                console.log('[Audio Output] Decoded audio:', audioBuffer.duration.toFixed(2), 'seconds,', audioBuffer.numberOfChannels, 'channels,', audioBuffer.sampleRate, 'Hz');
+
+                // Create buffer source
+                const source = audioContext.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(audioContext.destination);
+
+                // Add event listener for when playback ends
+                source.onended = function() {
+                    console.log('[Audio Output] Playback finished');
+                };
+
+                // Play
+                source.start(0);
+                console.log('[Audio Output] Started playback');
+
+            } catch (error) {
+                console.error('[Audio Output] Failed to play audio:', error);
+                console.error('[Audio Output] Error details:', error.message);
+            }
+        }
+
+        // Handle page visibility changes
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                // Stop cycling to save battery
+                stopImageCycling();
+            } else {
+                // Resume cycling when page visible
+                if (currentImages && currentImages.length > 0) {
+                    startImageCycling(currentImages);
+                }
+            }
+        });
+    </script>
+</body>
+</html>

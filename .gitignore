@@ -131,3 +131,35 @@ regression/screenshots/*.png
 regression/screenshots/*.json
 !regression/reference_screenshots_simulation/
 !regression/reference_screenshots_real/
+
+# HA_converse speech-to-text output files
+conversation.txt
+response.txt
+prompts/
+
+# ROSIE conversation files (contain private conversation data)
+conversation_history.txt
+speak.txt
+rosie_state.json
+
+# ROSIE RAG knowledge base (user's private documents)
+knowledge_base/*
+!knowledge_base/.gitkeep
+
+# ROSIE vector database (generated embeddings)
+.rosie_vector_db/
+
+# ROSIE animations (user-provided animation images for web interface)
+animation/*
+!animation/.gitkeep
+!animation/README.md
+
+# Unused/temporary files directory
+unused/
+.env.rosie
+
+# Google Calendar API data files (NEVER commit these!)
+# Note: credentials and tokens are now stored in ~/.bashrc as environment variables
+calendar_config.json
+calendar_create_queue.json
+calendar_create_log.txt

@@ -1,0 +1,42 @@
+# Test requirements for HA_converse unit tests
+# These are additional dependencies needed only for testing
+
+# Core testing framework
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-mock>=3.10.0
+pytest-asyncio>=0.21.0
+
+# Performance and resource monitoring
+psutil>=5.9.0
+
+# Concurrent testing utilities
+concurrent-futures>=3.1.1
+
+# Time and date manipulation for testing
+freezegun>=1.2.0
+
+# Network mocking for API tests
+responses>=0.23.0
+
+# Memory profiling for leak detection
+memory-profiler>=0.60.0
+
+# Audio testing utilities (for testing audio processing)
+librosa>=0.10.0
+
+# Additional assertion helpers
+assertpy>=1.1
+
+# Test data generation
+factory-boy>=3.2.0
+faker>=18.0.0
+
+# Parallel test execution
+pytest-xdist>=3.2.0
+
+# Test reporting
+pytest-html>=3.1.0
+
+# Coverage reporting
+coverage[toml]>=7.0.0

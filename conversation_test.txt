@@ -1,0 +1,2 @@
+Hello this is a test of the Ollama integration it should process twenty words and send them to the AI backend
+This is another sentence with exactly twenty words to test the buffer processing and response generation system properly

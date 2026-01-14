@@ -2,47 +2,88 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Secret keys
+**NEVER store secrets or secret keys in files.** All secrets must be stored ONLY in environment variables in ~/.bashrc.
+
+**Requirements:**
+- Never use the actual value of environment variables in the code you write - only reference the environment variables themselves
+- OAuth tokens, API keys, and credentials must ONLY be stored in ~/.bashrc environment variables
+- Never save tokens to JSON files, config files, or any other files in the repository
+- When writing setup scripts that generate tokens, display the token for the user to manually add to ~/.bashrc
+- Never auto-save tokens to files - always require manual ~/.bashrc configuration
+
+**Example - WRONG (saving token to file):**
+```python
+token_file.write_text(token_json)  # NEVER DO THIS
+```
+
+**Example - CORRECT (display for user to add to ~/.bashrc):**
+```python
+print(f"Add to ~/.bashrc: export MY_TOKEN='{token_json}'")
+```
+
+## System File Modifications
+**NEVER modify system files (like ~/.bashrc, ~/.bash_profile, /etc files) without explicit user permission.**
+
+**Requirements:**
+- Always create a timestamped backup BEFORE modifying any system file
+- Ask for user permission before modifying files outside the git repository
+- Document what changes will be made and why
+- Provide clear restoration instructions if changes are made
+
+**Backup naming convention:**
+```bash
+cp ~/.bashrc ~/.bashrc.backup.$(date +%Y%m%d_%H%M%S)
+```
+
 ## Commits
-Only commit files if the regression test has passed:
-- For simulation development: ./b4m_launch.sh --simulation --regression
-- For real robot deployment: ./b4m_launch.sh --regression
+Never commit files automatically
 
-## Get help running important commands
-If you are unable to run a command that you need to run, please stop and tell me what you need me to run. For example, if you can't run a 'sudo' command, please stop and tell me.
+## Application Control Standards
 
-## User guide
-After any changes that involve user interaction, please make sure the USERGUIDE.md is updated
+### Graceful Shutdown Requirement
+**All Python applications must implement proper CTRL+C (SIGINT) handling for graceful shutdown.**
+
+**Requirements:**
+- Applications must respond to CTRL+C within 100-500ms maximum
+- All running threads must be cleanly terminated
+- Any temporary files should be cleaned up
+- Audio streams and hardware resources must be properly released
+- Buffer contents should be saved if needed
+- Application should return control to terminal cleanly
+
+**Implementation:**
+- Use `signal.signal(signal.SIGINT, handler)` to register shutdown handler
+- Use `threading.Event()` for coordinated shutdown across all threads
+- Replace blocking operations with interruptible polling loops
+- Check shutdown event frequently during long-running operations
+
+## Implementation Standards
+
+### No Placeholder Code
+**Never use placeholder code, mock implementations, or incomplete functionality in production code.**
+**Never mock elements of a unit test
+
+**Prohibited Examples:**
+- `# Real implementation would go here`
+- `# TODO: Implement actual functionality`
+- `pass  # Placeholder`
+- Simulated behavior when real implementation is expected
+- Mock objects in production code paths
+
+**Requirements:**
+- All code must be fully functional when deployed
+- If a feature cannot be implemented completely, it should not be included
+- Use actual libraries, APIs, and integrations - not simulations
+- Error handling should be real, not simulated
+
+**Testing vs Implementation:**
+- **Tests**: Mocking external dependencies (MQTT brokers, ROS services) is acceptable and encouraged
+- **Implementation**: Never mock or simulate - use actual functionality
+- If external dependency is unavailable, provide clear setup instructions rather than fake implementations
 
 ## Test file location
 Any new test file created should be located in the 'tests' directory
-
-The regression test now includes automated image comparison that validates RViz visualization:
-- Captures screenshots at 3 key moments: initial, mid-rotation (180°), and final (360°)
-- Compares against mode-appropriate reference screenshots with 90% similarity threshold
-- Uses multi-method analysis: histogram, SSIM, feature matching, and template matching
-- Ensures laser scan visualization and SLAM mapping functionality remain consistent
-- Test fails if screenshots differ by more than 10% from reference images
-- Automatically detects simulation vs real robot mode and uses correct reference directory
-
-**Important**: The regression test now:
-- Cleans up at the START (not end) to ensure clean state
-- Leaves system running after tests for debugging
-- Uses filtered `/odom` topic (from EKF), not raw `/odom_raw`
-- To manually clean up after debugging: `./b4m_shutdown.sh --keep-agent`
-
-Dependencies required: python3-opencv python3-skimage
-
-## Running and Shut down
-Always use b4m_launch to run tests. Use the --simulation switch for Gazebo Classic simulation tests
-If not running a simulation, always use the --skip-agent switch
-Always use b4m_shutdown to stop all running processes when appropriate
-If not running a simulation, always use b4m_shutdown --keep-agent
-
-
-## Test-Driven Development
-Always create unit tests first for new features. These tests should fail because there is no code implemented at first
-Never create code that has mocked components or tests mocked components
-Keep iterating on the code implementation until the unit tests pass
 
 ### Testing Best Practices
 - **Test Real Behavior**: Tests must use actual components, not mocks, to detect real issues
@@ -324,3 +365,152 @@ Standard ROS2 testing framework with pytest for Python nodes and gtest for C++ n
 - Motor control verification
 - Communication link testing
 - ESP32 Micro-ROS connectivity
+
+## ROSIE - Voice Assistant System
+
+ROSIE is the repository's voice-controlled conversational AI system, completely separate from the ROS2 robot navigation system.
+
+### File Organization
+
+All ROSIE-related files are organized under the `rosie/` directory:
+
+```
+rosie/
+├── src/                           # Python source code
+│   ├── rosie_conversation.py      # Main ROSIE application
+│   ├── rosie_web_status.py        # Flask web status server
+│   ├── rosie_calendar_setup.py    # Google Calendar setup wizard
+│   ├── rosie_calendar_sync.py     # Calendar event sync script
+│   └── rosie_calendar_create.py   # Calendar event creation handler
+├── scripts/                       # Launch scripts
+│   └── run.sh                     # Unified launch script (with --no-web flag)
+├── templates/                     # Flask web templates
+│   └── rosie_status.html          # Web status display page
+├── animation/                     # Status display animations
+│   ├── waiting*.png/jpg           # Waiting state images
+│   ├── thinking*.png/jpg          # Thinking state images
+│   └── speaking*.png/jpg          # Speaking state images
+├── knowledge_base/                # RAG knowledge base (markdown files)
+│   ├── calendar_events.md         # Synced calendar events
+│   ├── family.md                  # Family information
+│   └── *.md                       # Other knowledge documents
+├── data/                          # Runtime data (not committed to git)
+│   ├── .rosie_vector_db/          # ChromaDB vector database
+│   ├── rosie_state.json           # Current state for web display
+│   ├── conversation_history.txt   # Conversation log
+│   ├── speak.txt                  # TTS buffer
+│   ├── calendar_config.json       # Calendar configuration
+│   ├── calendar_create_queue.json # Pending event creations
+│   └── calendar_create_log.txt    # Event creation log
+├── docs/                          # Documentation
+│   ├── ROSIE_README.md            # Main ROSIE documentation
+│   ├── ROSIE_CALENDAR.md          # Calendar integration docs
+│   ├── ROSIE_NEWS.md              # Release notes
+│   └── animation_README.md        # Animation image guide
+├── requirements_rosie.txt         # Python dependencies
+└── .gitignore                     # Excludes runtime data files
+```
+
+### Launch Commands
+
+**Launch with web interface (default):**
+```bash
+./rosie/scripts/run.sh
+```
+
+**Launch without web interface:**
+```bash
+./rosie/scripts/run.sh --no-web
+```
+
+**Direct Python execution:**
+```bash
+python3 rosie/src/rosie_conversation.py
+```
+
+### File Path Architecture
+
+All Python files use relative paths from the rosie root directory:
+- **Scripts in `src/`**: Use `Path(__file__).parent.parent` to get rosie root
+- **Runtime data**: Stored in `rosie/data/`
+- **Knowledge base**: Located in `rosie/knowledge_base/`
+- **Templates**: Located in `rosie/templates/`
+- **Animations**: Located in `rosie/animation/`
+
+### Development Guidelines
+
+1. **Runtime files**: Never commit files in `rosie/data/` (excluded in .gitignore)
+2. **Documentation**: Keep ROSIE docs in `rosie/docs/`
+3. **Launch scripts**: All scripts must support being run from any directory
+4. **Path updates**: When moving ROSIE files, update paths in:
+   - Python scripts (rosie_conversation.py, rosie_web_status.py, calendar scripts)
+   - Shell scripts (run.sh, run.sh)
+   - This CLAUDE.md documentation
+
+### Key Dependencies
+
+- **Whisper**: Speech-to-text (faster-whisper with GPU support)
+- **Ollama**: Local LLM for responses
+- **Piper**: Text-to-speech synthesis
+- **LlamaIndex + ChromaDB**: RAG knowledge base
+- **Flask**: Web status interface
+- **Google Calendar API**: Calendar integration
+
+### Google Docs Integration
+
+ROSIE can sync Google Docs and PDFs from a hardcoded folder structure into the RAG knowledge base, enabling conversations about document content with support for private mode.
+
+**Integration Files:**
+- `rosie/src/rosie_docs_setup.py` - OAuth setup wizard (auto-finds Rosie_Knowledge folders)
+- `rosie/src/rosie_docs_sync.py` - Sync script for Google Docs and PDFs
+
+**Data Files (stored in `rosie/data/`, not committed to git):**
+- `docs_config.json` - Selected folders and sync settings
+
+**Required Google Drive Folder Structure:**
+```
+Google Drive/
+└── Rosie_Knowledge/
+    ├── Public/     # Always synced, always in RAG
+    └── Private/    # Synced to knowledge_base/private/, only in RAG when private mode enabled
+```
+
+**Output Locations:**
+- `Rosie_Knowledge/Public` -> `rosie/knowledge_base/google_docs/`
+- `Rosie_Knowledge/Private` -> `rosie/knowledge_base/private/google_docs/`
+
+**Supported File Types:**
+- Google Docs (exported as plain text, converted to markdown)
+- PDF files (text extracted using pypdf)
+
+**How It Works:**
+1. Uses Google Drive API with read-only scope (`https://www.googleapis.com/auth/drive.readonly`)
+2. Can reuse same OAuth app as calendar integration (falls back to `GOOGLE_CALENDAR_*` env vars)
+3. Syncs automatically on ROSIE startup (rebuilds RAG index with fresh documents)
+4. **Background sync runs every 60 seconds** - detects new documents and hot-reloads RAG automatically
+5. Downloads Google Docs as plain text and PDFs, converts to markdown format
+6. Removes stale documents that no longer exist in source folders
+7. Private folder mirrors local `knowledge_base/private/` behavior - only included in RAG when private mode is enabled
+
+**Real-Time Document Detection:**
+- Background thread monitors Google Drive every 60 seconds while ROSIE is running
+- When new documents are added, ROSIE automatically syncs and reloads the RAG index
+- No restart required - documents become available within ~60 seconds of being added
+
+**Setup Steps:**
+```bash
+# 1. Create folders in Google Drive: Rosie_Knowledge/Public and Rosie_Knowledge/Private
+# 2. Run setup wizard to authenticate
+python3 rosie/src/rosie_docs_setup.py
+
+# 3. Test sync manually (optional - ROSIE auto-syncs on startup and every 60 seconds)
+python3 rosie/src/rosie_docs_sync.py
+```
+
+**OAuth Configuration:**
+- Uses `GOOGLE_CALENDAR_CLIENT_ID` and `GOOGLE_CALENDAR_CLIENT_SECRET` environment variables
+- Requires Google Drive API enabled in Google Cloud Console
+- Same OAuth app can be used for both Calendar and Docs integration
+- Token stored separately from calendar token for security isolation
+
+See `rosie/docs/ROSIE_README.md` for complete setup and usage instructions.
